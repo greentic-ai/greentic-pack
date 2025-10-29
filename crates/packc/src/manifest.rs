@@ -94,7 +94,7 @@ pub fn build_manifest(
             id: flow.id.clone(),
             path: flow.relative_path.to_string_lossy().to_string(),
             sha256: flow.sha256.clone(),
-            size: flow.raw.as_bytes().len() as u64,
+            size: flow.raw.len() as u64,
             parameters: flow.parameters.clone(),
         })
         .collect();

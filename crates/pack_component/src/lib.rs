@@ -155,47 +155,57 @@ impl PackExport for Component {
 
 /// Convenience helper for host environments that want an owned component.
 pub fn component() -> Component {
-    Component::default()
+    Component
 }
 
 // Export simple C ABI shims for the stub interface so a Wasm harness can
 // exercise the component without native bindings.
 #[no_mangle]
 pub extern "C" fn greentic_pack_export__list_flows(json_buffer: *mut u8, len: usize) -> usize {
-    let component = Component::default();
+    let component = Component;
     let flows = component.list_flows();
     write_json_response(&flows, json_buffer, len)
 }
 
 #[no_mangle]
-pub extern "C" fn greentic_pack_export__prepare_flow(
+/// # Safety
+///
+/// The caller must ensure that `flow_id_ptr` points to `flow_id_len` bytes of
+/// valid UTF-8 and that `json_buffer` points to a writable region of at least
+/// `len` bytes when non-null.
+pub unsafe extern "C" fn greentic_pack_export__prepare_flow(
     flow_id_ptr: *const u8,
     flow_id_len: usize,
     json_buffer: *mut u8,
     len: usize,
 ) -> usize {
-    let component = Component::default();
-    let flow_id = unsafe { slice_to_str(flow_id_ptr, flow_id_len) };
+    let component = Component;
+    let flow_id = slice_to_str(flow_id_ptr, flow_id_len);
     let result = component.prepare_flow(flow_id);
     write_json_response(&result, json_buffer, len)
 }
 
 #[no_mangle]
-pub extern "C" fn greentic_pack_export__run_flow(
+/// # Safety
+///
+/// The caller must ensure that `flow_id_ptr` points to `flow_id_len` bytes of
+/// valid UTF-8 and that `json_buffer` points to a writable region of at least
+/// `len` bytes when non-null.
+pub unsafe extern "C" fn greentic_pack_export__run_flow(
     flow_id_ptr: *const u8,
     flow_id_len: usize,
     json_buffer: *mut u8,
     len: usize,
 ) -> usize {
-    let component = Component::default();
-    let flow_id = unsafe { slice_to_str(flow_id_ptr, flow_id_len) };
+    let component = Component;
+    let flow_id = slice_to_str(flow_id_ptr, flow_id_len);
     let result = component.run_flow(flow_id, serde_json::Value::Null);
     write_json_response(&result, json_buffer, len)
 }
 
 #[no_mangle]
 pub extern "C" fn greentic_pack_export__a2a_search(json_buffer: *mut u8, len: usize) -> usize {
-    let component = Component::default();
+    let component = Component;
     let items = component.a2a_search("");
     write_json_response(&items, json_buffer, len)
 }

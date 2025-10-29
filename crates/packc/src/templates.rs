@@ -40,7 +40,7 @@ pub fn collect_templates(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<Templat
             let path = entry.into_path();
             let rel_to_root = path
                 .strip_prefix(&absolute_dir)
-                .unwrap_or_else(|_| path.as_path())
+                .unwrap_or(path.as_path())
                 .to_path_buf();
             let logical_path = relative_dir
                 .join(&rel_to_root)

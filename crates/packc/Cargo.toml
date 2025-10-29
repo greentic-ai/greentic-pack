@@ -6,6 +6,11 @@ license.workspace = true
 authors = ["Greentic <engineering@greentic.dev>"]
 repository = "https://github.com/greentic/greentic-pack"
 description = "Greentic pack builder CLI"
+readme = "README.md"
+keywords = ["greentic", "cli", "pack", "wasm"]
+categories = ["development-tools"]
+documentation = "https://docs.greentic.ai/"
+homepage = "https://github.com/greentic-ai/greentic-pack"
 
 [dependencies]
 anyhow = { workspace = true }

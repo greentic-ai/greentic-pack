@@ -6,6 +6,11 @@ license.workspace = true
 authors = ["Greentic <engineering@greentic.dev>"]
 repository = "https://github.com/greentic/greentic-pack"
 description = "Greentic pack component implementation"
+readme = "README.md"
+keywords = ["greentic", "component", "wasm", "pack"]
+categories = ["wasm", "api-bindings"]
+documentation = "https://docs.greentic.ai/"
+homepage = "https://github.com/greentic-ai/greentic-pack"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

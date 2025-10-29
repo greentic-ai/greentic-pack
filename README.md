@@ -65,6 +65,7 @@ assets change to ensure `data.rs` stays in sync.
 
 - `docs/usage.md` – CLI flags, build workflow, and guidance for designing MCP
   aware flows.
+- `docs/publishing.md` – notes on publishing the crates to crates.io.
 
 ## Licensing
 
