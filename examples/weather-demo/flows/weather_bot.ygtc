@@ -1,0 +1,18 @@
+version: 1
+graph:
+  start:
+    type: prompt
+    prompt: "Ask the user for a city to lookup"
+  fetch_weather:
+    type: task
+    service: weather-api
+    input:
+      city: "{{ user.city }}"
+  respond:
+    type: message
+    template: "The weather in {{ weather.city }} is {{ weather.summary }}."
+edges:
+  - from: start
+    to: fetch_weather
+  - from: fetch_weather
+    to: respond

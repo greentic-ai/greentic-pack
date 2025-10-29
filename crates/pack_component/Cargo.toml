@@ -1,0 +1,17 @@
+[package]
+name = "pack_component"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors = ["Greentic <engineering@greentic.dev>"]
+repository = "https://github.com/greentic/greentic-pack"
+description = "Greentic pack component implementation"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+greentic-interfaces = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_cbor = { workspace = true }
