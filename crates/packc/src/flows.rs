@@ -1,6 +1,6 @@
+use crate::manifest::PackSpec;
 use anyhow::{Context, Result};
-use greentic_flow::{loader, resolver, FlowIr};
-use greentic_types::PackSpec;
+use greentic_flow::{loader, resolve, to_ir};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -11,16 +11,15 @@ use std::path::{Path, PathBuf};
 pub struct FlowAsset {
     pub id: String,
     pub relative_path: PathBuf,
-    pub absolute_path: PathBuf,
     pub raw: String,
     pub sha256: String,
-    pub ir: FlowIr,
     pub parameters: Value,
 }
 
 pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
     let mut flows = Vec::new();
     let mut seen_ids = BTreeSet::new();
+    let schema_path = flow_schema_path();
 
     for entry in &spec.flow_files {
         let relative_path = PathBuf::from(entry);
@@ -34,30 +33,43 @@ pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
             anyhow::bail!("duplicate flow id detected: {}", flow_id);
         }
 
-        let document = loader::load_ygtc_from_str(&flow_id, &raw)
+        let document = loader::load_ygtc_from_str(&raw, &schema_path)
             .with_context(|| format!("failed to parse flow {}", relative_path.display()))?;
-        let ir = document
-            .to_ir()
-            .with_context(|| format!("failed to lower flow {}", flow_id))?;
-        let resolved = resolver::resolve_parameters(&ir)
-            .with_context(|| format!("failed to resolve parameters for {}", flow_id))?;
+        let ir = to_ir(document).with_context(|| format!("failed to lower flow {}", flow_id))?;
+        let resolved_parameters = resolve::resolve_parameters(
+            &ir.parameters,
+            &ir.parameters,
+            &format!("flows.{}", flow_id),
+        )
+        .with_context(|| format!("failed to resolve parameters for {}", flow_id))?;
+        let flow_identifier = if ir.id.trim().is_empty() {
+            flow_id.clone()
+        } else {
+            ir.id.clone()
+        };
 
         let digest = Sha256::digest(raw.as_bytes());
         let sha256 = hex::encode(digest);
 
         flows.push(FlowAsset {
-            id: flow_id,
+            id: flow_identifier,
             relative_path,
-            absolute_path,
             raw,
             sha256,
-            ir,
-            parameters: resolved.parameters,
+            parameters: resolved_parameters,
         });
     }
 
     flows.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(flows)
+}
+
+fn flow_schema_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("schemas")
+        .join("ygtc.flow.schema.json")
 }
 
 fn derive_flow_id(path: &Path) -> String {

@@ -1,5 +1,5 @@
+use crate::manifest::PackSpec;
 use anyhow::{Context, Result};
-use greentic_types::PackSpec;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
@@ -9,6 +9,7 @@ use walkdir::WalkDir;
 #[derive(Debug, Clone)]
 pub struct TemplateAsset {
     pub logical_path: String,
+    #[allow(dead_code)]
     pub absolute_path: PathBuf,
     pub bytes: Vec<u8>,
     pub sha256: String,

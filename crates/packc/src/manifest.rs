@@ -1,16 +1,40 @@
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
 use anyhow::{Context, Result};
-use greentic_types::PackSpec;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PackSpec {
+    pub id: String,
+    pub version: String,
+    #[serde(default)]
+    pub flow_files: Vec<String>,
+    #[serde(default)]
+    pub template_dirs: Vec<String>,
+    #[serde(default)]
+    pub imports_required: Vec<String>,
+}
+
+impl PackSpec {
+    fn validate(&self) -> Result<()> {
+        if self.id.trim().is_empty() {
+            anyhow::bail!("pack id must not be empty");
+        }
+        if self.version.trim().is_empty() {
+            anyhow::bail!("pack version must not be empty");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SpecBundle {
     pub spec: PackSpec,
+    #[allow(dead_code)]
     pub source: PathBuf,
 }
 
@@ -21,7 +45,7 @@ pub fn load_spec(pack_dir: &Path) -> Result<SpecBundle> {
     let spec: PackSpec = serde_yaml_bw::from_str(&contents)
         .with_context(|| format!("{} is not a valid PackSpec", manifest_path.display()))?;
     spec.validate()
-        .map_err(|msg| anyhow::anyhow!("{}: {}", manifest_path.display(), msg))?;
+        .with_context(|| format!("invalid pack spec {}", manifest_path.display()))?;
 
     Ok(SpecBundle {
         spec,
@@ -96,4 +120,44 @@ pub fn build_manifest(
 
 pub fn encode_manifest(manifest: &PackManifest) -> Result<Vec<u8>> {
     Ok(serde_cbor::to_vec(manifest)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{flows, templates};
+
+    fn demo_pack_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/weather-demo")
+    }
+
+    #[test]
+    fn weather_demo_manifest_includes_mcp_exec_flow() {
+        let pack_dir = demo_pack_dir();
+        let spec_bundle = load_spec(&pack_dir).expect("spec loads");
+        assert_eq!(spec_bundle.spec.id, "greentic.weather.demo");
+
+        let flows = flows::load_flows(&pack_dir, &spec_bundle.spec).expect("flows load");
+        assert_eq!(flows.len(), 1);
+        assert!(
+            flows[0].raw.contains("mcp.exec"),
+            "flow should reference mcp.exec node"
+        );
+
+        let templates =
+            templates::collect_templates(&pack_dir, &spec_bundle.spec).expect("templates load");
+        assert_eq!(templates.len(), 1);
+
+        let manifest = build_manifest(&spec_bundle, &flows, &templates);
+        assert_eq!(manifest.flows[0].id, "weather_bot");
+        assert_eq!(manifest.flows[0].path, "flows/weather_bot.ygtc");
+        assert_eq!(manifest.templates[0].logical_path, "templates/greeting.txt");
+        assert_eq!(manifest.imports_required.len(), 2);
+
+        let encoded = encode_manifest(&manifest).expect("manifest encodes");
+        assert!(!encoded.is_empty(), "CBOR output should not be empty");
+    }
 }

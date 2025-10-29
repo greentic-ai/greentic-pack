@@ -2,9 +2,6 @@
 members = [
     "crates/packc",
     "crates/pack_component",
-    "crates/greentic-types",
-    "crates/greentic-flow",
-    "crates/greentic-interfaces",
 ]
 resolver = "2"
 
@@ -28,12 +25,7 @@ time = { version = "0.3", features = ["macros", "serde", "formatting"] }
 toml = "0.9.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+greentic-types = "0.1.2"
+greentic-flow = "0.1.0"
+greentic-interfaces = "0.2.2"
 
-[workspace.dependencies.greentic-types]
-path = "crates/greentic-types"
-
-[workspace.dependencies.greentic-flow]
-path = "crates/greentic-flow"
-
-[workspace.dependencies.greentic-interfaces]
-path = "crates/greentic-interfaces"

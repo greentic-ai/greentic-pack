@@ -16,6 +16,7 @@ greentic-pack/
 ├── crates/
 │   ├── packc/                # Builder CLI
 │   └── pack_component/       # Wasm component library
+├── docs/                     # Additional guides
 ├── examples/                 # Sample packs
 └── .github/workflows/        # CI automation
 ```
@@ -41,6 +42,11 @@ while still validating the pack inputs.
 > ℹ️ The build step expects the `wasm32-unknown-unknown` Rust target. Install it
 > once with `rustup target add wasm32-unknown-unknown`.
 
+Greentic packs only transport flows and templates. Execution-time tools are
+resolved by the host through the MCP runtime, so flows should target
+`mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
+in `PackSpec` for compatibility but new packs should rely on MCP.
+
 ### pack_component
 
 `pack_component` is a thin wrapper around the generated `data.rs`. It exposes
@@ -54,6 +60,11 @@ assets change to ensure `data.rs` stays in sync.
 - `examples/weather-demo` – a toy conversational pack demonstrating the expected
   directory structure. Use this sample to smoke test `packc` or bootstrap new
   packs.
+
+## Further documentation
+
+- `docs/usage.md` – CLI flags, build workflow, and guidance for designing MCP
+  aware flows.
 
 ## Licensing
 

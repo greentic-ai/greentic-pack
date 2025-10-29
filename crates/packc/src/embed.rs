@@ -174,3 +174,53 @@ fn workspace_root() -> PathBuf {
         .join("..")
         .join("..")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{flows, manifest, templates};
+
+    fn demo_pack_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/weather-demo")
+    }
+
+    #[test]
+    fn component_data_contains_mcp_exec_flow_source() {
+        let pack_dir = demo_pack_dir();
+        let spec = manifest::load_spec(&pack_dir).expect("spec");
+        let flow_assets = flows::load_flows(&pack_dir, &spec.spec).expect("flows");
+        let template_assets =
+            templates::collect_templates(&pack_dir, &spec.spec).expect("templates");
+        let manifest_model = manifest::build_manifest(&spec, &flow_assets, &template_assets);
+        let manifest_bytes = manifest::encode_manifest(&manifest_model).expect("manifest encoding");
+
+        let generated =
+            generate_component_data(&manifest_bytes, &flow_assets, &template_assets).unwrap();
+
+        assert!(
+            generated.contains("pub static MANIFEST_CBOR"),
+            "generated source should expose MANIFEST_CBOR constant"
+        );
+        assert!(
+            generated.contains("mcp.exec"),
+            "generated flow bundle should retain mcp.exec reference"
+        );
+        assert!(
+            generated.contains("templates/greeting.txt"),
+            "template logical path should be present"
+        );
+    }
+
+    #[test]
+    fn indent_byte_literal_outputs_comma_separated_rows() {
+        let bytes = [0x01u8, 0x02, 0x03, 0x04];
+        let rendered = indent_byte_literal(&bytes, 4);
+        assert_eq!(
+            rendered, "    0x01, 0x02, 0x03, 0x04",
+            "literal should match expected formatting"
+        );
+    }
+}

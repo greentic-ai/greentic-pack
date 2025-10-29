@@ -7,13 +7,52 @@ mod data;
 
 #[cfg(target_arch = "wasm32")]
 use alloc::{string::String, vec::Vec};
-use greentic_interfaces::pack_export::{
-    A2AItem, FlowInfo, PackExport, PrepareResult, RunResult, SchemaDoc,
-};
-use serde::Deserialize;
+#[cfg(not(target_arch = "wasm32"))]
+const _: &str = greentic_interfaces::pack_export_v0_2::PACKAGE_ID;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(not(target_arch = "wasm32"))]
 use std::vec::Vec;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FlowInfo {
+    pub id: String,
+    pub human_name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SchemaDoc {
+    pub flow_id: String,
+    pub schema_json: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PrepareResult {
+    pub status: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunResult {
+    pub status: String,
+    pub output: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct A2AItem {
+    pub title: String,
+    pub flow_id: String,
+}
+
+pub trait PackExport {
+    fn list_flows(&self) -> Vec<FlowInfo>;
+    fn get_flow_schema(&self, flow_id: &str) -> Option<SchemaDoc>;
+    fn prepare_flow(&self, flow_id: &str) -> PrepareResult;
+    fn run_flow(&self, flow_id: &str, input: serde_json::Value) -> RunResult;
+    fn a2a_search(&self, query: &str) -> Vec<A2AItem>;
+}
 
 /// Return the embedded pack manifest as CBOR bytes.
 pub fn manifest_cbor() -> &'static [u8] {
