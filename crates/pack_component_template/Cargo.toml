@@ -8,7 +8,6 @@ description = "Internal template used by packc for generating pack components"
 readme = "README.md"
 repository = "https://github.com/greentic-ai/greentic-pack"
 publish = true
-include = ["src/**", "templates/**", "README.md", "Cargo.toml"]
 
 [lib]
 path = "src/lib.rs"
