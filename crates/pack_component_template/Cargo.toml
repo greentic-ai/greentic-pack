@@ -3,7 +3,11 @@ name = "pack_component_template"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
+authors = ["Greentic <engineering@greentic.dev>"]
+description = "Internal template used by packc for generating pack components"
+readme = "README.md"
+repository = "https://github.com/greentic-ai/greentic-pack"
+publish = true
 
 [lib]
 path = "src/lib.rs"

@@ -23,10 +23,36 @@ jobs:
         run: cargo metadata --format-version 1
 
       - name: Publish pack_component
-        run: cargo publish -p pack_component --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          if output=$(cargo publish -p pack_component --locked 2>&1); then
+            echo "$output"
+          else
+            status=$?
+            echo "$output"
+            if grep -q "already uploaded" <<<"$output"; then
+              echo "pack_component version already on crates.io; continuing."
+            else
+              exit $status
+            fi
+          fi
 
       - name: Wait for crates.io index
         run: sleep 20
 
       - name: Publish packc
-        run: cargo publish -p packc --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          if output=$(cargo publish -p packc --locked 2>&1); then
+            echo "$output"
+          else
+            status=$?
+            echo "$output"
+            if grep -q "already uploaded" <<<"$output"; then
+              echo "packc version already on crates.io; continuing."
+            else
+              exit $status
+            fi
+          fi
