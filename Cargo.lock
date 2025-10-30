@@ -1419,6 +1419,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pack_component_template"
+version = "0.1.5"
+
+[[package]]
 name = "packc"
 version = "0.1.5"
 dependencies = [
@@ -1429,6 +1433,7 @@ dependencies = [
  "greentic-types",
  "hex",
  "indoc",
+ "pack_component_template",
  "serde",
  "serde_cbor",
  "serde_json",

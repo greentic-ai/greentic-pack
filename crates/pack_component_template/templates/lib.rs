@@ -56,18 +56,15 @@ pub trait PackExport {
 
 pub use data::{FLOWS, MANIFEST_CBOR, TEMPLATES};
 
-/// Return the embedded pack manifest as CBOR bytes.
 pub fn manifest_cbor() -> &'static [u8] {
     data::MANIFEST_CBOR
 }
 
-/// Decode the embedded pack manifest into a `serde_json::Value`.
 pub fn manifest_value() -> Value {
     serde_cbor::from_slice(data::MANIFEST_CBOR)
         .expect("generated manifest bytes should always be valid CBOR")
 }
 
-/// Decode the embedded manifest into a strongly-typed `T`.
 pub fn manifest_as<T>() -> T
 where
     T: for<'de> Deserialize<'de>,
@@ -76,17 +73,14 @@ where
         .expect("generated manifest matches the requested type")
 }
 
-/// Access the embedded flow sources as `(id, raw_ygtc)` tuples.
 pub fn flows() -> &'static [(&'static str, &'static str)] {
     data::FLOWS
 }
 
-/// Access the embedded templates as `(logical_path, bytes)` tuples.
 pub fn templates() -> &'static [(&'static str, &'static [u8])] {
     data::TEMPLATES
 }
 
-/// Lookup a template payload by logical path.
 pub fn template_by_path(path: &str) -> Option<&'static [u8]> {
     data::TEMPLATES
         .iter()
@@ -94,7 +88,6 @@ pub fn template_by_path(path: &str) -> Option<&'static [u8]> {
         .map(|(_, bytes)| *bytes)
 }
 
-/// Component instance implementing the `greentic:pack-export` interface.
 #[derive(Debug, Default)]
 pub struct Component;
 
@@ -155,13 +148,10 @@ impl PackExport for Component {
     }
 }
 
-/// Convenience helper for host environments that want an owned component.
 pub fn component() -> Component {
     Component
 }
 
-// Export simple C ABI shims for the stub interface so a Wasm harness can
-// exercise the component without native bindings.
 #[no_mangle]
 pub extern "C" fn greentic_pack_export__list_flows(json_buffer: *mut u8, len: usize) -> usize {
     let component = Component;

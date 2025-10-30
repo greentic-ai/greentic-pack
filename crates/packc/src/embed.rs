@@ -1,7 +1,7 @@
-use crate::component_template;
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
 use anyhow::{anyhow, Context, Result};
+use pack_component_template::{CARGO_TOML, DATA_RS_PLACEHOLDER, LIB_RS};
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -187,16 +187,10 @@ fn prepare_component_crate(component_data: &Path) -> Result<PathBuf> {
         .parent()
         .ok_or_else(|| anyhow!("component data path lacks crate root"))?;
 
-    write_template_file(
-        crate_root.join("Cargo.toml"),
-        component_template::CARGO_TOML,
-    )?;
-    write_template_file(src_dir.join("lib.rs"), component_template::LIB_RS)?;
+    write_template_file(crate_root.join("Cargo.toml"), CARGO_TOML)?;
+    write_template_file(src_dir.join("lib.rs"), LIB_RS)?;
     if !component_data.exists() {
-        write_template_file(
-            component_data.to_path_buf(),
-            component_template::DATA_RS_PLACEHOLDER,
-        )?;
+        write_template_file(component_data.to_path_buf(), DATA_RS_PLACEHOLDER)?;
     }
 
     Ok(crate_root.to_path_buf())

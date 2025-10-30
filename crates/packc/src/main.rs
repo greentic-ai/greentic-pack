@@ -1,5 +1,4 @@
 mod build;
-mod component_template;
 mod embed;
 mod flows;
 mod manifest;
