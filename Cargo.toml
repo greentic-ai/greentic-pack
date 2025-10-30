@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 greentic-types = "0.1"
 greentic-flow = "0.1"
 greentic-interfaces = "0.4"
-pack_component_template = "0.1.5"
+pack_component_template = "0.1"
 
 [patch.crates-io]
 pack_component_template = { path = "crates/pack_component_template" }

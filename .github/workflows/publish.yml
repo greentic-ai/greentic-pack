@@ -31,7 +31,7 @@ jobs:
           else
             status=$?
             echo "$output"
-            if grep -q "already uploaded" <<<"$output"; then
+            if grep -qi "already uploaded" <<<"$output" || grep -qi "already exist" <<<"$output"; then
               echo "pack_component version already on crates.io; continuing."
             else
               exit $status
@@ -50,7 +50,7 @@ jobs:
           else
             status=$?
             echo "$output"
-            if grep -q "already uploaded" <<<"$output"; then
+            if grep -qi "already uploaded" <<<"$output" || grep -qi "already exist" <<<"$output"; then
               echo "packc version already on crates.io; continuing."
             else
               exit $status
