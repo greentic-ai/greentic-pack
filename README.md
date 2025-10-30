@@ -27,7 +27,7 @@ The CLI expects a pack directory that contains `pack.yaml` alongside its flow
 files and templates. Example:
 
 ```bash
-cargo run -p packc -- \
+cargo run -p packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \

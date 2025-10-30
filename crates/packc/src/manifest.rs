@@ -66,10 +66,15 @@ pub struct PackManifest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowEntry {
     pub id: String,
-    pub path: String,
-    pub sha256: String,
-    pub size: u64,
-    pub parameters: serde_json::Value,
+    #[serde(rename = "type")]
+    pub flow_type: String,
+    pub start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,10 +97,11 @@ pub fn build_manifest(
         .iter()
         .map(|flow| FlowEntry {
             id: flow.id.clone(),
-            path: flow.relative_path.to_string_lossy().to_string(),
-            sha256: flow.sha256.clone(),
-            size: flow.raw.len() as u64,
-            parameters: flow.parameters.clone(),
+            flow_type: flow.flow_type.clone(),
+            start: flow.start.clone(),
+            source: Some(flow.relative_path.to_string_lossy().to_string()),
+            sha256: Some(flow.sha256.clone()),
+            size: Some(flow.raw.len() as u64),
         })
         .collect();
 
@@ -153,8 +159,16 @@ mod tests {
 
         let manifest = build_manifest(&spec_bundle, &flows, &templates);
         assert_eq!(manifest.flows[0].id, "weather_bot");
-        assert_eq!(manifest.flows[0].path, "flows/weather_bot.ygtc");
-        assert_eq!(manifest.templates[0].logical_path, "templates/greeting.txt");
+        assert_eq!(manifest.flows[0].flow_type, "messaging");
+        assert_eq!(manifest.flows[0].start.as_deref(), Some("collect_location"));
+        assert_eq!(
+            manifest.flows[0].source.as_deref(),
+            Some("flows/weather_bot.ygtc")
+        );
+        assert_eq!(
+            manifest.templates[0].logical_path,
+            "templates/weather_now.hbs"
+        );
         assert_eq!(manifest.imports_required.len(), 2);
 
         let encoded = encode_manifest(&manifest).expect("manifest encodes");

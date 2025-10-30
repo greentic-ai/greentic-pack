@@ -209,7 +209,7 @@ mod tests {
             "generated flow bundle should retain mcp.exec reference"
         );
         assert!(
-            generated.contains("templates/greeting.txt"),
+            generated.contains("templates/weather_now.hbs"),
             "template logical path should be present"
         );
     }

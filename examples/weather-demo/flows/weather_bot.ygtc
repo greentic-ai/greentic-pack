@@ -2,6 +2,7 @@ id: weather_bot
 title: Weather Bot
 description: Ask for a location, call the MCP weather API, and reply with a forecast.
 type: messaging
+start: collect_location
 
 parameters:
   days_default: 3

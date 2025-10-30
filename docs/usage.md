@@ -20,11 +20,12 @@ Greentic packs and integrating them with the MCP runtime.
 
 ## CLI reference
 
-`packc` exposes a single command with structured flags:
+`packc` exposes a `build` subcommand with structured flags:
 
 ```text
-Usage: packc --in <DIR> [--out <FILE>] [--manifest <FILE>] [--sbom <FILE>]
-             [--component-data <FILE>] [--dry-run] [--log <LEVEL>]
+Usage: packc build --in <DIR> [--out <FILE>] [--manifest <FILE>]
+                   [--sbom <FILE>] [--component-data <FILE>] [--dry-run]
+                   [--log <LEVEL>]
 ```
 
 - `--in` – path to the pack directory containing `pack.yaml`.
@@ -44,7 +45,7 @@ Usage: packc --in <DIR> [--out <FILE>] [--manifest <FILE>] [--sbom <FILE>]
 
 ```bash
 rustup target add wasm32-unknown-unknown   # run once
-cargo run -p packc -- \
+cargo run -p packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \
@@ -111,4 +112,3 @@ Hosts are expected to load `pack.wasm`, instantiate the component, call
 | `Rust target 'wasm32-unknown-unknown' is not installed` | Run `rustup target add wasm32-unknown-unknown` once before building without `--dry-run`. |
 | CLI fails with duplicate flow/template IDs | Ensure each entry in `flow_files` and `template_dirs` maps to unique logical paths. |
 | Missing MCP tool at runtime | Confirm the host has loaded the proper MCP component; packs should never embed the tool implementation. |
-

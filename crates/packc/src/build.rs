@@ -3,7 +3,7 @@ use crate::flows;
 use crate::manifest;
 use crate::sbom;
 use crate::templates;
-use crate::Cli;
+use crate::BuildArgs;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,13 +19,13 @@ pub struct BuildOptions {
     pub dry_run: bool,
 }
 
-impl From<Cli> for BuildOptions {
-    fn from(cli: Cli) -> Self {
-        let pack_dir = normalize(cli.input);
-        let component_out = normalize(cli.component_out);
-        let manifest_out = normalize(cli.manifest);
-        let sbom_out = normalize(cli.sbom);
-        let component_data = cli
+impl From<BuildArgs> for BuildOptions {
+    fn from(args: BuildArgs) -> Self {
+        let pack_dir = normalize(args.input);
+        let component_out = normalize(args.component_out);
+        let manifest_out = normalize(args.manifest);
+        let sbom_out = normalize(args.sbom);
+        let component_data = args
             .component_data
             .map(normalize)
             .unwrap_or_else(default_component_data_path);
@@ -36,7 +36,7 @@ impl From<Cli> for BuildOptions {
             manifest_out,
             sbom_out,
             component_data,
-            dry_run: cli.dry_run,
+            dry_run: args.dry_run,
         }
     }
 }

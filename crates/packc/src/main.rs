@@ -6,7 +6,7 @@ mod sbom;
 mod templates;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
 
 fn main() -> Result<()> {
@@ -19,7 +19,9 @@ fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    build::run(&build::BuildOptions::from(cli))?;
+    match cli.command {
+        Command::Build(args) => build::run(&build::BuildOptions::from(args))?,
+    }
 
     Ok(())
 }
@@ -27,6 +29,22 @@ fn main() -> Result<()> {
 #[derive(Debug, Parser)]
 #[command(name = "packc", about = "Greentic pack builder CLI", version)]
 pub struct Cli {
+    /// Logging filter (overrides PACKC_LOG)
+    #[arg(long = "log", default_value = "info", global = true)]
+    pub verbosity: String,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Build a pack component and supporting artifacts
+    Build(BuildArgs),
+}
+
+#[derive(Debug, Clone, Parser)]
+pub struct BuildArgs {
     /// Root directory of the pack (must contain pack.yaml)
     #[arg(long = "in", value_name = "DIR")]
     pub input: std::path::PathBuf,
@@ -50,8 +68,4 @@ pub struct Cli {
     /// When set, the command validates input without writing artifacts
     #[arg(long)]
     pub dry_run: bool,
-
-    /// Logging filter (overrides PACKC_LOG)
-    #[arg(long = "log", default_value = "info")]
-    pub verbosity: String,
 }

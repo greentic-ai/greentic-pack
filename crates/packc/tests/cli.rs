@@ -13,6 +13,7 @@ fn dry_run_weather_demo_succeeds() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
     cmd.current_dir(workspace_root());
     cmd.args([
+        "build",
         "--in",
         "examples/weather-demo",
         "--dry-run",
@@ -26,6 +27,6 @@ fn dry_run_weather_demo_succeeds() {
 fn dry_run_rejects_missing_manifest() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
     cmd.current_dir(workspace_root());
-    cmd.args(["--in", "examples", "--dry-run"]);
+    cmd.args(["build", "--in", "examples", "--dry-run"]);
     cmd.assert().failure();
 }

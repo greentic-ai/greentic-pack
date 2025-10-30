@@ -1,7 +1,7 @@
 use crate::manifest::PackSpec;
 use anyhow::{Context, Result};
-use greentic_flow::{loader, resolve, to_ir};
-use serde_json::Value;
+use greentic_flow::loader;
+use greentic_flow::to_ir;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
@@ -10,10 +10,12 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct FlowAsset {
     pub id: String,
+    pub flow_type: String,
+    pub start: Option<String>,
+    #[allow(dead_code)]
     pub relative_path: PathBuf,
     pub raw: String,
     pub sha256: String,
-    pub parameters: Value,
 }
 
 pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
@@ -36,12 +38,6 @@ pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
         let document = loader::load_ygtc_from_str(&raw, &schema_path)
             .with_context(|| format!("failed to parse flow {}", relative_path.display()))?;
         let ir = to_ir(document).with_context(|| format!("failed to lower flow {}", flow_id))?;
-        let resolved_parameters = resolve::resolve_parameters(
-            &ir.parameters,
-            &ir.parameters,
-            &format!("flows.{}", flow_id),
-        )
-        .with_context(|| format!("failed to resolve parameters for {}", flow_id))?;
         let flow_identifier = if ir.id.trim().is_empty() {
             flow_id.clone()
         } else {
@@ -53,10 +49,11 @@ pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
 
         flows.push(FlowAsset {
             id: flow_identifier,
+            flow_type: ir.flow_type,
+            start: ir.start,
             relative_path,
             raw,
             sha256,
-            parameters: resolved_parameters,
         });
     }
 
