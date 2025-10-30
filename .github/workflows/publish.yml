@@ -22,6 +22,25 @@ jobs:
       - name: crate versions
         run: cargo metadata --format-version 1
 
+      - name: Publish pack_component_template
+        shell: bash
+        run: |
+          set -euo pipefail
+          if output=$(cargo publish -p pack_component_template --locked 2>&1); then
+            echo "$output"
+          else
+            status=$?
+            echo "$output"
+            if grep -qi "already uploaded" <<<"$output" || grep -qi "already exist" <<<"$output"; then
+              echo "pack_component_template version already on crates.io; continuing."
+            else
+              exit $status
+            fi
+          fi
+
+      - name: Wait for crates.io index
+        run: sleep 20
+
       - name: Publish pack_component
         shell: bash
         run: |
