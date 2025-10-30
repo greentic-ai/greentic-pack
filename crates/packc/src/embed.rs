@@ -1,6 +1,7 @@
+use crate::component_template;
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -49,34 +50,41 @@ pub fn generate_component_data(
 }
 
 pub fn compile_component(component_data: &Path, output_wasm: &Path) -> Result<()> {
-    let workspace_root = workspace_root();
+    let crate_root = prepare_component_crate(component_data)?;
 
     info!(
         component_data = %component_data.display(),
+        crate_root = %crate_root.display(),
         output = %output_wasm.display(),
         "compiling pack_component"
     );
 
     ensure_target_installed("wasm32-unknown-unknown")?;
 
-    let status = Command::new("cargo")
-        .args([
-            "build",
-            "--package",
-            "pack_component",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--release",
-        ])
-        .current_dir(&workspace_root)
+    let metadata_status = Command::new("cargo")
+        .args(["metadata", "--format-version", "1"])
+        .current_dir(&crate_root)
+        .status()
+        .with_context(|| "failed to invoke `cargo metadata` for pack_component")?;
+
+    if !metadata_status.success() {
+        anyhow::bail!(
+            "unable to run cargo metadata for pack_component; reinstall packc or ensure the Rust toolchain is installed (crate path: {})",
+            crate_root.display()
+        );
+    }
+
+    let build_status = Command::new("cargo")
+        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
+        .current_dir(&crate_root)
         .status()
         .with_context(|| "failed to invoke cargo build for pack_component")?;
 
-    if !status.success() {
-        anyhow::bail!("cargo build failed with status {}", status);
+    if !build_status.success() {
+        anyhow::bail!("cargo build failed with status {}", build_status);
     }
 
-    let artifact = workspace_root
+    let artifact = crate_root
         .join("target")
         .join("wasm32-unknown-unknown")
         .join("release")
@@ -169,10 +177,45 @@ fn rust_string_literal(value: &str) -> String {
     literal
 }
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+fn prepare_component_crate(component_data: &Path) -> Result<PathBuf> {
+    let src_dir = component_data
+        .parent()
+        .ok_or_else(|| anyhow!("component data path lacks parent"))?;
+    fs::create_dir_all(src_dir)
+        .with_context(|| format!("failed to ensure src directory {}", src_dir.display()))?;
+    let crate_root = src_dir
+        .parent()
+        .ok_or_else(|| anyhow!("component data path lacks crate root"))?;
+
+    write_template_file(
+        crate_root.join("Cargo.toml"),
+        component_template::CARGO_TOML,
+    )?;
+    write_template_file(src_dir.join("lib.rs"), component_template::LIB_RS)?;
+    if !component_data.exists() {
+        write_template_file(
+            component_data.to_path_buf(),
+            component_template::DATA_RS_PLACEHOLDER,
+        )?;
+    }
+
+    Ok(crate_root.to_path_buf())
+}
+
+fn write_template_file(path: PathBuf, contents: &str) -> Result<()> {
+    if path.exists() {
+        let existing = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        if existing == contents {
+            return Ok(());
+        }
+    } else if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory {}", parent.display()))?;
+    }
+
+    fs::write(&path, contents).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -798,9 +798,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces"
-version = "0.2.2"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ff0acc2664f473607af5d8cd0536cf18e8708094ea924f9226a82723c155752"
+checksum = "a735cb160f16f1d10d16a9d1be21a85156b869c06f151a91ea5f717b37f6cfa4"
 dependencies = [
  "wasmtime",
 ]
@@ -1410,7 +1410,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "pack_component"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "greentic-interfaces",
  "serde",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "packc"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "assert_cmd",

@@ -25,10 +25,15 @@ impl From<BuildArgs> for BuildOptions {
         let component_out = normalize(args.component_out);
         let manifest_out = normalize(args.manifest);
         let sbom_out = normalize(args.sbom);
+        let default_component_data = pack_dir
+            .join(".packc")
+            .join("pack_component")
+            .join("src")
+            .join("data.rs");
         let component_data = args
             .component_data
             .map(normalize)
-            .unwrap_or_else(default_component_data_path);
+            .unwrap_or(default_component_data);
 
         Self {
             pack_dir,
@@ -92,14 +97,6 @@ fn normalize(path: PathBuf) -> PathBuf {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         cwd.join(path)
     }
-}
-
-fn default_component_data_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("pack_component")
-        .join("src")
-        .join("data.rs")
 }
 
 fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {

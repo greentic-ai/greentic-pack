@@ -18,10 +18,12 @@ pub struct FlowAsset {
     pub sha256: String,
 }
 
+const FLOW_SCHEMA_JSON: &str = include_str!("../schemas/ygtc.flow.schema.json");
+
 pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
     let mut flows = Vec::new();
     let mut seen_ids = BTreeSet::new();
-    let schema_path = flow_schema_path();
+    let schema_path = ensure_flow_schema(pack_dir)?;
 
     for entry in &spec.flow_files {
         let relative_path = PathBuf::from(entry);
@@ -61,12 +63,16 @@ pub fn load_flows(pack_dir: &Path, spec: &PackSpec) -> Result<Vec<FlowAsset>> {
     Ok(flows)
 }
 
-fn flow_schema_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("schemas")
-        .join("ygtc.flow.schema.json")
+fn ensure_flow_schema(pack_dir: &Path) -> Result<PathBuf> {
+    let schema_dir = pack_dir.join(".packc").join("schemas");
+    let schema_path = schema_dir.join("ygtc.flow.schema.json");
+    if !schema_path.exists() {
+        fs::create_dir_all(&schema_dir)
+            .with_context(|| format!("failed to create schema dir {}", schema_dir.display()))?;
+        fs::write(&schema_path, FLOW_SCHEMA_JSON)
+            .with_context(|| format!("failed to write schema {}", schema_path.display()))?;
+    }
+    Ok(schema_path)
 }
 
 fn derive_flow_id(path: &Path) -> String {
