@@ -6,7 +6,11 @@ extern crate alloc;
 mod data;
 
 #[cfg(target_arch = "wasm32")]
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 #[cfg(not(target_arch = "wasm32"))]
 const _: &str = greentic_interfaces::pack_export_v0_2::PACKAGE_ID;
 use serde::{Deserialize, Serialize};
