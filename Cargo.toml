@@ -15,17 +15,17 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml_bw = "2.4.1"
+serde_yaml_bw = "2.4"
 serde_cbor = "0.11"
 sha2 = "0.10"
 hex = "0.4"
 walkdir = "2"
-thiserror = "2.0.17"
+thiserror = "2.0"
 time = { version = "0.3", features = ["macros", "serde", "formatting"] }
-toml = "0.9.8"
+toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-greentic-types = "0.1.2"
-greentic-flow = "0.1.0"
-greentic-interfaces = "0.2.2"
+greentic-types = "0.1"
+greentic-flow = "0.1"
+greentic-interfaces = "0.2"
 
