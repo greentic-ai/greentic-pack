@@ -67,6 +67,17 @@ assets change to ensure `data.rs` stays in sync.
   aware flows.
 - `docs/publishing.md` – notes on publishing the crates to crates.io.
 
+## Releases & Publishing
+
+Version numbers come from each crate’s `Cargo.toml`. When changes land on
+`master`, the automation tags any crate whose manifest version changed with
+`<crate-name>-v<semver>` (for single-crate repos this matches the repo name).
+The publish workflow then runs `cargo fmt`, `cargo clippy`, `cargo build`, and
+`cargo test --workspace --all-features` before invoking
+`katyo/publish-crates@v2`. Publishing is idempotent—reruns succeed even when
+all crates are already uploaded—while still requiring `CARGO_REGISTRY_TOKEN`
+for new releases.
+
 ## Signing & Verification
 
 Greentic packs can now embed developer signatures directly inside their
