@@ -12,12 +12,22 @@ categories = ["development-tools"]
 documentation = "https://docs.greentic.ai/"
 homepage = "https://github.com/greentic-ai/greentic-pack"
 
+[features]
+default = []
+pem = []
+openssl = []
+legacy-bin = []
+
 [dependencies]
 anyhow = { workspace = true }
+base64 = { workspace = true }
 clap = { workspace = true }
+ed25519-dalek = { workspace = true }
 greentic-flow = { workspace = true }
 greentic-types = { workspace = true }
 hex = { workspace = true }
+ignore = { workspace = true }
+pkcs8 = { workspace = true }
 serde = { workspace = true }
 serde_yaml_bw = { workspace = true }
 serde_json = { workspace = true }
@@ -31,6 +41,17 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 pack_component_template = "0.1.5"
 
+[[bin]]
+name = "packc"
+path = "bin/packc.rs"
+
+[[bin]]
+name = "packc-legacy"
+path = "src/main.rs"
+required-features = ["legacy-bin"]
+
 [dev-dependencies]
 assert_cmd = "2"
 indoc = "2"
+rand = "0.8"
+tempfile = "3"

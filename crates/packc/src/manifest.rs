@@ -1,11 +1,15 @@
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
+use greentic_types::{Signature as SharedSignature, SignatureAlgorithm};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use toml::Value;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PackSpec {
@@ -127,6 +131,170 @@ pub fn build_manifest(
 pub fn encode_manifest(manifest: &PackManifest) -> Result<Vec<u8>> {
     Ok(serde_cbor::to_vec(manifest)?)
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PackSignature {
+    pub alg: String,
+    pub key_id: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    pub digest: String,
+    pub sig: String,
+}
+
+impl PackSignature {
+    pub const ED25519: &'static str = "ed25519";
+
+    /// Converts this signature into the shared `greentic-types` representation.
+    pub fn to_shared(&self) -> Result<SharedSignature> {
+        if self.alg.to_ascii_lowercase() != Self::ED25519 {
+            anyhow::bail!("unsupported algorithm {}", self.alg);
+        }
+
+        let raw = URL_SAFE_NO_PAD
+            .decode(self.sig.as_bytes())
+            .map_err(|err| anyhow!("invalid signature encoding: {err}"))?;
+
+        Ok(SharedSignature::new(
+            self.key_id.clone(),
+            SignatureAlgorithm::Ed25519,
+            raw,
+        ))
+    }
+}
+
+pub fn find_manifest_path(pack_dir: &Path) -> Option<PathBuf> {
+    MANIFEST_CANDIDATES
+        .iter()
+        .map(|name| pack_dir.join(name))
+        .find(|candidate| candidate.exists())
+}
+
+pub fn manifest_path(pack_dir: &Path) -> Result<PathBuf> {
+    find_manifest_path(pack_dir)
+        .ok_or_else(|| anyhow!("pack manifest not found in {}", pack_dir.display()))
+}
+
+pub fn is_pack_manifest_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            MANIFEST_CANDIDATES
+                .iter()
+                .any(|candidate| candidate == &name)
+        })
+        .unwrap_or(false)
+}
+
+pub fn read_manifest_without_signature(path: &Path) -> Result<Vec<u8>> {
+    let mut doc = load_manifest_value(path)?;
+    strip_signature(&mut doc);
+    let serialized =
+        toml::to_string(&doc).map_err(|err| anyhow!("failed to serialise manifest: {err}"))?;
+    Ok(serialized.into_bytes())
+}
+
+pub fn read_signature(pack_dir: &Path) -> Result<Option<PackSignature>> {
+    let Some(path) = find_manifest_path(pack_dir) else {
+        return Ok(None);
+    };
+
+    let doc = load_manifest_value(&path)?;
+    signature_from_doc(&doc)
+}
+
+pub fn write_signature(
+    pack_dir: &Path,
+    signature: &PackSignature,
+    out_path: Option<&Path>,
+) -> Result<()> {
+    let manifest_path = manifest_path(pack_dir)?;
+    let mut doc = load_manifest_value(&manifest_path)?;
+    set_signature(&mut doc, signature)?;
+
+    let target_path = out_path.unwrap_or(&manifest_path);
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory {}", parent.display()))?;
+    }
+
+    let serialized = toml::to_string_pretty(&doc)
+        .map_err(|err| anyhow!("failed to serialise manifest: {err}"))?;
+    fs::write(target_path, serialized.as_bytes())
+        .with_context(|| format!("failed to write {}", target_path.display()))?;
+
+    Ok(())
+}
+
+fn load_manifest_value(path: &Path) -> Result<Value> {
+    let source =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let table: toml::value::Table =
+        toml::from_str(&source).with_context(|| format!("{} is not valid TOML", path.display()))?;
+    Ok(Value::Table(table))
+}
+
+fn set_signature(doc: &mut Value, signature: &PackSignature) -> Result<()> {
+    let table = doc
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("pack manifest must be a table"))?;
+
+    let greentic_entry = table
+        .entry("greentic".to_string())
+        .or_insert_with(|| Value::Table(toml::map::Map::new()));
+
+    let greentic_table = greentic_entry
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("[greentic] must be a table"))?;
+
+    let signature_value = Value::try_from(signature.clone())
+        .map_err(|err| anyhow!("failed to serialise signature: {err}"))?;
+
+    greentic_table.insert("signature".to_string(), signature_value);
+    Ok(())
+}
+
+fn strip_signature(doc: &mut Value) {
+    let Some(table) = doc.as_table_mut() else {
+        return;
+    };
+
+    if let Some(greentic) = table.get_mut("greentic") {
+        if let Some(section) = greentic.as_table_mut() {
+            section.remove("signature");
+            if section.is_empty() {
+                table.remove("greentic");
+            }
+        }
+    }
+}
+
+fn signature_from_doc(doc: &Value) -> Result<Option<PackSignature>> {
+    let table = doc
+        .as_table()
+        .ok_or_else(|| anyhow!("pack manifest must be a table"))?;
+
+    let Some(greentic) = table.get("greentic") else {
+        return Ok(None);
+    };
+
+    let greentic_table = greentic
+        .as_table()
+        .ok_or_else(|| anyhow!("[greentic] must be a table"))?;
+
+    let Some(signature_value) = greentic_table.get("signature") else {
+        return Ok(None);
+    };
+
+    let signature: PackSignature = signature_value
+        .clone()
+        .try_into()
+        .map_err(|err| anyhow!("invalid greentic.signature block: {err}"))?;
+
+    Ok(Some(signature))
+}
+
+const MANIFEST_CANDIDATES: [&str; 2] = ["pack.toml", "greentic-pack.toml"];
 
 #[cfg(test)]
 mod tests {

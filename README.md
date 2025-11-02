@@ -67,6 +67,68 @@ assets change to ensure `data.rs` stays in sync.
   aware flows.
 - `docs/publishing.md` – notes on publishing the crates to crates.io.
 
+## Signing & Verification
+
+Greentic packs can now embed developer signatures directly inside their
+`pack.toml` manifest. Signatures allow downstream tooling (including the
+runner) to verify that the pack contents have not been tampered with.
+
+### Generating keys
+
+Ed25519 keys are managed using industry standard PKCS#8 PEM files. You can
+generate a developer keypair with OpenSSL:
+
+```bash
+openssl genpkey -algorithm ed25519 -out sk.pem
+openssl pkey -in sk.pem -pubout -out pk.pem
+```
+
+The private key (`sk.pem`) is used for signing, while the public key (`pk.pem`)
+is distributed to verifiers.
+
+### Signing manifests
+
+Use `packc sign` to produce a signature and embed it into the pack manifest:
+
+```bash
+packc sign \
+  --pack examples/weather-demo \
+  --key ./sk.pem
+```
+
+By default the manifest is updated in place. Provide `--out` to write the
+signed manifest to a separate location and `--kid` to override the derived key
+identifier. The command prints the key id, digest, and timestamp, and it can
+emit JSON with the `--json` flag.
+
+After signing, the manifest contains a new block:
+
+```toml
+[greentic.signature]
+alg = "ed25519"
+key_id = "1f2c3d4e5f6a7b8c9d0e1f2c3d4e5f6a"
+created_at = "2025-01-01T12:34:56Z"
+digest = "sha256:c0ffee..."
+sig = "l4dbase64urlsig..."
+```
+
+The digest covers a canonical view of the pack directory that excludes build
+artifacts, VCS metadata, `.packignore` entries, and the signature block itself.
+
+### Verifying manifests
+
+Verification is available from both the CLI and the library API:
+
+```bash
+packc verify --pack examples/weather-demo --pub ./pk.pem
+```
+
+The `--allow-unsigned` flag lets verification succeed when no signature is
+present (returning a synthetic signature with `alg = "none"`). Library users
+can call `packc::verify_pack_dir` with `VerifyOptions` to replicate the same
+behaviour. The runner will use this API with `allow_unsigned = false` by
+default, providing an `--allow-unsigned` escape hatch for development flows.
+
 ## Licensing
 
 `greentic-pack` is licensed under the terms of the MIT license. See

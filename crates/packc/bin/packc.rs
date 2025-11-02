@@ -1,5 +1,3 @@
-#![cfg(feature = "legacy-bin")]
-
 fn main() -> anyhow::Result<()> {
     packc::cli::run()
 }
