@@ -1,0 +1,35 @@
+[package]
+name = "greentic-interfaces"
+version = "0.4.5"
+edition = "2021"
+rust-version = "1.85"
+build = "build.rs"
+license = "MIT"
+repository = "https://github.com/greentic-ai/greentic-interfaces"
+description = "Greentic ABI: WIT contracts, generated bindings, thin mappers"
+readme = "README.md"
+documentation = "https://docs.rs/greentic-interfaces"
+keywords = ["greentic", "wit", "wasm", "component"]
+categories = ["wasm", "api-bindings"]
+
+[features]
+default = ["bindings-rust"]
+bindings-rust = ["dep:wit-bindgen"]
+schema = ["dep:schemars", "greentic-types/schemars"]
+
+[dependencies]
+greentic-types = { workspace = true }
+semver = "1"
+time = "0.3"
+serde = { workspace = true, optional = true }
+schemars = { version = "0.8", features = ["derive"], optional = true }
+wit-bindgen = { version = "0.47", optional = true }
+
+[build-dependencies]
+wit-bindgen-core = "0.47"
+wit-bindgen-rust = "0.47"
+
+[dev-dependencies]
+serde_json = { workspace = true }
+insta = { version = "1", features = ["json"] }
+wit-parser = "0.240"

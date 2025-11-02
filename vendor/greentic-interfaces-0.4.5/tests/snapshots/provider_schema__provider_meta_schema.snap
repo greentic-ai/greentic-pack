@@ -1,0 +1,143 @@
+---
+source: tests/provider_schema.rs
+assertion_line: 21
+expression: json!(schema)
+---
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AllowList": {
+      "description": "Allow list describing permitted domains, ports, and protocols.",
+      "properties": {
+        "domains": {
+          "description": "Allowed domain suffixes or exact hosts.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ports": {
+          "description": "Allowed port numbers.",
+          "items": {
+            "format": "uint16",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "protocols": {
+          "description": "Allowed network protocols.",
+          "items": {
+            "$ref": "#/definitions/Protocol"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "NetworkPolicy": {
+      "description": "High-level network policy composed of allow lists.",
+      "properties": {
+        "deny_on_miss": {
+          "description": "Whether destinations not present in the allow list should be denied.",
+          "type": "boolean"
+        },
+        "egress": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AllowList"
+            }
+          ],
+          "description": "Allow list enforced for egress connections."
+        }
+      },
+      "required": [
+        "deny_on_miss",
+        "egress"
+      ],
+      "type": "object"
+    },
+    "Protocol": {
+      "description": "Network protocols supported by allow lists.",
+      "oneOf": [
+        {
+          "description": "Hypertext Transfer Protocol.",
+          "enum": [
+            "http"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Hypertext Transfer Protocol Secure.",
+          "enum": [
+            "https"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Generic TCP connectivity.",
+          "enum": [
+            "tcp"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Generic UDP connectivity.",
+          "enum": [
+            "udp"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "gRPC.",
+          "enum": [
+            "grpc"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Any protocol not covered above.",
+          "properties": {
+            "custom": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "custom"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "properties": {
+    "allow_list": {
+      "$ref": "#/definitions/AllowList"
+    },
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "network_policy": {
+      "$ref": "#/definitions/NetworkPolicy"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "allow_list",
+    "capabilities",
+    "name",
+    "network_policy",
+    "version"
+  ],
+  "title": "ProviderMetaSchema",
+  "type": "object"
+}
