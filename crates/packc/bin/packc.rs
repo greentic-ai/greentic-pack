@@ -7,7 +7,6 @@ fn main() -> anyhow::Result<()> {
     let env_filter = cli::resolve_env_filter(&cli);
 
     if std::env::var_os("RUST_LOG").is_none() {
-        // Rust 2024 marks environment mutation as unsafe; we ensure this runs before spawning.
         unsafe {
             std::env::set_var("RUST_LOG", &env_filter);
         }
