@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tracing_subscriber::{fmt, EnvFilter};
+use greentic_types::{EnvId, TenantCtx, TenantId};
+
+use crate::telemetry::set_current_tenant_ctx;
 
 use crate::build;
 
@@ -64,14 +66,20 @@ pub struct BuildArgs {
 }
 
 pub fn run() -> Result<()> {
-    let cli = Cli::parse();
+    run_with_cli(Cli::parse())
+}
 
-    let env_filter = std::env::var("PACKC_LOG").unwrap_or_else(|_| cli.verbosity.clone());
+/// Resolve the logging filter to use for telemetry initialisation.
+pub fn resolve_env_filter(cli: &Cli) -> String {
+    std::env::var("PACKC_LOG").unwrap_or_else(|_| cli.verbosity.clone())
+}
 
-    let _ = fmt()
-        .with_env_filter(EnvFilter::new(env_filter))
-        .with_writer(std::io::stderr)
-        .try_init();
+/// Execute the CLI using a pre-parsed argument set.
+pub fn run_with_cli(cli: Cli) -> Result<()> {
+    set_current_tenant_ctx(&TenantCtx::new(
+        EnvId::from("local"),
+        TenantId::from("packc"),
+    ));
 
     match cli.command {
         Command::Build(args) => build::run(&build::BuildOptions::from(args))?,

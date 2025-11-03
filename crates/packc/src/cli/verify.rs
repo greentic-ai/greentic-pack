@@ -7,11 +7,11 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use serde::Serialize;
 use serde_json;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::manifest::PackSignature;
-use crate::signing::{verify_pack_dir, VerifyOptions};
+use crate::signing::{VerifyOptions, verify_pack_dir};
 
 #[derive(Debug, Parser)]
 pub struct VerifyArgs {

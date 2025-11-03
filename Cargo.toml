@@ -7,8 +7,9 @@ members = [
 resolver = "2"
 
 [workspace.package]
-edition = "2021"
-version = "0.1.8"
+edition = "2024"
+rust-version = "1.82"
+version = "0.2.1"
 license = "MIT"
 
 [workspace.dependencies]
@@ -29,12 +30,10 @@ ed25519-dalek = { version = "2", features = ["pkcs8", "rand_core"] }
 pkcs8 = { version = "0.10", features = ["pem"] }
 toml = "0.9"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-greentic-types = "0.1"
-greentic-flow = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
+greentic-types = "0.2"
+greentic-flow = "0.2"
 greentic-interfaces = "0.4"
-pack_component_template = "0.1"
-
-[patch.crates-io]
-pack_component_template = { path = "crates/pack_component_template" }
-greentic-interfaces = { path = "vendor/greentic-interfaces-0.4.5" }
+greentic-telemetry = { version = "0.2", features = ["otlp"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+pack_component_template = { version = "0.2", path = "crates/pack_component_template" }

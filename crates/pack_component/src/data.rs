@@ -32,9 +32,10 @@ pub static MANIFEST_CBOR: &[u8] = &[
     0x79, 0x2e, 0x65, 0x6d, 0x69, 0x74,
 ];
 
-pub static FLOWS: &[(&'static str, &'static str)] = &[
-    ("weather_bot", "version: 1\ngraph:\n  start:\n    type: prompt\n    prompt: \"Ask the user for a city to lookup\"\n  fetch_weather:\n    type: task\n    service: weather-api\n    input:\n      city: \"{{ user.city }}\"\n  respond:\n    type: message\n    template: \"The weather in {{ weather.city }} is {{ weather.summary }}.\"\nedges:\n  - from: start\n    to: fetch_weather\n  - from: fetch_weather\n    to: respond\n"),
-];
+pub static FLOWS: &[(&'static str, &'static str)] = &[(
+    "weather_bot",
+    "version: 1\ngraph:\n  start:\n    type: prompt\n    prompt: \"Ask the user for a city to lookup\"\n  fetch_weather:\n    type: task\n    service: weather-api\n    input:\n      city: \"{{ user.city }}\"\n  respond:\n    type: message\n    template: \"The weather in {{ weather.city }} is {{ weather.summary }}.\"\nedges:\n  - from: start\n    to: fetch_weather\n  - from: fetch_weather\n    to: respond\n",
+)];
 
 pub static TEMPLATES: &[(&'static str, &'static [u8])] = &[(
     "templates/greeting.txt",

@@ -25,6 +25,7 @@ clap = { workspace = true }
 ed25519-dalek = { workspace = true }
 greentic-flow = { workspace = true }
 greentic-types = { workspace = true }
+greentic-telemetry = { workspace = true }
 hex = { workspace = true }
 ignore = { workspace = true }
 pkcs8 = { workspace = true }
@@ -39,7 +40,8 @@ thiserror = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-pack_component_template = "0.1.5"
+tokio = { workspace = true }
+pack_component_template = { workspace = true }
 
 [[bin]]
 name = "packc"
@@ -53,5 +55,4 @@ required-features = ["legacy-bin"]
 [dev-dependencies]
 assert_cmd = "2"
 indoc = "2"
-rand = "0.8"
 tempfile = "3"

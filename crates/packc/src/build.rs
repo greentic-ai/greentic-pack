@@ -1,9 +1,9 @@
+use crate::BuildArgs;
 use crate::embed;
 use crate::flows;
 use crate::manifest;
 use crate::sbom;
 use crate::templates;
-use crate::BuildArgs;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -106,10 +106,10 @@ fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {
     }
 
     let mut needs_write = true;
-    if let Ok(current) = fs::read(path) {
-        if current == contents {
-            needs_write = false;
-        }
+    if let Ok(current) = fs::read(path)
+        && current == contents
+    {
+        needs_write = false;
     }
 
     if needs_write {

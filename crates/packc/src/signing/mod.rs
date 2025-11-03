@@ -10,7 +10,7 @@ pub mod canon;
 pub mod signer;
 pub mod verify;
 
-pub use canon::{canonicalize_pack_dir, CanonicalizedPack};
+pub use canon::{CanonicalizedPack, canonicalize_pack_dir};
 pub use verify::VerificationError;
 
 /// Options used when verifying pack signatures.

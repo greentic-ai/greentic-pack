@@ -2,17 +2,17 @@
 
 use std::path::Path;
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::Verifier as _;
-use ed25519_dalek::{pkcs8::DecodePublicKey, Signature as Ed25519Signature, VerifyingKey};
+use ed25519_dalek::{Signature as Ed25519Signature, VerifyingKey, pkcs8::DecodePublicKey};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::manifest::{self, PackSignature};
 
-use super::{canonicalize_pack_dir, VerifyOptions};
+use super::{VerifyOptions, canonicalize_pack_dir};
 
 /// Errors that may occur while verifying a pack signature.
 #[derive(Debug, Error)]

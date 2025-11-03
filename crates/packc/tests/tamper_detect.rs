@@ -3,11 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use ed25519_dalek::SigningKey;
-use packc::{manifest, sign_pack_dir, verify_pack_dir, VerificationError, VerifyOptions};
+use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
+use packc::{VerificationError, VerifyOptions, manifest, sign_pack_dir, verify_pack_dir};
 use pkcs8::LineEnding;
-use rand::rngs::OsRng;
 use tempfile::tempdir;
 use toml::Value;
 
@@ -17,6 +16,8 @@ fn write_file(path: &Path, contents: &str) {
     }
     fs::write(path, contents).expect("write file");
 }
+
+const TEST_SECRET_KEY: [u8; 32] = [0x42; 32];
 
 #[test]
 fn tampering_is_detected() {
@@ -32,8 +33,7 @@ fn tampering_is_detected() {
     write_file(&pack_dir.join("ignored/secret.txt"), "secret");
     write_file(&pack_dir.join(".packignore"), "ignored/**\n");
 
-    let mut rng = OsRng;
-    let signing_key = SigningKey::generate(&mut rng);
+    let signing_key = SigningKey::from_bytes(&TEST_SECRET_KEY);
 
     let private_pem = signing_key
         .to_pkcs8_pem(LineEnding::LF)
@@ -177,14 +177,13 @@ fn remove_signature(pack_dir: &Path) {
     let manifest_path = manifest::manifest_path(pack_dir).expect("manifest path");
     let mut doc = read_manifest(&manifest_path);
 
-    if let Some(table) = doc.as_table_mut() {
-        if let Some(greentic) = table.get_mut("greentic") {
-            if let Some(section) = greentic.as_table_mut() {
-                section.remove("signature");
-                if section.is_empty() {
-                    table.remove("greentic");
-                }
-            }
+    if let Some(table) = doc.as_table_mut()
+        && let Some(greentic) = table.get_mut("greentic")
+        && let Some(section) = greentic.as_table_mut()
+    {
+        section.remove("signature");
+        if section.is_empty() {
+            table.remove("greentic");
         }
     }
 

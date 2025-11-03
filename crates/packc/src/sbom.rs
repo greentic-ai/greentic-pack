@@ -2,8 +2,8 @@ use crate::flows::FlowAsset;
 use crate::manifest::SpecBundle;
 use crate::templates::TemplateAsset;
 use serde::Serialize;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 #[derive(Debug, Serialize)]
 pub struct CycloneDxBom {

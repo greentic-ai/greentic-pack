@@ -1,14 +1,14 @@
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
-use anyhow::{anyhow, Context, Result};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use greentic_types::{Signature as SharedSignature, SignatureAlgorithm};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use toml::Value;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -259,12 +259,12 @@ fn strip_signature(doc: &mut Value) {
         return;
     };
 
-    if let Some(greentic) = table.get_mut("greentic") {
-        if let Some(section) = greentic.as_table_mut() {
-            section.remove("signature");
-            if section.is_empty() {
-                table.remove("greentic");
-            }
+    if let Some(greentic) = table.get_mut("greentic")
+        && let Some(section) = greentic.as_table_mut()
+    {
+        section.remove("signature");
+        if section.is_empty() {
+            table.remove("greentic");
         }
     }
 }

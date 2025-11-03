@@ -3,11 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use ed25519_dalek::SigningKey;
-use packc::{manifest, sign_pack_dir, verify_pack_dir, VerifyOptions};
+use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
+use packc::{VerifyOptions, manifest, sign_pack_dir, verify_pack_dir};
 use pkcs8::LineEnding;
-use rand::rngs::OsRng;
 use tempfile::tempdir;
 
 fn write_file(path: &Path, contents: &str) {
@@ -16,6 +15,8 @@ fn write_file(path: &Path, contents: &str) {
     }
     fs::write(path, contents).expect("write file");
 }
+
+const TEST_SECRET_KEY: [u8; 32] = [0x24; 32];
 
 #[test]
 fn sign_and_verify_pack_manifest() {
@@ -27,8 +28,7 @@ fn sign_and_verify_pack_manifest() {
 
     write_file(&pack_dir.join("flows/main.flow"), "start: node");
 
-    let mut rng = OsRng;
-    let signing_key = SigningKey::generate(&mut rng);
+    let signing_key = SigningKey::from_bytes(&TEST_SECRET_KEY);
 
     let private_pem = signing_key
         .to_pkcs8_pem(LineEnding::LF)

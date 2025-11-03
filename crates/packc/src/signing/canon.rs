@@ -4,7 +4,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Component, Path};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use ignore::WalkBuilder;
 use sha2::{Digest, Sha256};
 

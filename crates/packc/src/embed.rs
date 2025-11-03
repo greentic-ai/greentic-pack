@@ -1,6 +1,6 @@
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use pack_component_template::{CARGO_TOML, DATA_RS_PLACEHOLDER, LIB_RS};
 use std::fmt::Write;
 use std::fs;

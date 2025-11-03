@@ -47,6 +47,15 @@ resolved by the host through the MCP runtime, so flows should target
 `mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
 in `PackSpec` for compatibility but new packs should rely on MCP.
 
+### Telemetry configuration
+
+`packc` initialises Greentic's telemetry stack automatically. Configure the
+following environment variables as needed:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (defaults to `http://localhost:4317`)
+- `RUST_LOG` (standard filtering for tracing; `PACKC_LOG` still overrides when set)
+- `OTEL_RESOURCE_ATTRIBUTES` (recommend `deployment.environment=dev` for local work)
+
 ### pack_component
 
 `pack_component` is a thin wrapper around the generated `data.rs`. It exposes

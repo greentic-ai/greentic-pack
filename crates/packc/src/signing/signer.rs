@@ -2,17 +2,17 @@
 
 use std::path::Path;
 
-use anyhow::{anyhow, Result};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use anyhow::{Result, anyhow};
 use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::Signer as _;
-use ed25519_dalek::{pkcs8::DecodePrivateKey, SigningKey};
+use ed25519_dalek::{SigningKey, pkcs8::DecodePrivateKey};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
 use crate::manifest::PackSignature;
 
-use super::canon::{canonicalize_pack_dir, CanonicalizedPack};
+use super::canon::{CanonicalizedPack, canonicalize_pack_dir};
 
 /// Result of signing a pack directory.
 pub struct SigningOutcome {

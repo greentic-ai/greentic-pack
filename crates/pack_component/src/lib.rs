@@ -166,14 +166,14 @@ pub fn component() -> Component {
 
 // Export simple C ABI shims for the stub interface so a Wasm harness can
 // exercise the component without native bindings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn greentic_pack_export__list_flows(json_buffer: *mut u8, len: usize) -> usize {
     let component = Component;
     let flows = component.list_flows();
     write_json_response(&flows, json_buffer, len)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 ///
 /// The caller must ensure that `flow_id_ptr` points to `flow_id_len` bytes of
@@ -186,12 +186,12 @@ pub unsafe extern "C" fn greentic_pack_export__prepare_flow(
     len: usize,
 ) -> usize {
     let component = Component;
-    let flow_id = slice_to_str(flow_id_ptr, flow_id_len);
+    let flow_id = unsafe { slice_to_str(flow_id_ptr, flow_id_len) };
     let result = component.prepare_flow(flow_id);
     write_json_response(&result, json_buffer, len)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 ///
 /// The caller must ensure that `flow_id_ptr` points to `flow_id_len` bytes of
@@ -204,12 +204,12 @@ pub unsafe extern "C" fn greentic_pack_export__run_flow(
     len: usize,
 ) -> usize {
     let component = Component;
-    let flow_id = slice_to_str(flow_id_ptr, flow_id_len);
+    let flow_id = unsafe { slice_to_str(flow_id_ptr, flow_id_len) };
     let result = component.run_flow(flow_id, serde_json::Value::Null);
     write_json_response(&result, json_buffer, len)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn greentic_pack_export__a2a_search(json_buffer: *mut u8, len: usize) -> usize {
     let component = Component;
     let items = component.a2a_search("");
@@ -230,6 +230,6 @@ fn write_json_response<T: serde::Serialize>(value: &T, buffer: *mut u8, len: usi
 }
 
 unsafe fn slice_to_str<'a>(ptr: *const u8, len: usize) -> &'a str {
-    let bytes = core::slice::from_raw_parts(ptr, len);
+    let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
     core::str::from_utf8(bytes).expect("flow id is valid utf-8")
 }
