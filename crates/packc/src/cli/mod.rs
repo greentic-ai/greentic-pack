@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
+use std::{convert::TryFrom, path::PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -77,8 +77,8 @@ pub fn resolve_env_filter(cli: &Cli) -> String {
 /// Execute the CLI using a pre-parsed argument set.
 pub fn run_with_cli(cli: Cli) -> Result<()> {
     set_current_tenant_ctx(&TenantCtx::new(
-        EnvId::from("local"),
-        TenantId::from("packc"),
+        EnvId::try_from("local").expect("static env id"),
+        TenantId::try_from("packc").expect("static tenant id"),
     ));
 
     match cli.command {

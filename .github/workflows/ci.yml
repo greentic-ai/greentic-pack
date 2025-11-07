@@ -13,8 +13,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.82
-        uses: dtolnay/rust-toolchain@1.82.0
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt, clippy
 
@@ -32,8 +32,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.82
-        uses: dtolnay/rust-toolchain@1.82.0
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88.0
 
       - name: Test
         run: cargo test --workspace --all-targets
+
+      - name: Run builder demo example (deterministic)
+        run: |
+          OUT1=$(mktemp)
+          OUT2=$(mktemp)
+          cargo run -p greentic-pack --example build_demo -- --out "$OUT1"
+          HASH1=$(sha256sum "$OUT1" | awk '{print $1}')
+          cargo run -p greentic-pack --example build_demo -- --out "$OUT2"
+          HASH2=$(sha256sum "$OUT2" | awk '{print $1}')
+          test "$HASH1" = "$HASH2"
+          REPORT=$(cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json "$OUT1")
+          echo "$REPORT" | jq -e 'all(.sbom[]; (.media_type | length > 0))' >/dev/null

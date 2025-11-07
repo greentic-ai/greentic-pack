@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/greentic-pack",
     "crates/packc",
     "crates/pack_component",
     "crates/pack_component_template",
@@ -8,8 +9,8 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
-version = "0.2.1"
+rust-version = "1.88"
+version = "0.3.0"
 license = "MIT"
 
 [workspace.dependencies]
@@ -21,6 +22,9 @@ serde_yaml_bw = "2.4"
 serde_cbor = "0.11"
 sha2 = "0.10"
 hex = "0.4"
+semver = { version = "1", features = ["serde"] }
+blake3 = "1"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 walkdir = "2"
 thiserror = "2.0"
 time = { version = "0.3", features = ["macros", "serde", "formatting", "parsing"] }
@@ -31,9 +35,14 @@ pkcs8 = { version = "0.10", features = ["pem"] }
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
-greentic-types = "0.2"
-greentic-flow = "0.2"
+greentic-types = "0.3"
+greentic-flow = "0.3"
 greentic-interfaces = "0.4"
 greentic-telemetry = { version = "0.2", features = ["otlp"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
-pack_component_template = { version = "0.2", path = "crates/pack_component_template" }
+pack_component_template = { version = "0.3", path = "crates/pack_component_template" }
+rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
+tempfile = "3"
+rand_core = { version = "0.6", features = ["std"] }
+rustls-pki-types = "1.13"
+x509-parser = "0.18"
