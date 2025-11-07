@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage:
+#   LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
+# Defaults: offline, non-strict, quiet.
+
+: "${LOCAL_CHECK_ONLINE:=0}"
+: "${LOCAL_CHECK_STRICT:=0}"
+: "${LOCAL_CHECK_VERBOSE:=0}"
+
+if [[ "$LOCAL_CHECK_VERBOSE" == "1" ]]; then
+  set -x
+fi
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$repo_root"
+
+need() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+print_version() {
+  local tool="$1"
+  if need "$tool"; then
+    "$tool" --version || true
+  else
+    echo "[skip] $tool --version (not installed)"
+  fi
+}
+
+step() {
+  echo ""
+  echo "▶ $*"
+}
+
+require_tool() {
+  local tool="$1"
+  local context="$2"
+  if need "$tool"; then
+    return 0
+  fi
+  echo "[miss] $tool ($context)"
+  if [[ "$LOCAL_CHECK_STRICT" == "1" ]]; then
+    echo "[fail] Missing required tool $tool in strict mode"
+    return 1
+  fi
+  return 99
+}
+
+run_or_skip() {
+  local desc="$1"
+  shift
+  if "$@"; then
+    return 0
+  fi
+  local status=$?
+  if [[ $status -eq 99 ]]; then
+    echo "[skip] $desc"
+    return 0
+  fi
+  echo "[fail] $desc"
+  exit $status
+}
+
+fmt_check() {
+  require_tool cargo "cargo fmt" || return $?
+  cargo fmt --all -- --check
+}
+
+clippy_check() {
+  require_tool cargo "cargo clippy" || return $?
+  cargo clippy --workspace --all-targets -- -D warnings
+}
+
+build_check() {
+  require_tool cargo "cargo build" || return $?
+  cargo build --workspace --all-features --locked
+}
+
+test_check() {
+  require_tool cargo "cargo test" || return $?
+  cargo test --workspace --all-features --locked -- --nocapture
+}
+
+builder_demo_check() (
+  require_tool cargo "builder demo" || return $?
+  require_tool jq "builder demo report validation" || return $?
+  require_tool unzip "builder demo unzip" || return $?
+  require_tool diff "builder demo diff" || return $?
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+  local out1="$tmpdir/demo1.gtpack"
+  local out2="$tmpdir/demo2.gtpack"
+
+  cargo run -p greentic-pack --example build_demo -- --out "$out1"
+  cargo run -p greentic-pack --example build_demo -- --out "$out2"
+
+  local unpack1="$tmpdir/unpack1"
+  local unpack2="$tmpdir/unpack2"
+  mkdir "$unpack1" "$unpack2"
+  unzip -q "$out1" -d "$unpack1"
+  unzip -q "$out2" -d "$unpack2"
+
+  rm -rf "$unpack1/signatures" "$unpack2/signatures"
+  if ! diff -rq "$unpack1" "$unpack2"; then
+    echo "build demo outputs differ (excluding signatures)"
+    return 1
+  fi
+
+  local report
+  report=$(cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json "$out1")
+  echo "$report" | jq -e 'has("sbom") and (all(.sbom[]; (.media_type | length > 0)))' >/dev/null
+)
+
+main() {
+  echo "LOCAL_CHECK_ONLINE=$LOCAL_CHECK_ONLINE"
+  echo "LOCAL_CHECK_STRICT=$LOCAL_CHECK_STRICT"
+  echo "LOCAL_CHECK_VERBOSE=$LOCAL_CHECK_VERBOSE"
+
+  print_version rustc
+  print_version cargo
+
+  step "Formatting"
+  run_or_skip "cargo fmt" fmt_check
+
+  step "Clippy"
+  run_or_skip "cargo clippy" clippy_check
+
+  step "Build"
+  run_or_skip "cargo build" build_check
+
+  step "Tests"
+  run_or_skip "cargo test" test_check
+
+  step "Builder demo determinism"
+  run_or_skip "builder demo" builder_demo_check
+
+  echo ""
+  echo "✅ local checks completed"
+}
+
+main "$@"

@@ -78,6 +78,23 @@ assets change to ensure `data.rs` stays in sync.
 - `docs/pack-format.md` – on-disk `.gtpack` layout, hashing rules, and
   verification semantics.
 
+## Local CI Checks
+
+Mirror the GitHub Actions flow locally with:
+
+```bash
+ci/local_check.sh
+```
+
+Toggles:
+
+- `LOCAL_CHECK_ONLINE=1` – allow steps that need the network.
+- `LOCAL_CHECK_STRICT=1` – fail when optional tools are missing.
+- `LOCAL_CHECK_VERBOSE=1` – echo every command.
+
+The script runs automatically via `.git/hooks/pre-push`; remove or edit that
+hook if you need custom behavior.
+
 ## Releases & Publishing
 
 Version numbers come from each crate’s `Cargo.toml`. When changes land on
