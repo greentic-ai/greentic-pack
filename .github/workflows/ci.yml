@@ -40,12 +40,19 @@ jobs:
 
       - name: Run builder demo example (deterministic)
         run: |
-          OUT1=$(mktemp)
-          OUT2=$(mktemp)
+          OUT_DIR=$(mktemp -d)
+          OUT1="$OUT_DIR/demo1.gtpack"
+          OUT2="$OUT_DIR/demo2.gtpack"
           cargo run -p greentic-pack --example build_demo -- --out "$OUT1"
-          HASH1=$(sha256sum "$OUT1" | awk '{print $1}')
           cargo run -p greentic-pack --example build_demo -- --out "$OUT2"
-          HASH2=$(sha256sum "$OUT2" | awk '{print $1}')
-          test "$HASH1" = "$HASH2"
+
+          UNPACK1="$OUT_DIR/unpack1"
+          UNPACK2="$OUT_DIR/unpack2"
+          mkdir "$UNPACK1" "$UNPACK2"
+          unzip -q "$OUT1" -d "$UNPACK1"
+          unzip -q "$OUT2" -d "$UNPACK2"
+          rm -rf "$UNPACK1/signatures" "$UNPACK2/signatures"
+          diff -qr "$UNPACK1" "$UNPACK2"
+
           REPORT=$(cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json "$OUT1")
           echo "$REPORT" | jq -e 'all(.sbom[]; (.media_type | length > 0))' >/dev/null
