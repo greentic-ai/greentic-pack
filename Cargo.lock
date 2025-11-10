@@ -1035,9 +1035,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces"
-version = "0.4.20"
+version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "638378c4256f585ae53c8d07fc8e9e0f663aa9a82d39a82990992d3acb7e7ba8"
+checksum = "20003d003c72531a121c99d84d88c21b719aea0fc80dfe6d417cfe5c59ff5bae"
 dependencies = [
  "anyhow",
  "greentic-types",
