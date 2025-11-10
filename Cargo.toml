@@ -5,12 +5,16 @@ members = [
     "crates/pack_component",
     "crates/pack_component_template",
 ]
+exclude = [
+    "examples/weather-demo/.packc/pack_component",
+    "examples/qa-demo/.packc/pack_component",
+]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"
-version = "0.3.0"
+version = "0.3.2"
 license = "MIT"
 
 [workspace.dependencies]

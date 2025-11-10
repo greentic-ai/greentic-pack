@@ -1,0 +1,11 @@
+id: greentic.qa.demo
+version: 0.1.0
+flow_files:
+  - flows/qa_orchestrator.ygtc
+  - flows/qa_answer_flow.ygtc
+imports_required:
+  - qa.process
+  - flow.call
+  - llm.openai.chat
+  - messaging.emit
+  - state.get

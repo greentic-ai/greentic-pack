@@ -1,0 +1,51 @@
+id: qa_orchestrator
+title: QA Orchestrator
+description: Collect a user question, call a specialist subflow, and stream the reply.
+type: messaging
+start: collect_question
+
+parameters:
+  answer_flow_id: qa_answer_flow
+  state_key: "qa-demo::profile"
+  default_model: gpt-4o-mini
+
+nodes:
+  collect_question:
+    qa.process:
+      welcome: "Hey there! I can dive deep on any topic. Give me a prompt and I'll brainstorm with you."
+      questions:
+        - id: q_problem
+          prompt: "🚀 What should we explore?"
+          answer_type: text
+          max_words: 80
+        - id: q_context
+          prompt: "Anything else I should know?"
+          optional: true
+          answer_type: text
+          max_words: 80
+    routing:
+      - to: load_profile
+
+  load_profile:
+    state.get:
+      key: parameters.state_key
+      fallback: {}
+    routing:
+      - to: call_specialist
+
+  call_specialist:
+    flow.call:
+      flow_id: parameters.answer_flow_id
+      input:
+        model: parameters.default_model
+        question: collect_question.payload.q_problem
+        context: collect_question.payload.q_context
+        profile: load_profile.payload.value
+    routing:
+      - to: respond_to_user
+
+  respond_to_user:
+    messaging.emit:
+      messages: call_specialist.payload
+    routing:
+      - out: true

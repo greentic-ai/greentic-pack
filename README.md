@@ -47,6 +47,19 @@ resolved by the host through the MCP runtime, so flows should target
 `mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
 in `PackSpec` for compatibility but new packs should rely on MCP.
 
+### Flow patterns
+
+- **Flow-to-flow invocation** – use the special `flow.call` component to jump
+  into another flow within the same pack. The component accepts a `flow_id`
+  plus an optional `input` payload, returning whatever the target flow yields.
+- **Session-aware prompts** – nodes such as `qa.process` rely on the host’s
+  session store to pause execution while they wait for user replies. No extra
+  wiring is required in the pack; simply route their outputs like any other
+  node and the runner resumes the flow when input arrives.
+- **Multi-message replies** – any node may return an array payload to emit
+  multiple outbound messages. The runner normalises each array element into a
+  message in the order provided, enabling richer “thinking + answer” patterns.
+
 ### Telemetry configuration
 
 `packc` initialises Greentic's telemetry stack automatically. Configure the
@@ -66,9 +79,12 @@ assets change to ensure `data.rs` stays in sync.
 
 ## Examples
 
-- `examples/weather-demo` – a toy conversational pack demonstrating the expected
-  directory structure. Use this sample to smoke test `packc` or bootstrap new
-  packs.
+- `examples/weather-demo` – a toy conversational pack demonstrating the
+  expected directory structure. Use this sample to smoke test `packc` or
+  bootstrap new packs.
+- `examples/qa-demo` – showcases a multi-turn QA assistant that pauses for user
+  input, invokes a specialist subflow via `flow.call`, and emits multiple
+  outbound messages from a single run.
 
 ## Further documentation
 

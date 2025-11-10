@@ -84,6 +84,49 @@ routing:
   - to: weather_text
 ```
 
+### Flow-to-flow invocation
+
+Introduce hierarchical logic by delegating to another flow via the reserved
+`flow.call` component. It takes a `flow_id` (the `id` of another entry in
+`flow_files`) plus an optional `input` object. The called flow executes with a
+fresh context and returns its final payload to the caller:
+
+```yaml
+call_specialist:
+  flow.call:
+    flow_id: parameters.answer_flow_id
+    input:
+      question: collect_question.payload.q_problem
+      profile: lookup_context.payload.value
+  routing:
+    - to: respond_to_user
+```
+
+### Session-aware prompts
+
+Components such as `qa.process` issue a `session.update` under the hood when
+they need real user input. The runner persists the execution state, pauses the
+flow, and resumes once the user replies. Pack authors simply route the node’s
+outputs; no special wiring is required beyond ensuring the incoming activity
+includes a user identifier so the runner can find the paused session.
+
+### Multi-message replies
+
+Any node may yield an array payload to emit multiple outbound activities from a
+single execution pass. This is handy for “thinking” style responses where an
+LLM first shares intermediate reasoning before the final answer:
+
+```yaml
+respond_to_user:
+  messaging.emit:
+    messages: call_specialist.payload    # array of message objects
+  routing:
+    - out: true
+```
+
+The runner preserves order, sending each entry to the channel sequentially.
+See `examples/qa-demo` for a complete pack that combines all three patterns.
+
 ## Component integration
 
 The generated `pack_component` crate exposes helper functions for host runtimes:

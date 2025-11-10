@@ -1,0 +1,1 @@
+/projects/ai/greentic-ng/greentic-pack/examples/qa-demo/.packc/pack_component/target/wasm32-unknown-unknown/release/libpack_component.rlib: /projects/ai/greentic-ng/greentic-pack/examples/qa-demo/.packc/pack_component/src/data.rs /projects/ai/greentic-ng/greentic-pack/examples/qa-demo/.packc/pack_component/src/lib.rs

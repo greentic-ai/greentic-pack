@@ -1,0 +1,40 @@
+id: qa_answer_flow
+title: Specialist Answer Flow
+description: Call an LLM and emit multiple replies (reasoning + conclusion).
+type: messaging
+start: call_llm
+
+nodes:
+  call_llm:
+    llm.openai.chat:
+      model: in.model
+      system_prompt: >
+        You are an expert research companion. Show your reasoning, cite facts,
+        and keep answers actionable. When profile hints are available, weave
+        them in naturally.
+      messages:
+        - role: system
+          content: |
+            Profile hints:
+            {{#if in.profile}}
+            {{in.profile}}
+            {{else}}
+            (none supplied)
+            {{/if}}
+        - role: user
+          content: "{{in.question}}"
+        - role: user
+          content: "{{in.context}}"
+    routing:
+      - to: package_messages
+
+  package_messages:
+    flow.return:
+      payload:
+        - type: message
+          channel: debug
+          text: "{{call_llm.payload.reasoning}}"
+        - type: message
+          text: "{{call_llm.payload.answer}}"
+    routing:
+      - out: true
