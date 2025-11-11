@@ -41,6 +41,23 @@ Usage: packc build --in <DIR> [--out <FILE>] [--manifest <FILE>]
 `packc` writes structured progress logs to stderr. When invoking inside CI, pass
 `--dry-run` to skip Wasm compilation if the target toolchain is unavailable.
 
+## Scaffolding new packs
+
+`packc new` bootstraps a directory that already matches the expected manifest
+and flow layout:
+
+```bash
+packc new hello-pack --dir ./hello-pack
+cd hello-pack
+./scripts/build.sh
+```
+
+The command writes `pack.yaml`, `flows/welcome.ygtc`, `.gitignore`, a helper
+script under `scripts/build.sh`, and a `dist/` output directory. Passing
+`--sign` also drops a development Ed25519 keypair under `keys/` (set
+`GREENTIC_DEV_SEED` for deterministic output). Re-run `./scripts/build.sh` to
+generate `dist/pack.wasm`, `dist/manifest.cbor`, and `dist/sbom.cdx.json`.
+
 ## Example build
 
 ```bash

@@ -42,6 +42,19 @@ while still validating the pack inputs.
 > ℹ️ The build step expects the `wasm32-unknown-unknown` Rust target. Install it
 > once with `rustup target add wasm32-unknown-unknown`.
 
+Use `packc new` to bootstrap a fresh pack directory that already matches the
+current schema:
+
+```bash
+packc new greentic.demo --dir ./greentic-demo
+cd greentic-demo
+./scripts/build.sh
+```
+
+The scaffold command writes `pack.yaml`, a starter flow under `flows/`, a helper
+build script, and (optionally) a development Ed25519 keypair when `--sign` is
+specified.
+
 Greentic packs only transport flows and templates. Execution-time tools are
 resolved by the host through the MCP runtime, so flows should target
 `mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
