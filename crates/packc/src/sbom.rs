@@ -59,7 +59,7 @@ pub fn generate(
     let mut components = Vec::new();
     for flow in flows {
         components.push(Component {
-            name: flow.id.clone(),
+            name: flow.bundle.id.clone(),
             component_type: "file",
             version: None,
             hashes: Some(vec![HashEntry {

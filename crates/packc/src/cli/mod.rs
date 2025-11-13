@@ -58,6 +58,10 @@ pub struct BuildArgs {
     #[arg(long, value_name = "FILE", default_value = "dist/sbom.cdx.json")]
     pub sbom: PathBuf,
 
+    /// Output path for the generated & canonical .gtpack archive
+    #[arg(long = "gtpack-out", value_name = "FILE")]
+    pub gtpack_out: Option<PathBuf>,
+
     /// Optional override for the generated component data source file
     #[arg(long = "component-data", value_name = "FILE")]
     pub component_data: Option<PathBuf>,

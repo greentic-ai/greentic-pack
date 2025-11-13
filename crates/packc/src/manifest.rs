@@ -5,6 +5,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use greentic_types::{Signature as SharedSignature, SignatureAlgorithm};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::fs;
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
@@ -16,11 +17,23 @@ pub struct PackSpec {
     pub id: String,
     pub version: String,
     #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
     pub flow_files: Vec<String>,
     #[serde(default)]
     pub template_dirs: Vec<String>,
     #[serde(default)]
+    pub entry_flows: Vec<String>,
+    #[serde(default)]
     pub imports_required: Vec<String>,
+    #[serde(default)]
+    pub annotations: JsonMap<String, JsonValue>,
 }
 
 impl PackSpec {
@@ -100,9 +113,9 @@ pub fn build_manifest(
     let flow_entries = flows
         .iter()
         .map(|flow| FlowEntry {
-            id: flow.id.clone(),
-            flow_type: flow.flow_type.clone(),
-            start: flow.start.clone(),
+            id: flow.bundle.id.clone(),
+            flow_type: flow.bundle.kind.clone(),
+            start: Some(flow.bundle.entry.clone()),
             source: Some(flow.relative_path.to_string_lossy().to_string()),
             sha256: Some(flow.sha256.clone()),
             size: Some(flow.raw.len() as u64),

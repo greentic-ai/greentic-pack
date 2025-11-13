@@ -1,12 +1,15 @@
-use crate::BuildArgs;
-use crate::embed;
-use crate::flows;
-use crate::manifest;
-use crate::sbom;
-use crate::templates;
+use crate::flows::FlowAsset;
+use crate::templates::TemplateAsset;
+use crate::{BuildArgs, embed, flows, manifest, sbom, templates};
 use anyhow::{Context, Result};
+use greentic_pack::builder::{
+    ComponentArtifact, ImportRef, PackBuilder, PackMeta, Provenance, Signing,
+};
+use semver::Version;
+use serde_json::Value as JsonValue;
 use std::fs;
 use std::path::{Path, PathBuf};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
@@ -15,6 +18,7 @@ pub struct BuildOptions {
     pub component_out: PathBuf,
     pub manifest_out: PathBuf,
     pub sbom_out: PathBuf,
+    pub gtpack_out: Option<PathBuf>,
     pub component_data: PathBuf,
     pub dry_run: bool,
 }
@@ -25,6 +29,7 @@ impl From<BuildArgs> for BuildOptions {
         let component_out = normalize(args.component_out);
         let manifest_out = normalize(args.manifest);
         let sbom_out = normalize(args.sbom);
+        let gtpack_out = args.gtpack_out.map(normalize);
         let default_component_data = pack_dir
             .join(".packc")
             .join("pack_component")
@@ -40,6 +45,7 @@ impl From<BuildArgs> for BuildOptions {
             component_out,
             manifest_out,
             sbom_out,
+            gtpack_out,
             component_data,
             dry_run: args.dry_run,
         }
@@ -53,6 +59,7 @@ pub fn run(opts: &BuildOptions) -> Result<()> {
         manifest_out = %opts.manifest_out.display(),
         sbom_out = %opts.sbom_out.display(),
         component_data = %opts.component_data.display(),
+        gtpack_out = ?opts.gtpack_out,
         dry_run = opts.dry_run,
         "building greentic pack"
     );
@@ -85,6 +92,8 @@ pub fn run(opts: &BuildOptions) -> Result<()> {
     write_if_changed(&opts.component_data, component_src.as_bytes())?;
 
     embed::compile_component(&opts.component_data, &opts.component_out)?;
+
+    maybe_build_gtpack(opts, &spec_bundle, &flows, &templates)?;
 
     info!("build complete");
     Ok(())
@@ -119,5 +128,123 @@ fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {
         debug!(path = %path.display(), "unchanged");
     }
 
+    Ok(())
+}
+
+fn maybe_build_gtpack(
+    opts: &BuildOptions,
+    spec_bundle: &manifest::SpecBundle,
+    flows: &[FlowAsset],
+    templates: &[TemplateAsset],
+) -> Result<()> {
+    if opts.dry_run {
+        info!("dry-run requested; skipping .gtpack generation");
+        return Ok(());
+    }
+
+    let Some(gtpack_path) = opts.gtpack_out.as_ref() else {
+        return Ok(());
+    };
+
+    info!(gtpack_out = %gtpack_path.display(), "packaging .gtpack archive");
+
+    let created_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+
+    let entry_flows = if spec_bundle.spec.entry_flows.is_empty() {
+        flows.iter().map(|flow| flow.bundle.id.clone()).collect()
+    } else {
+        spec_bundle.spec.entry_flows.clone()
+    };
+
+    let mut annotations = spec_bundle.spec.annotations.clone();
+    if !spec_bundle.spec.imports_required.is_empty()
+        && !annotations.contains_key("imports_required")
+    {
+        annotations.insert(
+            "imports_required".to_string(),
+            JsonValue::Array(
+                spec_bundle
+                    .spec
+                    .imports_required
+                    .iter()
+                    .map(|entry| JsonValue::String(entry.clone()))
+                    .collect(),
+            ),
+        );
+    }
+
+    let imports = spec_bundle
+        .spec
+        .imports_required
+        .iter()
+        .map(|entry| ImportRef {
+            pack_id: entry.clone(),
+            version_req: "*".into(),
+        })
+        .collect();
+
+    let name = spec_bundle
+        .spec
+        .name
+        .clone()
+        .unwrap_or_else(|| spec_bundle.spec.id.clone());
+    let version = Version::parse(&spec_bundle.spec.version)
+        .with_context(|| format!("invalid pack version {}", spec_bundle.spec.version))?;
+
+    let meta = PackMeta {
+        pack_id: spec_bundle.spec.id.clone(),
+        version,
+        name,
+        description: spec_bundle.spec.description.clone(),
+        authors: spec_bundle.spec.authors.clone(),
+        license: spec_bundle.spec.license.clone(),
+        imports,
+        entry_flows,
+        created_at_utc: created_at.clone(),
+        annotations,
+    };
+
+    let mut builder = PackBuilder::new(meta);
+    for flow in flows {
+        builder = builder.with_flow(flow.bundle.clone());
+    }
+
+    let component_version = Version::parse(env!("CARGO_PKG_VERSION"))
+        .context("failed to parse package version for component metadata")?;
+    let component = ComponentArtifact {
+        name: "pack_component".into(),
+        version: component_version,
+        wasm_path: opts.component_out.clone(),
+        schema_json: None,
+        manifest_json: None,
+        capabilities: None,
+        world: None,
+        hash_blake3: None,
+    };
+    builder = builder.with_component(component);
+
+    for template in templates {
+        builder = builder.with_asset_bytes(template.logical_path.clone(), template.bytes.clone());
+    }
+
+    let provenance = Provenance {
+        builder: format!("packc@{}", env!("CARGO_PKG_VERSION")),
+        git_commit: None,
+        git_repo: None,
+        toolchain: None,
+        built_at_utc: created_at,
+        host: None,
+        notes: None,
+    };
+
+    builder = builder
+        .with_provenance(provenance)
+        .with_signing(Signing::None);
+
+    builder.build(gtpack_path)?;
+
+    info!(gtpack_out = %gtpack_path.display(), "gtpack archive ready");
     Ok(())
 }

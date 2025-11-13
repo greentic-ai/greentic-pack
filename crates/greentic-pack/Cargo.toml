@@ -21,6 +21,7 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
+greentic-flow = { workspace = true }
 rcgen = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }

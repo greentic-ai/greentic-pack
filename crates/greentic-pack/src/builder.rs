@@ -63,33 +63,11 @@ impl PackMeta {
     }
 }
 
+pub use greentic_flow::flow_bundle::{ComponentPin, FlowBundle, NodeRef};
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ImportRef {
     pub pack_id: String,
-    pub version_req: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FlowBundle {
-    pub id: String,
-    pub kind: String,
-    pub entry: String,
-    pub yaml: String,
-    pub json: JsonValue,
-    pub hash_blake3: String,
-    pub nodes: Vec<NodeRef>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NodeRef {
-    pub node_id: String,
-    pub component: ComponentPin,
-    pub schema_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ComponentPin {
-    pub name: String,
     pub version_req: String,
 }
 
@@ -333,7 +311,7 @@ impl PackBuilder {
                 bail!("duplicate flow id detected: {}", flow.id);
             }
 
-            let yaml_path = normalize_relative_path(&["flows", &flow.id, "flow.yaml"])?;
+            let yaml_path = normalize_relative_path(&["flows", &flow.id, "flow.ygtc"])?;
             let yaml_bytes = normalize_newlines(&flow.yaml).into_bytes();
             pending_files.push(PendingFile::new(
                 yaml_path.clone(),

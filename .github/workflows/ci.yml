@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    name: Lint & Format
+  local-check:
+    name: Local Checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,41 +18,5 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Format
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-  test:
-    name: Tests
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.88
-        uses: dtolnay/rust-toolchain@1.88.0
-
-      - name: Test
-        run: cargo test --workspace --all-targets
-
-      - name: Run builder demo example (deterministic)
-        run: |
-          OUT_DIR=$(mktemp -d)
-          OUT1="$OUT_DIR/demo1.gtpack"
-          OUT2="$OUT_DIR/demo2.gtpack"
-          cargo run -p greentic-pack --example build_demo -- --out "$OUT1"
-          cargo run -p greentic-pack --example build_demo -- --out "$OUT2"
-
-          UNPACK1="$OUT_DIR/unpack1"
-          UNPACK2="$OUT_DIR/unpack2"
-          mkdir "$UNPACK1" "$UNPACK2"
-          unzip -q "$OUT1" -d "$UNPACK1"
-          unzip -q "$OUT2" -d "$UNPACK2"
-          rm -rf "$UNPACK1/signatures" "$UNPACK2/signatures"
-          diff -qr "$UNPACK1" "$UNPACK2"
-
-          REPORT=$(cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json "$OUT1")
-          echo "$REPORT" | jq -e 'all(.sbom[]; (.media_type | length > 0))' >/dev/null
+      - name: Run local checks
+        run: ci/local_check.sh

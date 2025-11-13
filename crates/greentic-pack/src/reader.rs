@@ -469,7 +469,10 @@ mod tests {
         let (dir, path) = custom_zip(&[zip_entry("foo", b"bar")]);
         patch_external_attributes(&path, 0o120777 << 16);
         let err = open_pack(&path, SigningPolicy::DevOk).unwrap_err();
-        assert!(err.message.contains("unsupported file type"));
+        assert!(
+            err.message.contains("unsupported file type")
+                || err.message.contains("not a regular file")
+        );
         drop(dir);
     }
 

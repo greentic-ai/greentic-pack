@@ -32,12 +32,17 @@ cargo run -p packc -- build \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \
   --sbom dist/sbom.cdx.json
+  --gtpack-out dist/demo.gtpack
 ```
 
 Running the command performs validation, emits the CBOR manifest, generates a
 CycloneDX SBOM, regenerates `crates/pack_component/src/data.rs`, and compiles
 `pack_component` to the requested Wasm artifact. Use `--dry-run` to skip writes
 while still validating the pack inputs.
+
+Passing `--gtpack-out dist/demo.gtpack` generates the canonical `.gtpack`
+archive; inspect it with `cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json dist/demo.gtpack`
+to confirm the SBOM entries, flows, and templates embedded inside the archive.
 
 > ℹ️ The build step expects the `wasm32-waspi2` Rust target. Install it
 > once with `rustup target add wasm32-waspi2`.

@@ -33,6 +33,8 @@ Usage: packc build --in <DIR> [--out <FILE>] [--manifest <FILE>]
 - `--manifest` – CBOR manifest output (default `dist/manifest.cbor`).
 - `--sbom` – CycloneDX JSON report capturing flow/template hashes (default
   `dist/sbom.cdx.json`).
+- `--gtpack-out` – optional path to the `.gtpack` archive that packages the
+  manifest, SBOM, flows, templates, and compiled component.
 - `--component-data` – override the generated `data.rs` location if you need to
   export the payload somewhere other than `crates/pack_component/src/data.rs`.
 - `--dry-run` – validate inputs without writing artifacts or compiling Wasm.
@@ -67,6 +69,7 @@ cargo run -p packc -- build \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \
   --sbom dist/sbom.cdx.json
+  --gtpack-out dist/demo.gtpack
 ```
 
 Outputs:
@@ -77,6 +80,12 @@ Outputs:
 - `dist/sbom.cdx.json` – CycloneDX summary documenting flows/templates.
 - `crates/pack_component/src/data.rs` – regenerated Rust source containing raw
   bytes for the manifest, flow sources, and templates.
+
+When you pass `--gtpack-out`, packc calls `greentic-pack` to write the
+canonical `.gtpack` archive. Use
+`cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json dist/demo.gtpack`
+to inspect the archive, confirm the SBOM entries have media types, and ensure
+the flows/templates match what was written into `dist/pack.wasm`.
 
 ## Authoring MCP-aware flows
 

@@ -43,6 +43,7 @@ greentic-types = "0.3"
 greentic-flow = "0.3"
 greentic-interfaces = "0.4"
 greentic-telemetry = { version = "0.3", features = ["otlp"] }
+greentic-pack = { path = "crates/greentic-pack" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 pack_component_template = { version = "0.3", path = "crates/pack_component_template" }
 rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
