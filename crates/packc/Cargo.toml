@@ -42,7 +42,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 pack_component_template = { workspace = true }
-rand_core = { workspace = true }
+rand_core_06 = { workspace = true }
 
 [[bin]]
 name = "packc"

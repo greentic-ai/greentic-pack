@@ -39,8 +39,8 @@ CycloneDX SBOM, regenerates `crates/pack_component/src/data.rs`, and compiles
 `pack_component` to the requested Wasm artifact. Use `--dry-run` to skip writes
 while still validating the pack inputs.
 
-> ℹ️ The build step expects the `wasm32-unknown-unknown` Rust target. Install it
-> once with `rustup target add wasm32-unknown-unknown`.
+> ℹ️ The build step expects the `wasm32-waspi2` Rust target. Install it
+> once with `rustup target add wasm32-waspi2`.
 
 Use `packc new` to bootstrap a fresh pack directory that already matches the
 current schema:

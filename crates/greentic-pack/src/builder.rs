@@ -11,7 +11,7 @@ use blake3::Hasher;
 use ed25519_dalek::Signer as _;
 use ed25519_dalek::SigningKey;
 use pkcs8::EncodePrivateKey;
-use rand_core::OsRng;
+use rand_core_06::OsRng;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ED25519};
 use rustls_pki_types::PrivatePkcs8KeyDer;
 use semver::Version;
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
@@ -695,7 +695,7 @@ fn write_zip(out_path: &Path, files: &[PendingFile]) -> Result<()> {
     let timestamp = zip_timestamp();
 
     for entry in files {
-        let options = FileOptions::default()
+        let options = SimpleFileOptions::default()
             .compression_method(CompressionMethod::Stored)
             .last_modified_time(timestamp)
             .unix_permissions(0o644)

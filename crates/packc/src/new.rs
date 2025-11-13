@@ -6,7 +6,7 @@ use clap::{Args, ValueEnum};
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use pkcs8::LineEnding;
-use rand_core::OsRng;
+use rand_core_06::OsRng;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;

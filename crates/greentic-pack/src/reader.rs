@@ -424,7 +424,7 @@ mod tests {
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
     use tempfile::{TempDir, tempdir};
-    use zip::write::FileOptions;
+    use zip::write::SimpleFileOptions;
     use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
     #[test]
@@ -581,7 +581,7 @@ mod tests {
         let mut writer = ZipWriter::new(file);
         let timestamp = DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap();
         for (name, data) in entries.iter() {
-            let options = FileOptions::default()
+            let options = SimpleFileOptions::default()
                 .compression_method(CompressionMethod::Stored)
                 .last_modified_time(timestamp)
                 .unix_permissions(0o644);
@@ -627,7 +627,7 @@ mod tests {
                 data.push(b'\n');
                 data.extend_from_slice(&original);
             }
-            let options = FileOptions::default()
+            let options = SimpleFileOptions::default()
                 .compression_method(CompressionMethod::Stored)
                 .last_modified_time(timestamp)
                 .unix_permissions(0o644);
