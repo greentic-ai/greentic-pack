@@ -509,6 +509,7 @@ mod tests {
             pack_id: "ai.greentic.demo.reader".into(),
             version: Version::parse("0.1.0").unwrap(),
             name: "Reader Demo".into(),
+            kind: None,
             description: None,
             authors: vec!["Greentic".into()],
             license: None,

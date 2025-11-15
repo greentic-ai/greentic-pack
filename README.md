@@ -31,7 +31,7 @@ cargo run -p packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \
-  --sbom dist/sbom.cdx.json
+  --sbom dist/sbom.cdx.json \
   --gtpack-out dist/demo.gtpack
 ```
 
@@ -64,6 +64,21 @@ Greentic packs only transport flows and templates. Execution-time tools are
 resolved by the host through the MCP runtime, so flows should target
 `mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
 in `PackSpec` for compatibility but new packs should rely on MCP.
+
+### greentic-pack
+
+Operators inspect and plan published packs via the `greentic-pack` CLI:
+
+```bash
+greentic-pack inspect dist/demo.gtpack --policy devok
+greentic-pack plan dist/demo.gtpack --tenant tenant-demo --environment prod
+```
+
+`plan` always operates on a `.gtpack` archive so that CI, dev machines, and
+operators see identical behaviour. For convenience you can also point it at a
+pack source directory; the CLI shells out to `packc build --gtpack-out` to
+create a temporary archive before running the planner (set
+`GREENTIC_PACK_PLAN_PACKC=/path/to/packc` if `packc` is not on `PATH`).
 
 ### Flow patterns
 

@@ -122,6 +122,7 @@ fn build_outputs_gtpack_archive() {
     let manifest = base.join("manifest.cbor");
     let sbom = base.join("sbom.cdx.json");
     let gtpack = base.join("pack.gtpack");
+    let component_data = base.join("pack_component").join("src").join("data.rs");
 
     let mut build = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
     build.current_dir(workspace_root());
@@ -137,6 +138,8 @@ fn build_outputs_gtpack_archive() {
         sbom.to_str().unwrap(),
         "--gtpack-out",
         gtpack.to_str().unwrap(),
+        "--component-data",
+        component_data.to_str().unwrap(),
         "--log",
         "warn",
     ]);

@@ -3,7 +3,7 @@ use crate::templates::TemplateAsset;
 use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use greentic_types::{Signature as SharedSignature, SignatureAlgorithm};
+use greentic_types::{PackKind, Signature as SharedSignature, SignatureAlgorithm};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::fs;
@@ -16,6 +16,8 @@ use toml::Value;
 pub struct PackSpec {
     pub id: String,
     pub version: String,
+    #[serde(default)]
+    pub kind: Option<PackKind>,
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]

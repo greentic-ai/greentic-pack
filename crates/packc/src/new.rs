@@ -195,6 +195,7 @@ fn render_pack_spec(id: &str) -> String {
     let spec = PackSpec {
         id: id.to_string(),
         version: DEFAULT_VERSION.to_string(),
+        kind: Some(PackKind::Application),
         name: Some(id.to_string()),
         description: Some("Starter Greentic pack".into()),
         authors: vec!["Greentic <engineering@greentic.dev>".into()],
@@ -347,3 +348,4 @@ fn normalize(path: PathBuf) -> PathBuf {
             .join(path)
     }
 }
+use greentic_types::PackKind;

@@ -18,5 +18,8 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install wasm32-waspi2 target
+        run: rustup target add wasm32-waspi2
+
       - name: Run local checks
         run: ci/local_check.sh

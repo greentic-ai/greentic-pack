@@ -22,6 +22,8 @@ use time::format_description::well_known::Rfc3339;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
+use greentic_types::PackKind;
+
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
 pub(crate) const SIGNATURE_PATH: &str = "signatures/pack.sig";
 pub(crate) const SIGNATURE_CHAIN_PATH: &str = "signatures/chain.pem";
@@ -31,6 +33,8 @@ pub struct PackMeta {
     pub pack_id: String,
     pub version: Version,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<PackKind>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -789,6 +793,7 @@ mod tests {
             pack_id: "ai.greentic.demo.test".to_string(),
             version: Version::parse("0.1.0").unwrap(),
             name: "Test Pack".to_string(),
+            kind: None,
             description: Some("integration test".to_string()),
             authors: vec!["Greentic".to_string()],
             license: Some("MIT".to_string()),

@@ -24,8 +24,8 @@ Greentic packs and integrating them with the MCP runtime.
 
 ```text
 Usage: packc build --in <DIR> [--out <FILE>] [--manifest <FILE>]
-                   [--sbom <FILE>] [--component-data <FILE>] [--dry-run]
-                   [--log <LEVEL>]
+                   [--sbom <FILE>] [--gtpack-out <FILE>] [--component-data <FILE>]
+                   [--dry-run] [--log <LEVEL>]
 ```
 
 - `--in` – path to the pack directory containing `pack.yaml`.
@@ -68,7 +68,7 @@ cargo run -p packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \
-  --sbom dist/sbom.cdx.json
+  --sbom dist/sbom.cdx.json \
   --gtpack-out dist/demo.gtpack
 ```
 
@@ -86,6 +86,23 @@ canonical `.gtpack` archive. Use
 `cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json dist/demo.gtpack`
 to inspect the archive, confirm the SBOM entries have media types, and ensure
 the flows/templates match what was written into `dist/pack.wasm`.
+
+## Planning deployments
+
+`greentic-pack` ships a complementary CLI for inspecting archives and producing
+provider-agnostic deployment plans:
+
+```bash
+greentic-pack plan dist/demo.gtpack \
+  --tenant tenant-demo \
+  --environment prod
+```
+
+The planner always consumes a `.gtpack` archive to guarantee parity between
+local dev, CI, and operators. For convenience `plan` also accepts a pack source
+directory; in that case it invokes `packc build --gtpack-out` internally to
+create a temporary archive before running the planner. Set the
+`GREENTIC_PACK_PLAN_PACKC` environment variable if `packc` is not on `PATH`.
 
 ## Authoring MCP-aware flows
 

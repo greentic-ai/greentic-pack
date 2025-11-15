@@ -22,6 +22,7 @@ fn main() -> anyhow::Result<()> {
         pack_id: "ai.greentic.demo.local".into(),
         version: Version::parse("0.1.0").unwrap(),
         name: "Greentic Demo Pack".into(),
+        kind: None,
         description: Some("Minimal pack built via PackBuilder".into()),
         authors: vec!["Greentic".into()],
         license: Some("MIT".into()),

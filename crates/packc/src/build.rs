@@ -197,6 +197,7 @@ fn maybe_build_gtpack(
         pack_id: spec_bundle.spec.id.clone(),
         version,
         name,
+        kind: spec_bundle.spec.kind.clone(),
         description: spec_bundle.spec.description.clone(),
         authors: spec_bundle.spec.authors.clone(),
         license: spec_bundle.spec.license.clone(),
