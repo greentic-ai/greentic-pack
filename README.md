@@ -31,13 +31,18 @@ cargo run -p packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \
-  --sbom dist/sbom.cdx.json
+  --sbom dist/sbom.cdx.json \
+  --gtpack-out dist/demo.gtpack
 ```
 
 Running the command performs validation, emits the CBOR manifest, generates a
 CycloneDX SBOM, regenerates `crates/pack_component/src/data.rs`, and compiles
 `pack_component` to the requested Wasm artifact. Use `--dry-run` to skip writes
 while still validating the pack inputs.
+
+Passing `--gtpack-out dist/demo.gtpack` generates the canonical `.gtpack`
+archive; inspect it with `cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json dist/demo.gtpack`
+to confirm the SBOM entries, flows, and templates embedded inside the archive.
 
 > ℹ️ The build step expects the `wasm32-waspi2` Rust target. Install it
 > once with `rustup target add wasm32-waspi2`.
@@ -59,6 +64,21 @@ Greentic packs only transport flows and templates. Execution-time tools are
 resolved by the host through the MCP runtime, so flows should target
 `mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
 in `PackSpec` for compatibility but new packs should rely on MCP.
+
+### greentic-pack
+
+Operators inspect and plan published packs via the `greentic-pack` CLI:
+
+```bash
+greentic-pack inspect dist/demo.gtpack --policy devok
+greentic-pack plan dist/demo.gtpack --tenant tenant-demo --environment prod
+```
+
+`plan` always operates on a `.gtpack` archive so that CI, dev machines, and
+operators see identical behaviour. For convenience you can also point it at a
+pack source directory; the CLI shells out to `packc build --gtpack-out` to
+create a temporary archive before running the planner (set
+`GREENTIC_PACK_PLAN_PACKC=/path/to/packc` if `packc` is not on `PATH`).
 
 ### Flow patterns
 

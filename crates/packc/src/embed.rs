@@ -31,7 +31,11 @@ pub fn generate_component_data(
     )?;
     for flow in flows {
         let raw_literal = rust_string_literal(&flow.raw);
-        writeln!(&mut buffer, "    (\"{}\", {}),", flow.id, raw_literal)?;
+        writeln!(
+            &mut buffer,
+            "    (\"{}\", {}),",
+            flow.bundle.id, raw_literal
+        )?;
     }
     writeln!(&mut buffer, "];\n")?;
 

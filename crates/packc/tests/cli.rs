@@ -1,4 +1,5 @@
 use assert_cmd::prelude::*;
+use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -99,5 +100,83 @@ fn scaffold_with_sign_generates_keys() {
     assert!(
         public_key.contains("PUBLIC KEY"),
         "public key should be PEM"
+    );
+}
+
+#[test]
+fn build_outputs_gtpack_archive() {
+    let temp = tempdir().expect("temp dir");
+    let base = temp.path();
+    let wasm_target_installed = Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|stdout| stdout.lines().any(|line| line.trim() == "wasm32-waspi2"))
+        .unwrap_or(false);
+    if !wasm_target_installed {
+        eprintln!("skipping gtpack archive test; wasm32-waspi2 target missing");
+        return;
+    }
+    let wasm = base.join("pack.wasm");
+    let manifest = base.join("manifest.cbor");
+    let sbom = base.join("sbom.cdx.json");
+    let gtpack = base.join("pack.gtpack");
+    let component_data = base.join("pack_component").join("src").join("data.rs");
+
+    let mut build = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
+    build.current_dir(workspace_root());
+    build.args([
+        "build",
+        "--in",
+        "examples/weather-demo",
+        "--out",
+        wasm.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sbom",
+        sbom.to_str().unwrap(),
+        "--gtpack-out",
+        gtpack.to_str().unwrap(),
+        "--component-data",
+        component_data.to_str().unwrap(),
+        "--log",
+        "warn",
+    ]);
+    build.assert().success();
+
+    let mut inspect = Command::new("cargo");
+    inspect.current_dir(workspace_root());
+    inspect.args([
+        "run",
+        "-p",
+        "greentic-pack",
+        "--bin",
+        "gtpack-inspect",
+        "--",
+        "--policy",
+        "devok",
+        "--json",
+        gtpack.to_str().unwrap(),
+    ]);
+    let output = inspect
+        .output()
+        .expect("gtpack-inspect should run successfully");
+    assert!(output.status.success(), "gtpack-inspect failed");
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("gtpack-inspect produced valid JSON");
+    let sbom_entries = report
+        .get("sbom")
+        .and_then(Value::as_array)
+        .expect("sbom array present");
+    assert!(
+        sbom_entries.iter().all(|entry| {
+            entry
+                .get("media_type")
+                .and_then(Value::as_str)
+                .map(|val| !val.is_empty())
+                .unwrap_or(false)
+        }),
+        "sbom entries must expose media_type"
     );
 }

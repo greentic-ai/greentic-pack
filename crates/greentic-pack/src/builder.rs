@@ -22,6 +22,8 @@ use time::format_description::well_known::Rfc3339;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
+use greentic_types::PackKind;
+
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
 pub(crate) const SIGNATURE_PATH: &str = "signatures/pack.sig";
 pub(crate) const SIGNATURE_CHAIN_PATH: &str = "signatures/chain.pem";
@@ -31,6 +33,8 @@ pub struct PackMeta {
     pub pack_id: String,
     pub version: Version,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<PackKind>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -63,33 +67,11 @@ impl PackMeta {
     }
 }
 
+pub use greentic_flow::flow_bundle::{ComponentPin, FlowBundle, NodeRef};
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ImportRef {
     pub pack_id: String,
-    pub version_req: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FlowBundle {
-    pub id: String,
-    pub kind: String,
-    pub entry: String,
-    pub yaml: String,
-    pub json: JsonValue,
-    pub hash_blake3: String,
-    pub nodes: Vec<NodeRef>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NodeRef {
-    pub node_id: String,
-    pub component: ComponentPin,
-    pub schema_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ComponentPin {
-    pub name: String,
     pub version_req: String,
 }
 
@@ -333,7 +315,7 @@ impl PackBuilder {
                 bail!("duplicate flow id detected: {}", flow.id);
             }
 
-            let yaml_path = normalize_relative_path(&["flows", &flow.id, "flow.yaml"])?;
+            let yaml_path = normalize_relative_path(&["flows", &flow.id, "flow.ygtc"])?;
             let yaml_bytes = normalize_newlines(&flow.yaml).into_bytes();
             pending_files.push(PendingFile::new(
                 yaml_path.clone(),
@@ -811,6 +793,7 @@ mod tests {
             pack_id: "ai.greentic.demo.test".to_string(),
             version: Version::parse("0.1.0").unwrap(),
             name: "Test Pack".to_string(),
+            kind: None,
             description: Some("integration test".to_string()),
             authors: vec!["Greentic".to_string()],
             license: Some("MIT".to_string()),

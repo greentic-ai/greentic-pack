@@ -16,7 +16,6 @@ homepage = "https://github.com/greentic-ai/greentic-pack"
 default = []
 pem = []
 openssl = []
-legacy-bin = []
 
 [dependencies]
 anyhow = { workspace = true }
@@ -43,15 +42,12 @@ tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 pack_component_template = { workspace = true }
 rand_core_06 = { workspace = true }
+greentic-pack = { workspace = true }
+semver = { workspace = true }
 
 [[bin]]
 name = "packc"
 path = "bin/packc.rs"
-
-[[bin]]
-name = "packc-legacy"
-path = "src/main.rs"
-required-features = ["legacy-bin"]
 
 [dev-dependencies]
 assert_cmd = "2"

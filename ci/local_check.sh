@@ -115,6 +115,31 @@ builder_demo_check() (
   echo "$report" | jq -e 'has("sbom") and (all(.sbom[]; (.media_type | length > 0)))' >/dev/null
 )
 
+packc_gtpack_check() (
+  require_tool cargo "packc build" || return $?
+  require_tool jq "packc gtpack inspect" || return $?
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+  local wasm="$tmpdir/pack.wasm"
+  local manifest="$tmpdir/manifest.cbor"
+  local sbom="$tmpdir/sbom.cdx.json"
+  local gtpack="$tmpdir/pack.gtpack"
+
+  cargo run -p packc -- build \
+    --in examples/weather-demo \
+    --out "$wasm" \
+    --manifest "$manifest" \
+    --sbom "$sbom" \
+    --gtpack-out "$gtpack" \
+    --log warn
+
+  local report
+  report=$(cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json "$gtpack")
+  echo "$report" | jq -e 'has("sbom") and (all(.sbom[]; (.media_type | length > 0)))' >/dev/null
+)
+
 main() {
   echo "LOCAL_CHECK_ONLINE=$LOCAL_CHECK_ONLINE"
   echo "LOCAL_CHECK_STRICT=$LOCAL_CHECK_STRICT"
@@ -137,6 +162,9 @@ main() {
 
   step "Builder demo determinism"
   run_or_skip "builder demo" builder_demo_check
+
+  step "Packc builds canonical gtpack"
+  run_or_skip "packc gtpack" packc_gtpack_check
 
   echo ""
   echo "✅ local checks completed"

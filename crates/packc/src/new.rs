@@ -8,6 +8,7 @@ use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use pkcs8::LineEnding;
 use rand_core_06::OsRng;
 use serde::Serialize;
+use serde_json::Map as JsonMap;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -194,9 +195,16 @@ fn render_pack_spec(id: &str) -> String {
     let spec = PackSpec {
         id: id.to_string(),
         version: DEFAULT_VERSION.to_string(),
+        kind: Some(PackKind::Application),
+        name: Some(id.to_string()),
+        description: Some("Starter Greentic pack".into()),
+        authors: vec!["Greentic <engineering@greentic.dev>".into()],
+        license: Some("MIT".into()),
         flow_files: vec![DEFAULT_FLOW_FILE.to_string()],
         template_dirs: Vec::new(),
+        entry_flows: vec!["welcome".to_string()],
         imports_required: Vec::new(),
+        annotations: JsonMap::new(),
     };
     serde_yaml_bw::to_string(&spec).expect("pack spec serialises")
 }
@@ -340,3 +348,4 @@ fn normalize(path: PathBuf) -> PathBuf {
             .join(path)
     }
 }
+use greentic_types::PackKind;

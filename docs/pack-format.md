@@ -14,8 +14,8 @@ manifest.cbor              # canonical CBOR manifest
 manifest.json              # human readable manifest
 sbom.json                  # SPDX-like file catalogue
 provenance.json            # build metadata (builder, git sha, toolchain)
-flows/<id>/flow.yaml       # source YAML
-flows/<id>/flow.json       # normalised JSON
+flows/<id>/flow.ygtc       # canonical YAML source
+flows/<id>/flow.json       # normalised JSON derived from the `.ygtc` source
 schemas/<name>@<ver>/...   # optional node schema
 components/<name>@<ver>/component.wasm
 components/<name>@<ver>/manifest.json (optional)
@@ -23,6 +23,10 @@ assets/...                 # optional additional assets
 signatures/pack.sig        # JSON envelope over digests
 signatures/chain.pem       # signing certificate chain
 ```
+
+Flow sources are kept as `.ygtc` files; the canonical JSON under each
+`flows/<id>/flow.json` is computed by `greentic-flow` and reflects the same
+data used inside the `.gtpack`.
 
 Only regular files are allowed—directories, symlinks, and special entries are
 rejected by the reader before any manifest parsing occurs.
@@ -34,6 +38,11 @@ Every payload file (excluding `signatures/*`) is recorded in `sbom.json` as a
 During verification the reader recomputes all hashes and also ensures that every
 file present in the archive is listed in the SBOM. This SBOM is also part of the
 signature input.
+
+The CycloneDX file tracked as `dist/sbom.cdx.json` is derived from this same
+inventory. When you build a `.gtpack` via `packc --gtpack-out`, the CycloneDX
+artifact and the archive’s own `sbom.json` are produced from the same flows and
+templates even though their formatting differs.
 
 Common media types:
 
