@@ -44,8 +44,8 @@ Passing `--gtpack-out dist/demo.gtpack` generates the canonical `.gtpack`
 archive; inspect it with `cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json dist/demo.gtpack`
 to confirm the SBOM entries, flows, and templates embedded inside the archive.
 
-> ℹ️ The build step expects the `wasm32-waspi2` Rust target. Install it
-> once with `rustup target add wasm32-waspi2`.
+> ℹ️ The build step expects the `wasm32-wasip2` Rust target. Install it
+> once with `rustup target add wasm32-wasip2`.
 
 Use `packc new` to bootstrap a fresh pack directory that already matches the
 current schema:

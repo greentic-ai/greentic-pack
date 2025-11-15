@@ -63,7 +63,7 @@ generate `dist/pack.wasm`, `dist/manifest.cbor`, and `dist/sbom.cdx.json`.
 ## Example build
 
 ```bash
-rustup target add wasm32-waspi2   # run once
+rustup target add wasm32-wasip2   # run once
 cargo run -p packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
@@ -173,7 +173,7 @@ See `examples/qa-demo` for a complete pack that combines all three patterns.
 ## Component integration
 
 The generated `pack_component` crate exposes helper functions for host runtimes
-and targets `wasm32-waspi2`, so it can be instantiated using the WASI Preview 2
+and targets `wasm32-wasip2`, so it can be instantiated using the WASI Preview 2
 ABI. It depends on the shared bindings from `greentic-interfaces` and implements
 the `greentic:pack-export` WIT defined in
 `greentic_interfaces::bindings::exports::greentic::interfaces_pack::component_api`,
@@ -200,6 +200,6 @@ Hosts are expected to load `pack.wasm`, instantiate the component, call
 
 | Issue | Resolution |
 | ----- | ---------- |
-| `Rust target 'wasm32-waspi2' is not installed` | Run `rustup target add wasm32-waspi2` once before building without `--dry-run`. |
+| `Rust target 'wasm32-wasip2' is not installed` | Run `rustup target add wasm32-wasip2` once before building without `--dry-run`. |
 | CLI fails with duplicate flow/template IDs | Ensure each entry in `flow_files` and `template_dirs` maps to unique logical paths. |
 | Missing MCP tool at runtime | Confirm the host has loaded the proper MCP component; packs should never embed the tool implementation. |

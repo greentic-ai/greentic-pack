@@ -102,7 +102,6 @@ fn scaffold_with_sign_generates_keys() {
         "public key should be PEM"
     );
 }
-
 #[test]
 fn build_outputs_gtpack_archive() {
     let temp = tempdir().expect("temp dir");
@@ -112,10 +111,10 @@ fn build_outputs_gtpack_archive() {
         .output()
         .ok()
         .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|stdout| stdout.lines().any(|line| line.trim() == "wasm32-waspi2"))
+        .map(|stdout| stdout.lines().any(|line| line.trim() == "wasm32-wasip2"))
         .unwrap_or(false);
     if !wasm_target_installed {
-        eprintln!("skipping gtpack archive test; wasm32-waspi2 target missing");
+        eprintln!("skipping gtpack archive test; wasm32-wasip2 target missing");
         return;
     }
     let wasm = base.join("pack.wasm");

@@ -63,7 +63,7 @@ pub fn compile_component(component_data: &Path, output_wasm: &Path) -> Result<()
         "compiling pack_component"
     );
 
-    ensure_target_installed("wasm32-waspi2")?;
+    ensure_target_installed("wasm32-wasip2")?;
 
     let metadata_status = Command::new("cargo")
         .args(["metadata", "--format-version", "1"])
@@ -79,7 +79,7 @@ pub fn compile_component(component_data: &Path, output_wasm: &Path) -> Result<()
     }
 
     let build_status = Command::new("cargo")
-        .args(["build", "--target", "wasm32-waspi2", "--release"])
+        .args(["build", "--target", "wasm32-wasip2", "--release"])
         .current_dir(&crate_root)
         .status()
         .with_context(|| "failed to invoke cargo build for pack_component")?;
@@ -90,7 +90,7 @@ pub fn compile_component(component_data: &Path, output_wasm: &Path) -> Result<()
 
     let artifact = crate_root
         .join("target")
-        .join("wasm32-waspi2")
+        .join("wasm32-wasip2")
         .join("release")
         .join("pack_component.wasm");
 
