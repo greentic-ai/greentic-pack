@@ -12,9 +12,9 @@ use alloc::{
     vec::Vec,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use greentic_interfaces::bindings::exports::greentic::interfaces_pack::component_api;
+use greentic_interfaces_host::bindings::exports::greentic::interfaces_pack::component_api::ProviderMeta;
 #[cfg(not(target_arch = "wasm32"))]
-const _: fn(component_api::ProviderMeta) = |_meta| {};
+const _: fn(ProviderMeta) = |_meta| {};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(not(target_arch = "wasm32"))]

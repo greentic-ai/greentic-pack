@@ -14,7 +14,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"
-version = "0.4.0"
+version = "0.4.1"
 license = "MIT"
 
 [workspace.dependencies]
@@ -41,7 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 greentic-types = "0.4"
 greentic-flow = "0.4"
-greentic-interfaces = "0.4"
+greentic-interfaces-host = "0.4"
 greentic-telemetry = { version = "0.4", features = ["otlp"] }
 greentic-pack = { path = "crates/greentic-pack" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }

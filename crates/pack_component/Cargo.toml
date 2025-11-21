@@ -21,4 +21,4 @@ serde_json = { workspace = true }
 serde_cbor = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-greentic-interfaces = { workspace = true }
+greentic-interfaces-host = { workspace = true }

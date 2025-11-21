@@ -242,7 +242,7 @@ fn maybe_build_gtpack(
 
     builder = builder
         .with_provenance(provenance)
-        .with_signing(Signing::None);
+        .with_signing(Signing::Dev);
 
     builder.build(gtpack_path)?;
 

@@ -174,9 +174,9 @@ See `examples/qa-demo` for a complete pack that combines all three patterns.
 
 The generated `pack_component` crate exposes helper functions for host runtimes
 and targets `wasm32-wasip2`, so it can be instantiated using the WASI Preview 2
-ABI. It depends on the shared bindings from `greentic-interfaces` and implements
-the `greentic:pack-export` WIT defined in
-`greentic_interfaces::bindings::exports::greentic::interfaces_pack::component_api`,
+ABI. It depends on the host bindings from `greentic-interfaces-host` and
+implements the `greentic:pack-export` WIT (see
+`greentic_interfaces_host::bindings::exports::greentic::interfaces_pack::component_api::ProviderMeta`),
 meaning no extra WIT files are required in this repository.
 
 - `manifest_cbor()` – raw CBOR manifest bytes.
