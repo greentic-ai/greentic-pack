@@ -10,6 +10,7 @@ use crate::telemetry::set_current_tenant_ctx;
 
 use crate::{build, new};
 
+pub mod lint;
 pub mod sign;
 pub mod verify;
 
@@ -32,6 +33,8 @@ pub struct Cli {
 pub enum Command {
     /// Build a pack component and supporting artifacts
     Build(BuildArgs),
+    /// Lint a pack manifest, flows, and templates
+    Lint(lint::LintArgs),
     /// Scaffold a new pack directory
     New(new::NewArgs),
     /// Sign a pack manifest using an Ed25519 private key
@@ -89,6 +92,7 @@ pub fn run_with_cli(cli: Cli) -> Result<()> {
 
     match cli.command {
         Command::Build(args) => build::run(&build::BuildOptions::from(args))?,
+        Command::Lint(args) => lint::handle(args, cli.json)?,
         Command::New(args) => new::handle(args, cli.json)?,
         Command::Sign(args) => sign::handle(args, cli.json)?,
         Command::Verify(args) => verify::handle(args, cli.json)?,

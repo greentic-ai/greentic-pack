@@ -14,7 +14,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"
-version = "0.4.2"
+version = "0.4.3"
 license = "MIT"
 
 [workspace.dependencies]
@@ -51,3 +51,4 @@ tempfile = "3"
 rand_core_06 = { package = "rand_core", version = "0.6", features = ["std"] }
 rustls-pki-types = "1"
 x509-parser = "0.18"
+schemars = "1"

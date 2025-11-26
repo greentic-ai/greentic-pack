@@ -1,0 +1,145 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: PackSpec
+type: object
+required:
+- id
+- version
+properties:
+  annotations:
+    default: {}
+    type: object
+    additionalProperties: true
+  authors:
+    default: []
+    type: array
+    items:
+      type: string
+  description:
+    default: null
+    type:
+    - string
+    - 'null'
+  entry_flows:
+    default: []
+    type: array
+    items:
+      type: string
+  events:
+    default: null
+    anyOf:
+    - $ref: '#/definitions/EventsSection'
+    - type: 'null'
+  flow_files:
+    default: []
+    type: array
+    items:
+      type: string
+  id:
+    type: string
+  imports_required:
+    default: []
+    type: array
+    items:
+      type: string
+  kind:
+    default: null
+    type:
+    - string
+    - 'null'
+  license:
+    default: null
+    type:
+    - string
+    - 'null'
+  name:
+    default: null
+    type:
+    - string
+    - 'null'
+  template_dirs:
+    default: []
+    type: array
+    items:
+      type: string
+  version:
+    type: string
+definitions:
+  EventProviderCapabilities:
+    type: object
+    properties:
+      ordering:
+        anyOf:
+        - $ref: '#/definitions/OrderingKind'
+        - type: 'null'
+      reliability:
+        anyOf:
+        - $ref: '#/definitions/ReliabilityKind'
+        - type: 'null'
+      topics:
+        type: array
+        items:
+          type: string
+      transport:
+        anyOf:
+        - $ref: '#/definitions/TransportKind'
+        - type: 'null'
+  EventProviderKind:
+    type: string
+    enum:
+    - broker
+    - source
+    - sink
+    - bridge
+  EventProviderSpec:
+    type: object
+    required:
+    - component
+    - kind
+    - name
+    properties:
+      capabilities:
+        default: {}
+        allOf:
+        - $ref: '#/definitions/EventProviderCapabilities'
+      component:
+        type: string
+      custom_flow:
+        type:
+        - string
+        - 'null'
+      default_flow:
+        type:
+        - string
+        - 'null'
+      kind:
+        $ref: '#/definitions/EventProviderKind'
+      name:
+        type: string
+  EventsSection:
+    type: object
+    properties:
+      providers:
+        default: []
+        type: array
+        items:
+          $ref: '#/definitions/EventProviderSpec'
+  OrderingKind:
+    type: string
+    enum:
+    - none
+    - per_key
+    - global
+  ReliabilityKind:
+    type: string
+    enum:
+    - at_most_once
+    - at_least_once
+    - effectively_once
+  TransportKind:
+    anyOf:
+    - type: 'null'
+    - type: 'null'
+    - type: 'null'
+    - type: 'null'
+    - type: 'null'
+    - type: string

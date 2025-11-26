@@ -3,7 +3,9 @@ use crate::templates::TemplateAsset;
 use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use greentic_pack::events::EventsSection;
 use greentic_types::{PackKind, Signature as SharedSignature, SignatureAlgorithm};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::fs;
@@ -12,11 +14,12 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use toml::Value;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct PackSpec {
     pub id: String,
     pub version: String,
     #[serde(default)]
+    #[schemars(with = "Option<String>")]
     pub kind: Option<PackKind>,
     #[serde(default)]
     pub name: Option<String>,
@@ -35,6 +38,8 @@ pub struct PackSpec {
     #[serde(default)]
     pub imports_required: Vec<String>,
     #[serde(default)]
+    pub events: Option<EventsSection>,
+    #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
 
@@ -45,6 +50,9 @@ impl PackSpec {
         }
         if self.version.trim().is_empty() {
             anyhow::bail!("pack version must not be empty");
+        }
+        if let Some(events) = &self.events {
+            events.validate()?;
         }
         Ok(())
     }
@@ -80,6 +88,8 @@ pub struct PackManifest {
     pub flows: Vec<FlowEntry>,
     pub templates: Vec<BlobEntry>,
     pub imports_required: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<EventsSection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +150,7 @@ pub fn build_manifest(
         flows: flow_entries,
         templates: template_entries,
         imports_required: bundle.spec.imports_required.clone(),
+        events: bundle.spec.events.clone(),
     }
 }
 

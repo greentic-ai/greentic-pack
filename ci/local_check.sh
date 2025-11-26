@@ -127,7 +127,7 @@ packc_gtpack_check() (
   local sbom="$tmpdir/sbom.cdx.json"
   local gtpack="$tmpdir/pack.gtpack"
 
-  cargo run -p packc -- build \
+  cargo run -p packc --bin packc -- build \
     --in examples/weather-demo \
     --out "$wasm" \
     --manifest "$manifest" \

@@ -22,6 +22,7 @@ use time::format_description::well_known::Rfc3339;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
+use crate::events::EventsSection;
 use greentic_types::PackKind;
 
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
@@ -45,6 +46,8 @@ pub struct PackMeta {
     pub imports: Vec<ImportRef>,
     pub entry_flows: Vec<String>,
     pub created_at_utc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<EventsSection>,
     #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
@@ -62,6 +65,9 @@ impl PackMeta {
         }
         if self.created_at_utc.trim().is_empty() {
             bail!("created_at_utc is required");
+        }
+        if let Some(events) = &self.events {
+            events.validate()?;
         }
         Ok(())
     }
@@ -800,6 +806,7 @@ mod tests {
             imports: Vec::new(),
             entry_flows: vec!["main".to_string()],
             created_at_utc: "2025-01-01T00:00:00Z".to_string(),
+            events: None,
             annotations: JsonMap::new(),
         }
     }

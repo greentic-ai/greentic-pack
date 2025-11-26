@@ -204,6 +204,7 @@ fn render_pack_spec(id: &str) -> String {
         template_dirs: Vec::new(),
         entry_flows: vec!["welcome".to_string()],
         imports_required: Vec::new(),
+        events: None,
         annotations: JsonMap::new(),
     };
     serde_yaml_bw::to_string(&spec).expect("pack spec serialises")

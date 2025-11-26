@@ -18,6 +18,10 @@ Greentic packs and integrating them with the MCP runtime.
 5. **Ship the artifacts** – publish the resulting Wasm module (`pack.wasm`) and
    manifest/SBOM outputs to the desired distribution channel.
 
+For declaring event providers inside `pack.yaml`, see
+`docs/events-provider-packs.md`. The block is optional and validated by
+`packc lint`.
+
 ## CLI reference
 
 `packc` exposes a `build` subcommand with structured flags:
@@ -64,7 +68,7 @@ generate `dist/pack.wasm`, `dist/manifest.cbor`, and `dist/sbom.cdx.json`.
 
 ```bash
 rustup target add wasm32-wasip2   # run once
-cargo run -p packc -- build \
+cargo run -p packc --bin packc -- build \
   --in examples/weather-demo \
   --out dist/pack.wasm \
   --manifest dist/manifest.cbor \

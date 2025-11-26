@@ -4,6 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::tempdir;
+use walkdir::WalkDir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -178,4 +179,62 @@ fn build_outputs_gtpack_archive() {
         }),
         "sbom entries must expose media_type"
     );
+}
+
+#[test]
+fn lint_accepts_valid_events_provider_block() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    inject_events_section(&pack_dir, "broker");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
+    cmd.current_dir(workspace_root());
+    cmd.args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn lint_rejects_invalid_events_kind() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    inject_events_section(&pack_dir, "invalid-kind");
+
+    let assert = Command::new(assert_cmd::cargo::cargo_bin!("packc"))
+        .current_dir(workspace_root())
+        .args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_lowercase();
+    assert!(
+        stderr.contains("events") && stderr.contains("kind") || stderr.contains("unknown variant"),
+        "stderr should mention invalid kind, got: {stderr}"
+    );
+}
+
+fn copy_example_pack(target: &std::path::Path) {
+    let source = workspace_root().join("examples/weather-demo");
+    for entry in WalkDir::new(&source)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+    {
+        let relative = entry.path().strip_prefix(&source).expect("strip prefix");
+        let destination = target.join(relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::copy(entry.path(), &destination).expect("copy fixture file");
+    }
+}
+
+fn inject_events_section(pack_dir: &std::path::Path, kind: &str) {
+    let path = pack_dir.join("pack.yaml");
+    let original = fs::read_to_string(&path).expect("read pack.yaml");
+    let events_block = format!(
+        "\nevents:\n  providers:\n    - name: \"nats-core\"\n      kind: {kind}\n      component: \"nats-provider@1.0.0\"\n      default_flow: \"flows/events/nats/default.ygtc\"\n      custom_flow: \"flows/events/nats/custom.ygtc\"\n      capabilities:\n        transport: nats\n        reliability: at_least_once\n        ordering: per_key\n        topics:\n          - \"greentic.*\"\n"
+    );
+    fs::write(&path, format!("{original}{events_block}")).expect("write updated pack.yaml");
 }

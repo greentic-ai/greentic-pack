@@ -516,6 +516,7 @@ mod tests {
             imports: vec![],
             entry_flows: vec!["demo".into()],
             created_at_utc: "2025-01-01T00:00:00Z".into(),
+            events: None,
             annotations: Map::new(),
         }
     }

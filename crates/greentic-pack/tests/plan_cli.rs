@@ -6,13 +6,17 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use greentic_pack::builder::{ComponentArtifact, FlowBundle, PackBuilder, PackMeta};
 use greentic_pack::builder::{ComponentPin, ImportRef, NodeRef};
+use greentic_pack::events::{
+    EventProviderCapabilities, EventProviderKind, EventProviderSpec, EventsSection, OrderingKind,
+    ReliabilityKind, TransportKind,
+};
 use greentic_types::component::{
     ComponentCapabilities, ComponentManifest, ComponentProfiles, HostCapabilities,
     SecretsCapabilities, TelemetryCapabilities, WasiCapabilities,
 };
 use greentic_types::flow::FlowKind;
 use semver::Version;
-use serde_json::json;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 fn sample_pack() -> TempDir {
@@ -63,6 +67,21 @@ fn build_sample_pack(out_path: &Path) {
         }],
         entry_flows: vec!["flow.main".into()],
         created_at_utc: "2025-01-01T00:00:00Z".into(),
+        events: Some(EventsSection {
+            providers: vec![EventProviderSpec {
+                name: "nats-core".into(),
+                kind: EventProviderKind::Broker,
+                component: "nats-provider@1.0.0".into(),
+                default_flow: Some("flows/events/nats/default.ygtc".into()),
+                custom_flow: None,
+                capabilities: EventProviderCapabilities {
+                    transport: Some(TransportKind::Nats),
+                    reliability: Some(ReliabilityKind::AtLeastOnce),
+                    ordering: Some(OrderingKind::PerKey),
+                    topics: vec!["greentic.*".into()],
+                },
+            }],
+        }),
         annotations: serde_json::Map::new(),
     };
     meta.annotations.insert(
@@ -155,7 +174,7 @@ fn plan_from_gtpack_cli() {
         .stdout
         .clone();
 
-    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let value: Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(
         value.get("pack_id").and_then(|v| v.as_str()),
         Some("demo.pack")
@@ -194,10 +213,50 @@ fn plan_from_directory_uses_packc_stub() {
         .stdout
         .clone();
 
-    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let value: Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(
         value.get("pack_id").and_then(|v| v.as_str()),
         Some("demo.pack")
+    );
+}
+
+#[test]
+fn events_list_shows_providers_in_table() {
+    let pack = sample_pack();
+    let path = pack.path().join("sample.gtpack");
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .args(["events", "list", path.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    assert!(stdout.contains("nats-core"));
+    assert!(stdout.contains("broker"));
+    assert!(stdout.contains("nats"));
+}
+
+#[test]
+fn events_list_supports_json_output() {
+    let pack = sample_pack();
+    let path = pack.path().join("sample.gtpack");
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .args(["events", "list", "--format", "json", path.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).unwrap();
+    let providers = value.as_array().expect("providers array");
+    assert_eq!(providers.len(), 1);
+    let provider = providers.first().unwrap();
+    assert_eq!(
+        provider.get("component").and_then(|val| val.as_str()),
+        Some("nats-provider@1.0.0")
     );
 }
 
