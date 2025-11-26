@@ -82,6 +82,8 @@ fn build_sample_pack(out_path: &Path) {
                 },
             }],
         }),
+        repo: None,
+        messaging: None,
         annotations: serde_json::Map::new(),
     };
     meta.annotations.insert(

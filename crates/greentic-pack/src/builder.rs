@@ -23,6 +23,8 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 use crate::events::EventsSection;
+use crate::messaging::MessagingSection;
+use crate::repo::RepoPackSection;
 use greentic_types::PackKind;
 
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
@@ -48,6 +50,10 @@ pub struct PackMeta {
     pub created_at_utc: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<EventsSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<RepoPackSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messaging: Option<MessagingSection>,
     #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
@@ -68,6 +74,12 @@ impl PackMeta {
         }
         if let Some(events) = &self.events {
             events.validate()?;
+        }
+        if let Some(repo) = &self.repo {
+            repo.validate()?;
+        }
+        if let Some(messaging) = &self.messaging {
+            messaging.validate()?;
         }
         Ok(())
     }
@@ -807,6 +819,8 @@ mod tests {
             entry_flows: vec!["main".to_string()],
             created_at_utc: "2025-01-01T00:00:00Z".to_string(),
             events: None,
+            repo: None,
+            messaging: None,
             annotations: JsonMap::new(),
         }
     }

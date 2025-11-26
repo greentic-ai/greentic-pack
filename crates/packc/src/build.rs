@@ -205,6 +205,8 @@ fn maybe_build_gtpack(
         entry_flows,
         created_at_utc: created_at.clone(),
         events: spec_bundle.spec.events.clone(),
+        repo: spec_bundle.spec.repo.clone(),
+        messaging: spec_bundle.spec.messaging.clone(),
         annotations,
     };
 

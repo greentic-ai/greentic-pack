@@ -1,52 +1,48 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PackSpec",
   "type": "object",
-  "required": [
-    "id",
-    "version"
-  ],
   "properties": {
     "annotations": {
-      "default": {},
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "default": {}
     },
     "authors": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
     },
     "description": {
-      "default": null,
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "default": null
     },
     "entry_flows": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
     },
     "events": {
-      "default": null,
       "anyOf": [
         {
-          "$ref": "#/definitions/EventsSection"
+          "$ref": "#/$defs/EventsSection"
         },
         {
           "type": "null"
         }
-      ]
+      ],
+      "default": null
     },
     "flow_files": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
@@ -55,36 +51,58 @@
       "type": "string"
     },
     "imports_required": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
     },
     "kind": {
-      "default": null,
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "default": null
     },
     "license": {
-      "default": null,
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "default": null
+    },
+    "messaging": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MessagingSection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "name": {
-      "default": null,
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "default": null
+    },
+    "repo": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RepoPackSection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "template_dirs": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
         "type": "string"
       }
@@ -93,14 +111,18 @@
       "type": "string"
     }
   },
-  "definitions": {
+  "required": [
+    "id",
+    "version"
+  ],
+  "$defs": {
     "EventProviderCapabilities": {
       "type": "object",
       "properties": {
         "ordering": {
           "anyOf": [
             {
-              "$ref": "#/definitions/OrderingKind"
+              "$ref": "#/$defs/OrderingKind"
             },
             {
               "type": "null"
@@ -110,7 +132,7 @@
         "reliability": {
           "anyOf": [
             {
-              "$ref": "#/definitions/ReliabilityKind"
+              "$ref": "#/$defs/ReliabilityKind"
             },
             {
               "type": "null"
@@ -126,7 +148,7 @@
         "transport": {
           "anyOf": [
             {
-              "$ref": "#/definitions/TransportKind"
+              "$ref": "#/$defs/TransportKind"
             },
             {
               "type": "null"
@@ -146,17 +168,61 @@
     },
     "EventProviderSpec": {
       "type": "object",
-      "required": [
-        "component",
-        "kind",
-        "name"
-      ],
       "properties": {
         "capabilities": {
-          "default": {},
-          "allOf": [
+          "$ref": "#/$defs/EventProviderCapabilities",
+          "default": {}
+        },
+        "component": {
+          "type": "string"
+        },
+        "custom_flow": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "default_flow": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/EventProviderKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "component"
+      ]
+    },
+    "EventsSection": {
+      "type": "object",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EventProviderSpec"
+          }
+        }
+      }
+    },
+    "MessagingAdapter": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "anyOf": [
             {
-              "$ref": "#/definitions/EventProviderCapabilities"
+              "$ref": "#/$defs/MessagingAdapterCapabilities"
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -176,21 +242,54 @@
           ]
         },
         "kind": {
-          "$ref": "#/definitions/EventProviderKind"
+          "$ref": "#/$defs/MessagingAdapterKind"
         },
         "name": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "name",
+        "kind",
+        "component"
+      ]
     },
-    "EventsSection": {
+    "MessagingAdapterCapabilities": {
       "type": "object",
       "properties": {
-        "providers": {
-          "default": [],
+        "direction": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/EventProviderSpec"
+            "type": "string"
+          }
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "MessagingAdapterKind": {
+      "type": "string",
+      "enum": [
+        "ingress",
+        "egress",
+        "ingress-egress"
+      ]
+    },
+    "MessagingSection": {
+      "type": "object",
+      "properties": {
+        "adapters": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/MessagingAdapter"
           }
         }
       }
@@ -209,6 +308,141 @@
         "at_most_once",
         "at_least_once",
         "effectively_once"
+      ]
+    },
+    "RepoBinding": {
+      "type": "object",
+      "properties": {
+        "component_id": {
+          "type": "string"
+        },
+        "profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "world": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "world",
+        "component_id"
+      ]
+    },
+    "RepoBindings": {
+      "type": "object",
+      "properties": {
+        "attestation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBinding"
+          }
+        },
+        "oci": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBinding"
+          }
+        },
+        "policy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBinding"
+          }
+        },
+        "scan": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBinding"
+          }
+        },
+        "signing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBinding"
+          }
+        },
+        "source": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBinding"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoCapabilities": {
+      "type": "object",
+      "properties": {
+        "attestation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "oci": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "policy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scan": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoPackKind": {
+      "type": "string",
+      "enum": [
+        "source-provider",
+        "scanner",
+        "signing",
+        "attestation",
+        "policy-engine",
+        "oci-provider"
+      ]
+    },
+    "RepoPackSection": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "$ref": "#/$defs/RepoBindings",
+          "default": {}
+        },
+        "capabilities": {
+          "$ref": "#/$defs/RepoCapabilities",
+          "default": {}
+        },
+        "kind": {
+          "$ref": "#/$defs/RepoPackKind"
+        }
+      },
+      "required": [
+        "kind"
       ]
     },
     "TransportKind": {

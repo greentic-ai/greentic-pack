@@ -5,7 +5,7 @@ set -euo pipefail
 #   LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
 # Defaults: offline, non-strict, quiet.
 
-: "${LOCAL_CHECK_ONLINE:=0}"
+: "${LOCAL_CHECK_ONLINE:=1}"
 : "${LOCAL_CHECK_STRICT:=0}"
 : "${LOCAL_CHECK_VERBOSE:=0}"
 
@@ -118,6 +118,11 @@ builder_demo_check() (
 packc_gtpack_check() (
   require_tool cargo "packc build" || return $?
   require_tool jq "packc gtpack inspect" || return $?
+
+  if [[ "$LOCAL_CHECK_ONLINE" != "1" ]]; then
+    echo "[skip] packc gtpack (offline mode)"
+    return 99
+  fi
 
   local tmpdir
   tmpdir=$(mktemp -d)

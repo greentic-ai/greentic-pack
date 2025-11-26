@@ -214,6 +214,76 @@ fn lint_rejects_invalid_events_kind() {
     );
 }
 
+#[test]
+fn lint_accepts_valid_messaging_adapter_block() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    inject_messaging_section(&pack_dir);
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
+    cmd.current_dir(workspace_root());
+    cmd.args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn lint_accepts_valid_repo_scanner_pack() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    inject_repo_section(
+        &pack_dir,
+        r#"
+repo:
+  kind: scanner
+  capabilities:
+    scan:
+      - "sast"
+      - "deps"
+  bindings:
+    scan:
+      - world: "greentic:scan/scanner"
+        component_id: "scanner-snyk"
+"#,
+    );
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
+    cmd.current_dir(workspace_root());
+    cmd.args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn lint_rejects_repo_missing_binding() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    inject_repo_section(
+        &pack_dir,
+        r#"
+repo:
+  kind: scanner
+  capabilities:
+    scan:
+      - "sast"
+  bindings: {}
+"#,
+    );
+
+    let assert = Command::new(assert_cmd::cargo::cargo_bin!("packc"))
+        .current_dir(workspace_root())
+        .args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_lowercase();
+    assert!(
+        stderr.contains("bindings") && stderr.contains("scanner"),
+        "stderr should mention missing bindings for scanner, got: {stderr}"
+    );
+}
+
 fn copy_example_pack(target: &std::path::Path) {
     let source = workspace_root().join("examples/weather-demo");
     for entry in WalkDir::new(&source)
@@ -237,4 +307,28 @@ fn inject_events_section(pack_dir: &std::path::Path, kind: &str) {
         "\nevents:\n  providers:\n    - name: \"nats-core\"\n      kind: {kind}\n      component: \"nats-provider@1.0.0\"\n      default_flow: \"flows/events/nats/default.ygtc\"\n      custom_flow: \"flows/events/nats/custom.ygtc\"\n      capabilities:\n        transport: nats\n        reliability: at_least_once\n        ordering: per_key\n        topics:\n          - \"greentic.*\"\n"
     );
     fs::write(&path, format!("{original}{events_block}")).expect("write updated pack.yaml");
+}
+
+fn inject_repo_section(pack_dir: &std::path::Path, section: &str) {
+    let path = pack_dir.join("pack.yaml");
+    let original = fs::read_to_string(&path).expect("read pack.yaml");
+    fs::write(&path, format!("{original}{section}\n")).expect("write updated pack.yaml");
+}
+
+fn inject_messaging_section(pack_dir: &std::path::Path) {
+    let path = pack_dir.join("pack.yaml");
+    let original = fs::read_to_string(&path).expect("read pack.yaml");
+    let block = r#"
+messaging:
+  adapters:
+    - name: "fake-adapter"
+      kind: ingress-egress
+      component: "fake-adapter@1.0.0"
+      default_flow: "flows/messaging/fake/default.ygtc"
+      custom_flow: "flows/messaging/fake/custom.ygtc"
+      capabilities:
+        direction: ["inbound", "outbound"]
+        features: ["attachments", "threads"]
+"#;
+    fs::write(&path, format!("{original}{block}\n")).expect("write updated pack.yaml");
 }

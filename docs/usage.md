@@ -22,6 +22,10 @@ For declaring event providers inside `pack.yaml`, see
 `docs/events-provider-packs.md`. The block is optional and validated by
 `packc lint`.
 
+For repo-oriented packs (source/scanner/signing/attestation/policy/oci),
+see `docs/repo-pack-types.md` for the schema, capabilities, and bindings
+requirements.
+
 ## CLI reference
 
 `packc` exposes a `build` subcommand with structured flags:

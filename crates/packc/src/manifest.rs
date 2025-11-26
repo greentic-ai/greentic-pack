@@ -4,6 +4,8 @@ use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use greentic_pack::events::EventsSection;
+use greentic_pack::messaging::MessagingSection;
+use greentic_pack::repo::RepoPackSection;
 use greentic_types::{PackKind, Signature as SharedSignature, SignatureAlgorithm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -40,6 +42,10 @@ pub struct PackSpec {
     #[serde(default)]
     pub events: Option<EventsSection>,
     #[serde(default)]
+    pub repo: Option<RepoPackSection>,
+    #[serde(default)]
+    pub messaging: Option<MessagingSection>,
+    #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
 
@@ -53,6 +59,12 @@ impl PackSpec {
         }
         if let Some(events) = &self.events {
             events.validate()?;
+        }
+        if let Some(repo) = &self.repo {
+            repo.validate()?;
+        }
+        if let Some(messaging) = &self.messaging {
+            messaging.validate()?;
         }
         Ok(())
     }
@@ -90,6 +102,10 @@ pub struct PackManifest {
     pub imports_required: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<EventsSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<RepoPackSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messaging: Option<MessagingSection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,6 +167,8 @@ pub fn build_manifest(
         templates: template_entries,
         imports_required: bundle.spec.imports_required.clone(),
         events: bundle.spec.events.clone(),
+        repo: bundle.spec.repo.clone(),
+        messaging: bundle.spec.messaging.clone(),
     }
 }
 

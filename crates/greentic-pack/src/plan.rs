@@ -201,6 +201,8 @@ mod tests {
             entry_flows: vec!["flow.main".into()],
             created_at_utc: "2025-01-01T00:00:00Z".into(),
             events: None,
+            repo: None,
+            messaging: None,
             annotations: JsonMap::new(),
         };
         let connectors = json!({
