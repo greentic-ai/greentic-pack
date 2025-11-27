@@ -506,6 +506,7 @@ mod tests {
 
     fn sample_meta() -> PackMeta {
         PackMeta {
+            pack_version: crate::builder::PACK_VERSION,
             pack_id: "ai.greentic.demo.reader".into(),
             version: Version::parse("0.1.0").unwrap(),
             name: "Reader Demo".into(),
@@ -513,12 +514,16 @@ mod tests {
             description: None,
             authors: vec!["Greentic".into()],
             license: None,
+            homepage: None,
+            support: None,
+            vendor: None,
             imports: vec![],
             entry_flows: vec!["demo".into()],
             created_at_utc: "2025-01-01T00:00:00Z".into(),
             events: None,
             repo: None,
             messaging: None,
+            interfaces: Vec::new(),
             annotations: Map::new(),
         }
     }

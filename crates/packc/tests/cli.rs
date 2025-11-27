@@ -243,8 +243,46 @@ repo:
       - "deps"
   bindings:
     scan:
-      - world: "greentic:scan/scanner"
-        component_id: "scanner-snyk"
+      - package: "greentic:scan"
+        world: "scanner"
+        version: "1.0.0"
+        component: "scanner-snyk"
+        entrypoint: "scan"
+"#,
+    );
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("packc"));
+    cmd.current_dir(workspace_root());
+    cmd.args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn lint_accepts_valid_billing_pack() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("billing-demo");
+    copy_example_pack(&pack_dir);
+    inject_repo_section(
+        &pack_dir,
+        r#"
+repo:
+  kind: billing-provider
+  capabilities:
+    billing:
+      - "metered"
+  bindings:
+    billing:
+      - package: "greentic:billing"
+        world: "provider"
+        version: "1.0.0"
+        component: "billing-generic"
+        entrypoint: "serve"
+interfaces:
+  - package: "greentic:analytics"
+    world: "tracker"
+    version: "1.0.0"
+    component: "analytics-adapter"
+    entrypoint: "track"
 "#,
     );
 
@@ -281,6 +319,46 @@ repo:
     assert!(
         stderr.contains("bindings") && stderr.contains("scanner"),
         "stderr should mention missing bindings for scanner, got: {stderr}"
+    );
+}
+
+#[test]
+fn lint_rejects_missing_pack_version() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    strip_pack_version(&pack_dir);
+
+    let assert = Command::new(assert_cmd::cargo::cargo_bin!("packc"))
+        .current_dir(workspace_root())
+        .args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_lowercase();
+    assert!(
+        stderr.contains("packversion"),
+        "stderr should mention missing packVersion, got: {stderr}"
+    );
+}
+
+#[test]
+fn lint_rejects_invalid_pack_version() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    set_pack_version(&pack_dir, 99);
+
+    let assert = Command::new(assert_cmd::cargo::cargo_bin!("packc"))
+        .current_dir(workspace_root())
+        .args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_lowercase();
+    assert!(
+        stderr.contains("unsupported packversion") || stderr.contains("packversion"),
+        "stderr should mention invalid packVersion, got: {stderr}"
     );
 }
 
@@ -331,4 +409,33 @@ messaging:
         features: ["attachments", "threads"]
 "#;
     fs::write(&path, format!("{original}{block}\n")).expect("write updated pack.yaml");
+}
+
+fn strip_pack_version(pack_dir: &std::path::Path) {
+    let path = pack_dir.join("pack.yaml");
+    let contents = fs::read_to_string(&path).expect("read pack.yaml");
+    let filtered: String = contents
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("packVersion"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    fs::write(&path, filtered).expect("write pack.yaml without packVersion");
+}
+
+fn set_pack_version(pack_dir: &std::path::Path, version: u32) {
+    let path = pack_dir.join("pack.yaml");
+    let contents = fs::read_to_string(&path).expect("read pack.yaml");
+    let mut lines: Vec<String> = contents.lines().map(|line| line.to_string()).collect();
+    let mut replaced = false;
+    for line in &mut lines {
+        if line.trim_start().starts_with("packVersion") {
+            *line = format!("packVersion: {version}");
+            replaced = true;
+            break;
+        }
+    }
+    if !replaced {
+        lines.insert(0, format!("packVersion: {version}"));
+    }
+    fs::write(&path, lines.join("\n") + "\n").expect("write pack.yaml with packVersion");
 }

@@ -65,6 +65,10 @@ resolved by the host through the MCP runtime, so flows should target
 `mcp.exec` nodes rather than embedding tool adapters. The `tools` field remains
 in `PackSpec` for compatibility but new packs should rely on MCP.
 
+Schemas for `pack.yaml` live under `crates/packc/schemas/` as both
+`pack.v1.schema.{json,yaml}` and `pack.schema.v1.{json,yaml}`; the Rust
+validation in `packc` remains the source of truth.
+
 ### greentic-pack
 
 Operators inspect and plan published packs via the `greentic-pack` CLI:
@@ -118,6 +122,9 @@ assets change to ensure `data.rs` stays in sync.
 - `examples/qa-demo` – showcases a multi-turn QA assistant that pauses for user
   input, invokes a specialist subflow via `flow.call`, and emits multiple
   outbound messages from a single run.
+- `examples/billing-demo`, `examples/search-demo`, `examples/reco-demo` – minimal
+  manifests showing the new billing/search/recommendation provider kinds,
+  packVersion usage, and interface bindings.
 
 ## Further documentation
 

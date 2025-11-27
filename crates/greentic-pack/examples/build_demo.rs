@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
     fs::write(&wasm_path, DEMO_WASM)?;
 
     let meta = PackMeta {
+        pack_version: greentic_pack::builder::PACK_VERSION,
         pack_id: "ai.greentic.demo.local".into(),
         version: Version::parse("0.1.0").unwrap(),
         name: "Greentic Demo Pack".into(),
@@ -26,12 +27,16 @@ fn main() -> anyhow::Result<()> {
         description: Some("Minimal pack built via PackBuilder".into()),
         authors: vec!["Greentic".into()],
         license: Some("MIT".into()),
+        homepage: None,
+        support: None,
+        vendor: None,
         imports: vec![],
         entry_flows: vec!["demo".into()],
         created_at_utc: "2025-01-01T00:00:00Z".into(),
         events: None,
         repo: None,
         messaging: None,
+        interfaces: Vec::new(),
         annotations: Map::new(),
     };
 

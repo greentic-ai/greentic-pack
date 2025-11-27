@@ -190,6 +190,7 @@ mod tests {
     #[test]
     fn infers_plan_with_channels_and_secrets() {
         let mut meta = PackMeta {
+            pack_version: crate::builder::PACK_VERSION,
             pack_id: "demo.pack".to_string(),
             version: Version::parse("1.2.3").unwrap(),
             name: "Demo".into(),
@@ -197,12 +198,16 @@ mod tests {
             description: None,
             authors: Vec::new(),
             license: None,
+            homepage: None,
+            support: None,
+            vendor: None,
             imports: Vec::new(),
             entry_flows: vec!["flow.main".into()],
             created_at_utc: "2025-01-01T00:00:00Z".into(),
             events: None,
             repo: None,
             messaging: None,
+            interfaces: Vec::new(),
             annotations: JsonMap::new(),
         };
         let connectors = json!({

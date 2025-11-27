@@ -1,0 +1,20 @@
+packVersion: 1
+id: greentic.billing.demo
+version: 0.1.0
+name: Billing Demo Pack
+description: Example billing-provider pack manifest
+flow_files:
+  - flows/main.ygtc
+entry_flows:
+  - main
+repo:
+  kind: billing-provider
+  capabilities:
+    billing: ["metered", "flat"]
+  bindings:
+    billing:
+      - package: "greentic:billing"
+        world: "provider"
+        version: "1.0.0"
+        component: "billing-generic"
+        entrypoint: "serve"

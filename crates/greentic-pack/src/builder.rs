@@ -24,15 +24,22 @@ use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 use crate::events::EventsSection;
 use crate::messaging::MessagingSection;
-use crate::repo::RepoPackSection;
+use crate::repo::{RepoBinding, RepoPackSection};
 use greentic_types::PackKind;
 
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
 pub(crate) const SIGNATURE_PATH: &str = "signatures/pack.sig";
 pub(crate) const SIGNATURE_CHAIN_PATH: &str = "signatures/chain.pem";
+pub const PACK_VERSION: u32 = 1;
+
+fn default_pack_version() -> u32 {
+    PACK_VERSION
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PackMeta {
+    #[serde(rename = "packVersion", default = "default_pack_version")]
+    pub pack_version: u32,
     pub pack_id: String,
     pub version: Version,
     pub name: String,
@@ -45,6 +52,12 @@ pub struct PackMeta {
     #[serde(default)]
     pub license: Option<String>,
     #[serde(default)]
+    pub homepage: Option<String>,
+    #[serde(default)]
+    pub support: Option<String>,
+    #[serde(default)]
+    pub vendor: Option<String>,
+    #[serde(default)]
     pub imports: Vec<ImportRef>,
     pub entry_flows: Vec<String>,
     pub created_at_utc: String,
@@ -54,12 +67,21 @@ pub struct PackMeta {
     pub repo: Option<RepoPackSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub messaging: Option<MessagingSection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<RepoBinding>,
     #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
 
 impl PackMeta {
     fn validate(&self) -> Result<()> {
+        if self.pack_version != PACK_VERSION {
+            bail!(
+                "unsupported packVersion {}; expected {}",
+                self.pack_version,
+                PACK_VERSION
+            );
+        }
         if self.pack_id.trim().is_empty() {
             bail!("pack_id is required");
         }
@@ -80,6 +102,9 @@ impl PackMeta {
         }
         if let Some(messaging) = &self.messaging {
             messaging.validate()?;
+        }
+        for binding in &self.interfaces {
+            binding.validate("interfaces")?;
         }
         Ok(())
     }
@@ -808,6 +833,7 @@ mod tests {
 
     fn sample_meta() -> PackMeta {
         PackMeta {
+            pack_version: PACK_VERSION,
             pack_id: "ai.greentic.demo.test".to_string(),
             version: Version::parse("0.1.0").unwrap(),
             name: "Test Pack".to_string(),
@@ -815,12 +841,16 @@ mod tests {
             description: Some("integration test".to_string()),
             authors: vec!["Greentic".to_string()],
             license: Some("MIT".to_string()),
+            homepage: None,
+            support: None,
+            vendor: None,
             imports: Vec::new(),
             entry_flows: vec!["main".to_string()],
             created_at_utc: "2025-01-01T00:00:00Z".to_string(),
             events: None,
             repo: None,
             messaging: None,
+            interfaces: Vec::new(),
             annotations: JsonMap::new(),
         }
     }

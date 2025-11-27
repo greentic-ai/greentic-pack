@@ -54,6 +54,7 @@ fn build_sample_pack(out_path: &Path) {
     let manifest_json = serde_json::to_string_pretty(&component_manifest).unwrap();
 
     let mut meta = PackMeta {
+        pack_version: greentic_pack::builder::PACK_VERSION,
         pack_id: "demo.pack".into(),
         version: Version::parse("1.2.3").unwrap(),
         name: "Demo Pack".into(),
@@ -61,6 +62,9 @@ fn build_sample_pack(out_path: &Path) {
         description: None,
         authors: vec!["Greentic".into()],
         license: Some("MIT".into()),
+        homepage: None,
+        support: None,
+        vendor: None,
         imports: vec![ImportRef {
             pack_id: "dependency.pack".into(),
             version_req: "*".into(),
@@ -84,6 +88,7 @@ fn build_sample_pack(out_path: &Path) {
         }),
         repo: None,
         messaging: None,
+        interfaces: Vec::new(),
         annotations: serde_json::Map::new(),
     };
     meta.annotations.insert(

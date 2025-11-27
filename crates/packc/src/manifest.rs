@@ -3,9 +3,10 @@ use crate::templates::TemplateAsset;
 use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use greentic_pack::builder::PACK_VERSION;
 use greentic_pack::events::EventsSection;
 use greentic_pack::messaging::MessagingSection;
-use greentic_pack::repo::RepoPackSection;
+use greentic_pack::repo::{RepoBinding, RepoPackSection};
 use greentic_types::{PackKind, Signature as SharedSignature, SignatureAlgorithm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,8 @@ use toml::Value;
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct PackSpec {
+    #[serde(rename = "packVersion")]
+    pub pack_version: u32,
     pub id: String,
     pub version: String,
     #[serde(default)]
@@ -31,6 +34,12 @@ pub struct PackSpec {
     pub authors: Vec<String>,
     #[serde(default)]
     pub license: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+    #[serde(default)]
+    pub support: Option<String>,
+    #[serde(default)]
+    pub vendor: Option<String>,
     #[serde(default)]
     pub flow_files: Vec<String>,
     #[serde(default)]
@@ -46,11 +55,20 @@ pub struct PackSpec {
     #[serde(default)]
     pub messaging: Option<MessagingSection>,
     #[serde(default)]
+    pub interfaces: Vec<RepoBinding>,
+    #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
 
 impl PackSpec {
     fn validate(&self) -> Result<()> {
+        if self.pack_version != PACK_VERSION {
+            anyhow::bail!(
+                "unsupported packVersion {}; expected {}",
+                self.pack_version,
+                PACK_VERSION
+            );
+        }
         if self.id.trim().is_empty() {
             anyhow::bail!("pack id must not be empty");
         }
@@ -65,6 +83,9 @@ impl PackSpec {
         }
         if let Some(messaging) = &self.messaging {
             messaging.validate()?;
+        }
+        for binding in &self.interfaces {
+            binding.validate("interfaces")?;
         }
         Ok(())
     }

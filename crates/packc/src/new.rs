@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use clap::{Args, ValueEnum};
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::{EncodePrivateKey, EncodePublicKey};
+use greentic_pack::builder::PACK_VERSION;
 use pkcs8::LineEnding;
 use rand_core_06::OsRng;
 use serde::Serialize;
@@ -193,6 +194,7 @@ fn ensure_template_supported(template: &TemplateKind) -> Result<()> {
 
 fn render_pack_spec(id: &str) -> String {
     let spec = PackSpec {
+        pack_version: PACK_VERSION,
         id: id.to_string(),
         version: DEFAULT_VERSION.to_string(),
         kind: Some(PackKind::Application),
@@ -200,6 +202,9 @@ fn render_pack_spec(id: &str) -> String {
         description: Some("Starter Greentic pack".into()),
         authors: vec!["Greentic <engineering@greentic.dev>".into()],
         license: Some("MIT".into()),
+        homepage: None,
+        support: None,
+        vendor: None,
         flow_files: vec![DEFAULT_FLOW_FILE.to_string()],
         template_dirs: Vec::new(),
         entry_flows: vec!["welcome".to_string()],
@@ -207,6 +212,7 @@ fn render_pack_spec(id: &str) -> String {
         events: None,
         repo: None,
         messaging: None,
+        interfaces: Vec::new(),
         annotations: JsonMap::new(),
     };
     serde_yaml_bw::to_string(&spec).expect("pack spec serialises")

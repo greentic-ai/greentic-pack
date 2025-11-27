@@ -3,7 +3,7 @@ use crate::templates::TemplateAsset;
 use crate::{BuildArgs, embed, flows, manifest, sbom, templates};
 use anyhow::{Context, Result};
 use greentic_pack::builder::{
-    ComponentArtifact, ImportRef, PackBuilder, PackMeta, Provenance, Signing,
+    ComponentArtifact, ImportRef, PACK_VERSION, PackBuilder, PackMeta, Provenance, Signing,
 };
 use semver::Version;
 use serde_json::Value as JsonValue;
@@ -194,6 +194,7 @@ fn maybe_build_gtpack(
         .with_context(|| format!("invalid pack version {}", spec_bundle.spec.version))?;
 
     let meta = PackMeta {
+        pack_version: PACK_VERSION,
         pack_id: spec_bundle.spec.id.clone(),
         version,
         name,
@@ -201,12 +202,16 @@ fn maybe_build_gtpack(
         description: spec_bundle.spec.description.clone(),
         authors: spec_bundle.spec.authors.clone(),
         license: spec_bundle.spec.license.clone(),
+        homepage: spec_bundle.spec.homepage.clone(),
+        support: spec_bundle.spec.support.clone(),
+        vendor: spec_bundle.spec.vendor.clone(),
         imports,
         entry_flows,
         created_at_utc: created_at.clone(),
         events: spec_bundle.spec.events.clone(),
         repo: spec_bundle.spec.repo.clone(),
         messaging: spec_bundle.spec.messaging.clone(),
+        interfaces: spec_bundle.spec.interfaces.clone(),
         annotations,
     };
 
