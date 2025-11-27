@@ -6,7 +6,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use greentic_pack::builder::PACK_VERSION;
 use greentic_pack::events::EventsSection;
 use greentic_pack::messaging::MessagingSection;
-use greentic_pack::repo::{RepoBinding, RepoPackSection};
+use greentic_pack::repo::{InterfaceBinding, RepoPackSection};
 use greentic_types::{PackKind, Signature as SharedSignature, SignatureAlgorithm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,7 @@ pub struct PackSpec {
     #[serde(default)]
     pub messaging: Option<MessagingSection>,
     #[serde(default)]
-    pub interfaces: Vec<RepoBinding>,
+    pub interfaces: Vec<InterfaceBinding>,
     #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }

@@ -22,5 +22,3 @@ interfaces:
   - package: "greentic:analytics"
     world: "tracker"
     version: "1.0.0"
-    component: "analytics-adapter"
-    entrypoint: "track"

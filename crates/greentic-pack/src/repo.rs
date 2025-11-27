@@ -226,6 +226,30 @@ impl RepoPackSection {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+pub struct InterfaceBinding {
+    pub package: String,
+    pub world: String,
+    pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+impl InterfaceBinding {
+    pub fn validate(&self, label: &str) -> Result<()> {
+        if self.package.trim().is_empty() {
+            bail!("{label}[].package is required");
+        }
+        if self.world.trim().is_empty() {
+            bail!("{label}[].world is required");
+        }
+        if self.version.trim().is_empty() {
+            bail!("{label}[].version is required");
+        }
+        Ok(())
+    }
+}
+
 fn ensure_capability_keys_match_kind(caps: &RepoCapabilities, kind: &RepoPackKind) -> Result<()> {
     let unexpected = |label: &str| {
         anyhow!(

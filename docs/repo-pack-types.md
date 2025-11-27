@@ -38,7 +38,8 @@ repo:
   - `component` – component identifier inside this pack
   - `entrypoint` – exported function for the world
   - `profile` – optional profile selector
-- Optional `interfaces` (top-level array) reuses the same binding shape when you need to list additional worlds outside the per-kind map.
+- Optional `interfaces` (top-level array) list additional worlds outside the per-kind map; they use the same package/world/version triple (no component/entrypoint required).
+- Reserved/unsupported in v1: `kind: rollout-strategy` (and other Distributor-oriented kinds). These must be rejected by tooling; they are reserved for a future phase.
 
 Top-level metadata such as `homepage`, `support`, `license`, and `vendor` are allowed (type-checked only) plus a free-form `annotations` map for everything else.
 

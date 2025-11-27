@@ -69,6 +69,10 @@ Schemas for `pack.yaml` live under `crates/packc/schemas/` as both
 `pack.v1.schema.{json,yaml}` and `pack.schema.v1.{json,yaml}`; the Rust
 validation in `packc` remains the source of truth.
 
+Note: rollout-strategy (Distributor-oriented) pack kinds are reserved for a
+future phase and must be rejected in v1; only the documented provider kinds are
+accepted.
+
 ### greentic-pack
 
 Operators inspect and plan published packs via the `greentic-pack` CLI:

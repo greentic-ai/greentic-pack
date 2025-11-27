@@ -24,7 +24,7 @@ use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 use crate::events::EventsSection;
 use crate::messaging::MessagingSection;
-use crate::repo::{RepoBinding, RepoPackSection};
+use crate::repo::{InterfaceBinding, RepoPackSection};
 use greentic_types::PackKind;
 
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
@@ -68,7 +68,7 @@ pub struct PackMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub messaging: Option<MessagingSection>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub interfaces: Vec<RepoBinding>,
+    pub interfaces: Vec<InterfaceBinding>,
     #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }

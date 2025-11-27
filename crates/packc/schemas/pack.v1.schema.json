@@ -68,7 +68,7 @@
       "type": "array",
       "default": [],
       "items": {
-        "$ref": "#/$defs/RepoBinding"
+        "$ref": "#/$defs/InterfaceBinding"
       }
     },
     "kind": {
@@ -246,6 +246,31 @@
           }
         }
       }
+    },
+    "InterfaceBinding": {
+      "type": "object",
+      "properties": {
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "world": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "package",
+        "world",
+        "version"
+      ]
     },
     "MessagingAdapter": {
       "type": "object",

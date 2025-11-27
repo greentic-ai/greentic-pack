@@ -281,8 +281,6 @@ interfaces:
   - package: "greentic:analytics"
     world: "tracker"
     version: "1.0.0"
-    component: "analytics-adapter"
-    entrypoint: "track"
 "#,
     );
 
@@ -319,6 +317,36 @@ repo:
     assert!(
         stderr.contains("bindings") && stderr.contains("scanner"),
         "stderr should mention missing bindings for scanner, got: {stderr}"
+    );
+}
+
+#[test]
+fn lint_rejects_rollout_strategy_kind() {
+    let temp = tempdir().expect("temp dir");
+    let pack_dir = temp.path().join("weather-demo");
+    copy_example_pack(&pack_dir);
+    inject_repo_section(
+        &pack_dir,
+        r#"
+repo:
+  kind: rollout-strategy
+  capabilities:
+    policy:
+      - "fake"
+  bindings: {}
+"#,
+    );
+
+    let assert = Command::new(assert_cmd::cargo::cargo_bin!("packc"))
+        .current_dir(workspace_root())
+        .args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_lowercase();
+    assert!(
+        stderr.contains("rollout-strategy") || stderr.contains("unknown variant"),
+        "stderr should mention rollout-strategy rejection, got: {stderr}"
     );
 }
 
