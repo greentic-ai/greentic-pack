@@ -91,7 +91,7 @@ builder_demo_check() (
 
   local tmpdir
   tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' EXIT
+  trap "rm -rf '$tmpdir'" RETURN
   local out1="$tmpdir/demo1.gtpack"
   local out2="$tmpdir/demo2.gtpack"
 
@@ -130,7 +130,7 @@ packc_gtpack_check() {
 
   local tmpdir
   tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' EXIT
+  trap "rm -rf '$tmpdir'" RETURN
   local wasm="$tmpdir/pack.wasm"
   local manifest="$tmpdir/manifest.cbor"
   local sbom="$tmpdir/sbom.cdx.json"
