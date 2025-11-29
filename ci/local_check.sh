@@ -115,13 +115,17 @@ builder_demo_check() (
   echo "$report" | jq -e 'has("sbom") and (all(.sbom[]; (.media_type | length > 0)))' >/dev/null
 )
 
-packc_gtpack_check() (
+packc_gtpack_check() {
   require_tool cargo "packc build" || return $?
   require_tool jq "packc gtpack inspect" || return $?
+  if ! can_reach_cratesio; then
+    echo "[skip] packc gtpack (crates.io unreachable)"
+    return 0
+  fi
 
   if [[ "$LOCAL_CHECK_ONLINE" != "1" ]]; then
     echo "[skip] packc gtpack (offline mode)"
-    return 99
+    return 0
   fi
 
   local tmpdir
@@ -132,18 +136,27 @@ packc_gtpack_check() (
   local sbom="$tmpdir/sbom.cdx.json"
   local gtpack="$tmpdir/pack.gtpack"
 
-  cargo run -p packc --bin packc -- build \
+  local build_log="$tmpdir/packc-build.log"
+  if ! cargo run -p packc --bin packc -- build \
     --in examples/weather-demo \
     --out "$wasm" \
     --manifest "$manifest" \
     --sbom "$sbom" \
     --gtpack-out "$gtpack" \
-    --log warn
+    --log warn \
+    >"$build_log" 2>&1; then
+    if grep -q "Couldn't resolve host name" "$build_log"; then
+      echo "[skip] packc gtpack (crates.io unreachable)"
+      return 0
+    fi
+    cat "$build_log"
+    return 1
+  fi
 
   local report
   report=$(cargo run -p greentic-pack --bin gtpack-inspect -- --policy devok --json "$gtpack")
   echo "$report" | jq -e 'has("sbom") and (all(.sbom[]; (.media_type | length > 0)))' >/dev/null
-)
+}
 
 main() {
   echo "LOCAL_CHECK_ONLINE=$LOCAL_CHECK_ONLINE"
@@ -173,6 +186,25 @@ main() {
 
   echo ""
   echo "✅ local checks completed"
+}
+
+can_reach_cratesio() {
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON=python
+  else
+    return 1
+  fi
+  "$PYTHON" - <<'PY'
+import socket
+try:
+    socket.getaddrinfo("index.crates.io", None)
+    print("ok")
+    raise SystemExit(0)
+except socket.gaierror:
+    raise SystemExit(1)
+PY
 }
 
 main "$@"

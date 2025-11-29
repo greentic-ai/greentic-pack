@@ -88,6 +88,8 @@ Outputs:
 - `dist/sbom.cdx.json` – CycloneDX summary documenting flows/templates.
 - `crates/pack_component/src/data.rs` – regenerated Rust source containing raw
   bytes for the manifest, flow sources, and templates.
+- `.packc/mcp/<id>/component.wasm` – merged MCP adapter+router components for
+  each `mcp_components` entry.
 
 When you pass `--gtpack-out`, packc calls `greentic-pack` to write the
 canonical `.gtpack` archive. Use
@@ -112,14 +114,26 @@ directory; in that case it invokes `packc build --gtpack-out` internally to
 create a temporary archive before running the planner. Set the
 `GREENTIC_PACK_PLAN_PACKC` environment variable if `packc` is not on `PATH`.
 
-## Authoring MCP-aware flows
+## MCP components and flows
 
-- Use `mcp.exec` nodes to describe remote actions. Specify the MCP component and
-  action identifiers so the runtime can resolve them at execution time.
+- Declare MCP routers under `mcp_components` in `pack.yaml` with an `id`,
+  `router_ref`, and optional `protocol`/`adapter_template` (defaults:
+  `25.06.18` + `default`).
+- `router_ref` must be a local file path (relative to the pack root). OCI or
+  remote router references are not supported yet.
+- `packc build` composes the MCP adapter template for the chosen protocol with
+  each router using `wasm-tools compose`, emitting merged
+  `greentic:component@0.4.0` artifacts under `.packc/mcp/<id>/component.wasm`.
+- Override the default adapter by setting
+  `GREENTIC_PACK_ADAPTER_25_06_18=/path/to/adapter.component.wasm` when needed.
+- packc pins a specific MCP adapter reference internally (`MCP_ADAPTER_25_06_18`);
+  current image: `ghcr.io/greentic-ai/greentic-mcp-adapter:25.06.18-v0.4.4`
+  (digest to be added when published).
+- Use `mcp.exec` nodes to describe remote actions. Set the `component` field to
+  the `mcp_components.id` you defined; the merged component handles the
+  adapter-to-router wiring.
 - Pipe user input into node arguments through the `in` variables and reference
   pack parameters for defaults (e.g. `parameters.days_default`).
-- Avoid hard-coding tool implementations in the pack. The host negotiates MCP
-  sessions and provides the necessary connectors.
 
 Example snippet from the bundled weather demo:
 

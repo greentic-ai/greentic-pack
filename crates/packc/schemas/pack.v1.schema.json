@@ -85,6 +85,13 @@
       ],
       "default": null
     },
+    "mcp_components": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/McpComponentSpec"
+      }
+    },
     "messaging": {
       "anyOf": [
         {
@@ -270,6 +277,29 @@
         "package",
         "world",
         "version"
+      ]
+    },
+    "McpComponentSpec": {
+      "type": "object",
+      "properties": {
+        "adapter_template": {
+          "type": "string",
+          "default": "default"
+        },
+        "id": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string",
+          "default": "25.06.18"
+        },
+        "router_ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "router_ref"
       ]
     },
     "MessagingAdapter": {

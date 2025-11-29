@@ -1,6 +1,6 @@
 use crate::flows::FlowAsset;
 use crate::templates::TemplateAsset;
-use crate::{BuildArgs, embed, flows, manifest, sbom, templates};
+use crate::{BuildArgs, embed, flows, manifest, mcp, sbom, templates};
 use anyhow::{Context, Result};
 use greentic_pack::builder::{
     ComponentArtifact, ImportRef, PACK_VERSION, PackBuilder, PackMeta, Provenance, Signing,
@@ -73,6 +73,11 @@ pub fn run(opts: &BuildOptions) -> Result<()> {
     let templates = templates::collect_templates(&opts.pack_dir, &spec_bundle.spec)?;
     info!(count = templates.len(), "collected templates");
 
+    let pack_version = Version::parse(&spec_bundle.spec.version)
+        .with_context(|| format!("invalid pack version {}", spec_bundle.spec.version))?;
+
+    let mcp_components = mcp::compose_all(&opts.pack_dir, &spec_bundle, &pack_version)?;
+
     let pack_manifest = manifest::build_manifest(&spec_bundle, &flows, &templates);
     let manifest_bytes = manifest::encode_manifest(&pack_manifest)?;
     info!(len = manifest_bytes.len(), "encoded manifest");
@@ -93,7 +98,14 @@ pub fn run(opts: &BuildOptions) -> Result<()> {
 
     embed::compile_component(&opts.component_data, &opts.component_out)?;
 
-    maybe_build_gtpack(opts, &spec_bundle, &flows, &templates)?;
+    maybe_build_gtpack(
+        opts,
+        &spec_bundle,
+        &flows,
+        &templates,
+        &pack_version,
+        &mcp_components,
+    )?;
 
     info!("build complete");
     Ok(())
@@ -136,6 +148,8 @@ fn maybe_build_gtpack(
     spec_bundle: &manifest::SpecBundle,
     flows: &[FlowAsset],
     templates: &[TemplateAsset],
+    pack_version: &Version,
+    mcp_components: &[mcp::ComposedMcpComponent],
 ) -> Result<()> {
     if opts.dry_run {
         info!("dry-run requested; skipping .gtpack generation");
@@ -190,13 +204,10 @@ fn maybe_build_gtpack(
         .name
         .clone()
         .unwrap_or_else(|| spec_bundle.spec.id.clone());
-    let version = Version::parse(&spec_bundle.spec.version)
-        .with_context(|| format!("invalid pack version {}", spec_bundle.spec.version))?;
-
     let meta = PackMeta {
         pack_version: PACK_VERSION,
         pack_id: spec_bundle.spec.id.clone(),
-        version,
+        version: pack_version.clone(),
         name,
         kind: spec_bundle.spec.kind.clone(),
         description: spec_bundle.spec.description.clone(),
@@ -233,6 +244,19 @@ fn maybe_build_gtpack(
         hash_blake3: None,
     };
     builder = builder.with_component(component);
+
+    for mcp in mcp_components {
+        builder = builder.with_component(ComponentArtifact {
+            name: mcp.id.clone(),
+            version: mcp.version.clone(),
+            wasm_path: mcp.artifact_path.clone(),
+            schema_json: None,
+            manifest_json: None,
+            capabilities: None,
+            world: Some("greentic:component@0.4.0".to_string()),
+            hash_blake3: None,
+        });
+    }
 
     for template in templates {
         builder = builder.with_asset_bytes(template.logical_path.clone(), template.bytes.clone());

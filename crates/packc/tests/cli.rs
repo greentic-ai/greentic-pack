@@ -1,6 +1,7 @@
 use assert_cmd::prelude::*;
 use serde_json::Value;
 use std::fs;
+use std::net::ToSocketAddrs;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::tempdir;
@@ -107,6 +108,15 @@ fn scaffold_with_sign_generates_keys() {
 fn build_outputs_gtpack_archive() {
     let temp = tempdir().expect("temp dir");
     let base = temp.path();
+    if std::env::var("PACKC_OFFLINE").is_ok()
+        || std::env::var("CARGO_NET_OFFLINE")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false)
+        || !dns_resolves_index_crates()
+    {
+        eprintln!("skipping gtpack archive test; offline mode detected");
+        return;
+    }
     let wasm_target_installed = Command::new("rustup")
         .args(["target", "list", "--installed"])
         .output()
@@ -179,6 +189,13 @@ fn build_outputs_gtpack_archive() {
         }),
         "sbom entries must expose media_type"
     );
+}
+
+fn dns_resolves_index_crates() -> bool {
+    ("index.crates.io", 443)
+        .to_socket_addrs()
+        .map(|mut addrs| addrs.next().is_some())
+        .unwrap_or(false)
 }
 
 #[test]

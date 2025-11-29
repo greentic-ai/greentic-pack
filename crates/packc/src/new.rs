@@ -213,6 +213,7 @@ fn render_pack_spec(id: &str) -> String {
         repo: None,
         messaging: None,
         interfaces: Vec::new(),
+        mcp_components: Vec::new(),
         annotations: JsonMap::new(),
     };
     serde_yaml_bw::to_string(&spec).expect("pack spec serialises")

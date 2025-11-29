@@ -5,6 +5,7 @@ pub mod cli;
 pub mod embed;
 pub mod flows;
 pub mod manifest;
+pub mod mcp;
 pub mod new;
 pub mod sbom;
 pub mod signing;

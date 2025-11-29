@@ -47,6 +47,25 @@ to confirm the SBOM entries, flows, and templates embedded inside the archive.
 > ℹ️ The build step expects the `wasm32-wasip2` Rust target. Install it
 > once with `rustup target add wasm32-wasip2`.
 
+#### MCP components
+
+- Declare MCP routers in `pack.yaml` via `mcp_components` (id, router_ref,
+  optional `protocol` defaulting to `25.06.18`, and optional
+  `adapter_template` defaulting to `default`).
+- During `packc build`, the MCP adapter template is composed with each router
+  using `wasm-tools compose`, producing merged `greentic:component@0.4.0`
+  artifacts written under `.packc/mcp/<id>/component.wasm`.
+- `router_ref` must point to a local component file (paths relative to the pack
+  root). OCI/remote router references are not supported yet.
+- The merged components are embedded in the `.gtpack` manifest; router
+  components are not exposed separately unless explicitly requested.
+- The default adapter can be overridden via
+  `GREENTIC_PACK_ADAPTER_25_06_18=/path/to/adapter.component.wasm` if you need
+  to pin or test a specific adapter build.
+- packc pins a specific MCP adapter reference internally (see
+  `MCP_ADAPTER_25_06_18` in code); current image:
+  `ghcr.io/greentic-ai/greentic-mcp-adapter:25.06.18-v0.4.4` (digest pending).
+
 Use `packc new` to bootstrap a fresh pack directory that already matches the
 current schema:
 

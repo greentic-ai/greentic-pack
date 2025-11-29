@@ -11,6 +11,7 @@ use greentic_types::{PackKind, Signature as SharedSignature, SignatureAlgorithm}
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
@@ -57,6 +58,8 @@ pub struct PackSpec {
     #[serde(default)]
     pub interfaces: Vec<InterfaceBinding>,
     #[serde(default)]
+    pub mcp_components: Vec<McpComponentSpec>,
+    #[serde(default)]
     pub annotations: JsonMap<String, JsonValue>,
 }
 
@@ -87,6 +90,7 @@ impl PackSpec {
         for binding in &self.interfaces {
             binding.validate("interfaces")?;
         }
+        McpComponentSpec::validate_all(&self.mcp_components)?;
         Ok(())
     }
 }
@@ -127,6 +131,8 @@ pub struct PackManifest {
     pub repo: Option<RepoPackSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub messaging: Option<MessagingSection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_components: Vec<McpComponentManifest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +154,77 @@ pub struct BlobEntry {
     pub logical_path: String,
     pub sha256: String,
     pub size: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct McpComponentSpec {
+    pub id: String,
+    #[serde(rename = "router_ref")]
+    pub router_ref: String,
+    #[serde(default = "default_mcp_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_adapter_template")]
+    pub adapter_template: String,
+}
+
+impl McpComponentSpec {
+    pub const PROTOCOL_25_06_18: &'static str = "25.06.18";
+    pub const PROTOCOL_LATEST: &'static str = "latest";
+    pub const ADAPTER_DEFAULT: &'static str = "default";
+
+    fn validate_all(specs: &[McpComponentSpec]) -> Result<()> {
+        let mut seen_ids = BTreeSet::new();
+        for entry in specs {
+            if entry.id.trim().is_empty() {
+                anyhow::bail!("mcp_components entries must include a non-empty id");
+            }
+            if !seen_ids.insert(entry.id.clone()) {
+                anyhow::bail!("duplicate mcp_components id detected: {}", entry.id);
+            }
+            if entry.router_ref.trim().is_empty() {
+                anyhow::bail!("mcp_components `{}` must specify router_ref", entry.id);
+            }
+            if entry.router_ref.contains("://") {
+                anyhow::bail!(
+                    "mcp_components `{}` router_ref must be a local file path; OCI/remote refs are not supported yet: {}",
+                    entry.id,
+                    entry.router_ref
+                );
+            }
+            let protocol = entry.protocol.trim();
+            if protocol != Self::PROTOCOL_25_06_18 && protocol != Self::PROTOCOL_LATEST {
+                anyhow::bail!(
+                    "mcp_components `{}` uses unsupported protocol `{}` (allowed: 25.06.18, latest)",
+                    entry.id,
+                    protocol
+                );
+            }
+            let adapter_template = entry.adapter_template.trim();
+            if adapter_template != Self::ADAPTER_DEFAULT {
+                anyhow::bail!(
+                    "mcp_components `{}` uses unsupported adapter_template `{}` (only `default` is available)",
+                    entry.id,
+                    adapter_template
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+fn default_mcp_protocol() -> String {
+    McpComponentSpec::PROTOCOL_25_06_18.to_string()
+}
+
+fn default_adapter_template() -> String {
+    McpComponentSpec::ADAPTER_DEFAULT.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpComponentManifest {
+    pub id: String,
+    pub protocol: String,
+    pub adapter_template: String,
 }
 
 pub fn build_manifest(
@@ -180,6 +257,17 @@ pub fn build_manifest(
         })
         .collect();
 
+    let mcp_entries = bundle
+        .spec
+        .mcp_components
+        .iter()
+        .map(|spec| McpComponentManifest {
+            id: spec.id.clone(),
+            protocol: normalize_protocol(&spec.protocol),
+            adapter_template: spec.adapter_template.clone(),
+        })
+        .collect();
+
     PackManifest {
         pack_id: bundle.spec.id.clone(),
         version: bundle.spec.version.clone(),
@@ -190,6 +278,7 @@ pub fn build_manifest(
         events: bundle.spec.events.clone(),
         repo: bundle.spec.repo.clone(),
         messaging: bundle.spec.messaging.clone(),
+        mcp_components: mcp_entries,
     }
 }
 
@@ -361,6 +450,14 @@ fn signature_from_doc(doc: &Value) -> Result<Option<PackSignature>> {
 
 const MANIFEST_CANDIDATES: [&str; 2] = ["pack.toml", "greentic-pack.toml"];
 
+pub fn normalize_protocol(raw: &str) -> String {
+    if raw.trim() == McpComponentSpec::PROTOCOL_LATEST {
+        McpComponentSpec::PROTOCOL_25_06_18.to_string()
+    } else {
+        raw.trim().to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +503,47 @@ mod tests {
 
         let encoded = encode_manifest(&manifest).expect("manifest encodes");
         assert!(!encoded.is_empty(), "CBOR output should not be empty");
+    }
+
+    #[test]
+    fn mcp_components_are_normalized() {
+        let spec = PackSpec {
+            pack_version: PACK_VERSION,
+            id: "demo.pack".into(),
+            version: "0.1.0".into(),
+            kind: None,
+            name: Some("Demo".into()),
+            description: None,
+            authors: Vec::new(),
+            license: None,
+            homepage: None,
+            support: None,
+            vendor: None,
+            flow_files: Vec::new(),
+            template_dirs: Vec::new(),
+            entry_flows: Vec::new(),
+            imports_required: Vec::new(),
+            events: None,
+            repo: None,
+            messaging: None,
+            interfaces: Vec::new(),
+            mcp_components: vec![McpComponentSpec {
+                id: "mcp-demo".into(),
+                router_ref: "router.component.wasm".into(),
+                protocol: McpComponentSpec::PROTOCOL_LATEST.into(),
+                adapter_template: McpComponentSpec::ADAPTER_DEFAULT.into(),
+            }],
+            annotations: JsonMap::new(),
+        };
+        let bundle = SpecBundle {
+            spec,
+            source: PathBuf::from("pack.yaml"),
+        };
+        let manifest = build_manifest(&bundle, &[], &[]);
+        assert_eq!(manifest.mcp_components.len(), 1);
+        assert_eq!(
+            manifest.mcp_components[0].protocol,
+            McpComponentSpec::PROTOCOL_25_06_18
+        );
     }
 }
