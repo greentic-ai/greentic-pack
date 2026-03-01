@@ -435,7 +435,7 @@ fn apply_template_plan(
             WizardStep::Delegate { target, .. } => {
                 let ok = match target {
                     greentic_types::WizardTarget::Flow => {
-                        run_delegate("greentic-flow", &["wizard"], pack_dir)
+                        run_delegate("greentic-flow", &["wizard", "."], pack_dir)
                     }
                     greentic_types::WizardTarget::Component => {
                         run_delegate("greentic-component", &["wizard"], pack_dir)
@@ -861,7 +861,7 @@ fn run_create_application_pack<R: BufRead, W: Write>(
 
         match setup_choice.as_str() {
             "1" => {
-                let delegate_ok = run_delegate("greentic-flow", &["wizard"], &pack_dir_path);
+                let delegate_ok = run_delegate("greentic-flow", &["wizard", "."], &pack_dir_path);
                 if !delegate_ok {
                     wizard_ui::render_line(output, &i18n.t("wizard.error.delegate_flow_failed"))?;
                     if matches!(
@@ -964,7 +964,7 @@ fn run_update_application_pack<R: BufRead, W: Write>(
 
         match choice.as_str() {
             "1" => {
-                let delegate_ok = run_delegate("greentic-flow", &["wizard"], &pack_dir_path);
+                let delegate_ok = run_delegate("greentic-flow", &["wizard", "."], &pack_dir_path);
                 if delegate_ok {
                     let _ = run_update_validate_sequence(
                         input,
@@ -1127,7 +1127,7 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
                 )?;
             }
             "2" => {
-                let delegate_ok = run_delegate("greentic-flow", &["wizard"], &pack_dir_path);
+                let delegate_ok = run_delegate("greentic-flow", &["wizard", "."], &pack_dir_path);
                 if !delegate_ok {
                     wizard_ui::render_line(output, &i18n.t("wizard.error.delegate_flow_failed"))?;
                     if matches!(
@@ -1652,6 +1652,19 @@ fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
         }
     }
 
+    if let Some(override_bin) = delegate_override_binary(binary)
+        && override_bin.exists()
+    {
+        return run_process(&override_bin, args, Some(cwd)).unwrap_or(false);
+    }
+
+    if should_prefer_monorepo_delegate(binary)
+        && let Some(dev_bin) = monorepo_delegate_binary(binary)
+        && dev_bin.exists()
+    {
+        return run_process(&dev_bin, args, Some(cwd)).unwrap_or(false);
+    }
+
     Command::new(binary)
         .args(args)
         .current_dir(cwd)
@@ -1661,6 +1674,53 @@ fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn delegate_override_binary(binary: &str) -> Option<PathBuf> {
+    let key = match binary {
+        "greentic-flow" => "GREENTIC_FLOW_BIN",
+        "greentic-component" => "GREENTIC_COMPONENT_BIN",
+        _ => return None,
+    };
+    env::var_os(key).map(PathBuf::from)
+}
+
+fn monorepo_delegate_binary(binary: &str) -> Option<PathBuf> {
+    if binary != "greentic-flow" {
+        return None;
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir.parent()?.parent()?;
+    let sibling_root = repo_root.join("../greentic-flow");
+    for rel in ["target/debug/greentic-flow", "target/release/greentic-flow"] {
+        let candidate = sibling_root.join(rel);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn should_prefer_monorepo_delegate(binary: &str) -> bool {
+    if binary != "greentic-flow" {
+        return false;
+    }
+    let Some(path_bin) = resolve_from_path(binary) else {
+        return false;
+    };
+    let path_str = path_bin.to_string_lossy();
+    path_str.contains("/.cargo/bin/greentic-flow")
+}
+
+fn resolve_from_path(binary: &str) -> Option<PathBuf> {
+    let path_var = env::var_os("PATH")?;
+    for dir in env::split_paths(&path_var) {
+        let candidate = dir.join(binary);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn wizard_self_exe() -> Result<PathBuf> {

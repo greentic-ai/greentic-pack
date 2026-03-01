@@ -612,10 +612,10 @@ fn load_component_manifest_from_disk(
     };
     let id_manifest_suffix = format!("{component_id}.manifest");
 
-    // Search near the wasm artifact first, then walk up parent directories.
-    // This supports components built into nested target/*/release paths where
-    // component.manifest.json lives at the component root.
-    for dir in std::iter::successors(Some(manifest_dir.as_path()), |d| d.parent()) {
+    // Search near the wasm artifact and, for nested target builds, walk up only
+    // until the component root (parent of `target`). This avoids picking up
+    // unrelated manifests from shared ancestor directories.
+    for dir in manifest_search_dirs(&manifest_dir) {
         let candidates = [
             dir.join("component.manifest.cbor"),
             dir.join("component.manifest.json"),
@@ -634,6 +634,31 @@ fn load_component_manifest_from_disk(
     }
 
     Ok(None)
+}
+
+fn manifest_search_dirs(manifest_dir: &Path) -> Vec<PathBuf> {
+    let has_target_ancestor = std::iter::successors(Some(manifest_dir), |d| d.parent())
+        .any(|dir| dir.file_name().is_some_and(|name| name == "target"));
+    if !has_target_ancestor {
+        return vec![manifest_dir.to_path_buf()];
+    }
+
+    let mut dirs = Vec::new();
+    let mut current = Some(manifest_dir.to_path_buf());
+    let mut saw_target = false;
+
+    while let Some(dir) = current {
+        dirs.push(dir.clone());
+        if dir.file_name().is_some_and(|name| name == "target") {
+            saw_target = true;
+        } else if saw_target {
+            // Parent of `target`: likely component root.
+            break;
+        }
+        current = dir.parent().map(Path::to_path_buf);
+    }
+
+    dirs
 }
 
 fn operation_from_config(cfg: &ComponentOperationConfig) -> Result<ComponentOperation> {
@@ -2243,6 +2268,25 @@ mod tests {
             .expect("load manifest");
         let manifest = manifest.expect("manifest present");
         assert_eq!(manifest.id.to_string(), "dev.local.demo-component");
+    }
+
+    #[test]
+    fn load_component_manifest_from_disk_does_not_pick_unrelated_parent_manifest() {
+        let temp = tempdir().expect("temp dir");
+        let parent_manifest = temp.path().join("component.manifest.cbor");
+        write_sample_manifest(&parent_manifest, "wrong.parent.component");
+
+        let isolated = temp.path().join("isolated");
+        fs::create_dir_all(&isolated).expect("create isolated dir");
+        let wasm = isolated.join("component.wasm");
+        fs::write(&wasm, b"wasm").expect("write wasm");
+
+        let manifest =
+            load_component_manifest_from_disk(&wasm, "expected.component").expect("load manifest");
+        assert!(
+            manifest.is_none(),
+            "must not read unrelated parent manifest"
+        );
     }
 
     #[test]

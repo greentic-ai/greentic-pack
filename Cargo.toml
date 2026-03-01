@@ -72,3 +72,4 @@ wit-bindgen = { version = "0.53", default-features = false, features = ["macros"
 indexmap = "2"
 sys-locale = "0.3"
 unic-langid = "0.9"
+
