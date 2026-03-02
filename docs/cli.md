@@ -308,6 +308,24 @@ Run the interactive wizard.
 greentic-pack wizard
 ```
 
+AnswerDocument modes:
+
+```
+greentic-pack wizard run [--answers <FILE>] [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
+greentic-pack wizard validate --answers <FILE> [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
+greentic-pack wizard apply --answers <FILE> [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
+```
+
+- `run`:
+  - default interactive behavior when no subcommand is passed
+  - with `--answers`, runs non-interactive apply semantics
+- `validate`:
+  - validates AnswerDocument content only (no side effects)
+- `apply`:
+  - executes side effects from AnswerDocument (`doctor`, `build`, optional `sign`)
+- `--emit-answers` writes the normalized/migrated AnswerDocument envelope.
+- `--migrate` allows missing/older schema metadata to be normalized to the target schema version.
+
 Main menu:
 - Create application pack
 - Update application pack

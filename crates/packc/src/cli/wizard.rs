@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, anyhow};
-use clap::Args;
+use clap::{Args, Subcommand};
 use greentic_qa_lib::{WizardDriver, WizardFrontend, WizardRunConfig};
 use greentic_types::ExtensionRef;
 use greentic_types::WizardStep;
 use greentic_types::pack_manifest::ExtensionInline;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::cli::wizard_catalog::{
@@ -23,8 +24,73 @@ use crate::cli::wizard_i18n::{WizardI18n, detect_requested_locale};
 use crate::cli::wizard_ui;
 use crate::runtime::RuntimeContext;
 
+const PACK_WIZARD_ID: &str = "greentic-pack.wizard.run";
+const PACK_WIZARD_SCHEMA_ID: &str = "greentic-pack.wizard.answers";
+const PACK_WIZARD_SCHEMA_VERSION: &str = "1.0.0";
+
 #[derive(Debug, Args, Default)]
-pub struct WizardArgs {}
+pub struct WizardArgs {
+    #[command(subcommand)]
+    pub command: Option<WizardCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum WizardCommand {
+    /// Run wizard interactively (default when no subcommand is passed)
+    Run(WizardRunArgs),
+    /// Validate AnswerDocument input without running side effects
+    Validate(WizardValidateArgs),
+    /// Apply AnswerDocument input (doctor/build/sign side effects)
+    Apply(WizardApplyArgs),
+}
+
+#[derive(Debug, Args, Default)]
+pub struct WizardRunArgs {
+    /// Load AnswerDocument JSON and run in non-interactive mode
+    #[arg(long, value_name = "FILE")]
+    pub answers: Option<PathBuf>,
+    /// Write AnswerDocument JSON after run
+    #[arg(long = "emit-answers", value_name = "FILE")]
+    pub emit_answers: Option<PathBuf>,
+    /// Pin schema version (default: 1.0.0)
+    #[arg(long = "schema-version", value_name = "VER")]
+    pub schema_version: Option<String>,
+    /// Allow migrating older AnswerDocument versions to current target version
+    #[arg(long, default_value_t = false)]
+    pub migrate: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WizardValidateArgs {
+    /// Input AnswerDocument JSON
+    #[arg(long, value_name = "FILE")]
+    pub answers: PathBuf,
+    /// Write migrated/normalized AnswerDocument JSON
+    #[arg(long = "emit-answers", value_name = "FILE")]
+    pub emit_answers: Option<PathBuf>,
+    /// Pin schema version (default: 1.0.0)
+    #[arg(long = "schema-version", value_name = "VER")]
+    pub schema_version: Option<String>,
+    /// Allow migrating older AnswerDocument versions to current target version
+    #[arg(long, default_value_t = false)]
+    pub migrate: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WizardApplyArgs {
+    /// Input AnswerDocument JSON
+    #[arg(long, value_name = "FILE")]
+    pub answers: PathBuf,
+    /// Write migrated/normalized AnswerDocument JSON
+    #[arg(long = "emit-answers", value_name = "FILE")]
+    pub emit_answers: Option<PathBuf>,
+    /// Pin schema version (default: 1.0.0)
+    #[arg(long = "schema-version", value_name = "VER")]
+    pub schema_version: Option<String>,
+    /// Allow migrating older AnswerDocument versions to current target version
+    #[arg(long, default_value_t = false)]
+    pub migrate: bool,
+}
 
 #[derive(Clone, Copy)]
 enum MainChoice {
@@ -50,24 +116,40 @@ enum RunMode {
 #[derive(Default)]
 struct WizardSession {
     sign_key_path: Option<String>,
+    last_pack_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WizardAnswerDocument {
+    wizard_id: String,
+    schema_id: String,
+    schema_version: String,
+    locale: String,
+    #[serde(default)]
+    answers: BTreeMap<String, Value>,
+    #[serde(default)]
+    locks: BTreeMap<String, Value>,
+}
+
+#[derive(Debug)]
+struct WizardExecutionPlan {
+    pack_dir: PathBuf,
+    run_doctor: bool,
+    run_build: bool,
+    sign_key_path: Option<String>,
 }
 
 pub fn handle(
-    _args: WizardArgs,
+    args: WizardArgs,
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
 ) -> Result<()> {
-    let stdin = io::stdin();
-    let stdout = io::stdout();
-    let mut input = stdin.lock();
-    let mut output = stdout.lock();
-    run_with_mode(
-        &mut input,
-        &mut output,
-        requested_locale,
-        RunMode::Cli,
-        Some(runtime),
-    )
+    match args.command {
+        None => run_interactive_command(WizardRunArgs::default(), runtime, requested_locale),
+        Some(WizardCommand::Run(cmd)) => run_interactive_command(cmd, runtime, requested_locale),
+        Some(WizardCommand::Validate(cmd)) => run_validate_command(cmd, requested_locale),
+        Some(WizardCommand::Apply(cmd)) => run_apply_command(cmd, requested_locale),
+    }
 }
 
 pub fn run_with_io<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Result<()> {
@@ -77,7 +159,8 @@ pub fn run_with_io<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Resul
         detect_requested_locale().as_deref(),
         RunMode::Harness,
         None,
-    )
+    )?;
+    Ok(())
 }
 
 pub fn run_with_io_and_locale<R: BufRead, W: Write>(
@@ -85,7 +168,8 @@ pub fn run_with_io_and_locale<R: BufRead, W: Write>(
     output: &mut W,
     requested_locale: Option<&str>,
 ) -> Result<()> {
-    run_with_mode(input, output, requested_locale, RunMode::Harness, None)
+    run_with_mode(input, output, requested_locale, RunMode::Harness, None)?;
+    Ok(())
 }
 
 pub fn run_cli_with_io_and_locale<R: BufRead, W: Write>(
@@ -93,7 +177,8 @@ pub fn run_cli_with_io_and_locale<R: BufRead, W: Write>(
     output: &mut W,
     requested_locale: Option<&str>,
 ) -> Result<()> {
-    run_with_mode(input, output, requested_locale, RunMode::Cli, None)
+    run_with_mode(input, output, requested_locale, RunMode::Cli, None)?;
+    Ok(())
 }
 
 fn run_with_mode<R: BufRead, W: Write>(
@@ -102,7 +187,7 @@ fn run_with_mode<R: BufRead, W: Write>(
     requested_locale: Option<&str>,
     mode: RunMode,
     runtime: Option<&RuntimeContext>,
-) -> Result<()> {
+) -> Result<WizardSession> {
     let i18n = WizardI18n::new(requested_locale);
     let mut session = WizardSession::default();
 
@@ -145,7 +230,7 @@ fn run_with_mode<R: BufRead, W: Write>(
                     )?;
                 }
                 RunMode::Cli => {
-                    run_create_extension_pack(input, output, &i18n, runtime)?;
+                    run_create_extension_pack(input, output, &i18n, runtime, &mut session)?;
                 }
             },
             MainChoice::UpdateExtensionPack => match mode {
@@ -161,8 +246,332 @@ fn run_with_mode<R: BufRead, W: Write>(
                     run_update_extension_pack(input, output, &i18n, &mut session, runtime)?;
                 }
             },
-            MainChoice::Exit => return Ok(()),
+            MainChoice::Exit => return Ok(session),
         }
+    }
+}
+
+fn run_interactive_command(
+    cmd: WizardRunArgs,
+    runtime: &RuntimeContext,
+    requested_locale: Option<&str>,
+) -> Result<()> {
+    let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
+    let locale = resolved_locale(requested_locale);
+    if let Some(path) = cmd.answers.as_deref() {
+        let doc =
+            load_answer_document(path, &target_schema_version, cmd.migrate, requested_locale)?;
+        validate_answer_document(&doc)?;
+        apply_answer_document(&doc)?;
+        if let Some(out) = cmd.emit_answers.as_deref() {
+            write_answer_document(out, &doc)?;
+        }
+        return Ok(());
+    }
+
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut input = stdin.lock();
+    let mut output = stdout.lock();
+    let session = run_with_mode(
+        &mut input,
+        &mut output,
+        requested_locale,
+        RunMode::Cli,
+        Some(runtime),
+    )?;
+    if let Some(path) = cmd.emit_answers.as_deref() {
+        let doc = answer_document_from_session(&session, &locale, &target_schema_version)?;
+        write_answer_document(path, &doc)?;
+    }
+    Ok(())
+}
+
+fn run_validate_command(cmd: WizardValidateArgs, requested_locale: Option<&str>) -> Result<()> {
+    let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
+    let doc = load_answer_document(
+        &cmd.answers,
+        &target_schema_version,
+        cmd.migrate,
+        requested_locale,
+    )?;
+    validate_answer_document(&doc)?;
+    if let Some(path) = cmd.emit_answers.as_deref() {
+        write_answer_document(path, &doc)?;
+    }
+    Ok(())
+}
+
+fn run_apply_command(cmd: WizardApplyArgs, requested_locale: Option<&str>) -> Result<()> {
+    let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
+    let doc = load_answer_document(
+        &cmd.answers,
+        &target_schema_version,
+        cmd.migrate,
+        requested_locale,
+    )?;
+    validate_answer_document(&doc)?;
+    apply_answer_document(&doc)?;
+    if let Some(path) = cmd.emit_answers.as_deref() {
+        write_answer_document(path, &doc)?;
+    }
+    Ok(())
+}
+
+fn target_schema_version(schema_version: Option<&str>) -> Result<String> {
+    let version = schema_version.unwrap_or(PACK_WIZARD_SCHEMA_VERSION).trim();
+    if version.is_empty() {
+        return Err(anyhow!("schema version must not be empty"));
+    }
+    Ok(version.to_string())
+}
+
+fn resolved_locale(requested_locale: Option<&str>) -> String {
+    let i18n = WizardI18n::new(requested_locale);
+    i18n.qa_i18n_config()
+        .locale
+        .unwrap_or_else(|| "en-GB".to_string())
+}
+
+fn load_answer_document(
+    path: &Path,
+    target_schema_version: &str,
+    migrate: bool,
+    requested_locale: Option<&str>,
+) -> Result<WizardAnswerDocument> {
+    let raw = fs::read(path).with_context(|| format!("read answers file {}", path.display()))?;
+    let parsed: Value = serde_json::from_slice(&raw)
+        .with_context(|| format!("decode answers json {}", path.display()))?;
+    normalize_answer_document(parsed, target_schema_version, migrate, requested_locale)
+}
+
+fn normalize_answer_document(
+    parsed: Value,
+    target_schema_version: &str,
+    migrate: bool,
+    requested_locale: Option<&str>,
+) -> Result<WizardAnswerDocument> {
+    let mut obj = parsed
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("answers document root must be a JSON object"))?;
+
+    let mut wizard_id = obj
+        .remove("wizard_id")
+        .and_then(|v| v.as_str().map(ToString::to_string));
+    let mut schema_id = obj
+        .remove("schema_id")
+        .and_then(|v| v.as_str().map(ToString::to_string));
+    let mut schema_version = obj
+        .remove("schema_version")
+        .and_then(|v| v.as_str().map(ToString::to_string));
+    let locale = obj
+        .remove("locale")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap_or_else(|| resolved_locale(requested_locale));
+
+    if wizard_id.is_none() || schema_id.is_none() || schema_version.is_none() {
+        if !migrate {
+            return Err(anyhow!(
+                "answers document missing wizard/schema identity; rerun with --migrate"
+            ));
+        }
+        wizard_id.get_or_insert_with(|| PACK_WIZARD_ID.to_string());
+        schema_id.get_or_insert_with(|| PACK_WIZARD_SCHEMA_ID.to_string());
+        schema_version.get_or_insert_with(|| PACK_WIZARD_SCHEMA_VERSION.to_string());
+    }
+
+    if schema_version.as_deref() != Some(target_schema_version) {
+        if !migrate {
+            return Err(anyhow!(
+                "answers schema_version '{}' does not match target '{}'; rerun with --migrate",
+                schema_version.as_deref().unwrap_or_default(),
+                target_schema_version
+            ));
+        }
+        schema_version = Some(target_schema_version.to_string());
+    }
+
+    let answers_value = obj.remove("answers").unwrap_or_else(|| json!({}));
+    let locks_value = obj.remove("locks").unwrap_or_else(|| json!({}));
+    let answers = json_object_to_btreemap(answers_value, "answers")?;
+    let locks = json_object_to_btreemap(locks_value, "locks")?;
+
+    Ok(WizardAnswerDocument {
+        wizard_id: wizard_id.unwrap_or_else(|| PACK_WIZARD_ID.to_string()),
+        schema_id: schema_id.unwrap_or_else(|| PACK_WIZARD_SCHEMA_ID.to_string()),
+        schema_version: schema_version.unwrap_or_else(|| target_schema_version.to_string()),
+        locale,
+        answers,
+        locks,
+    })
+}
+
+fn json_object_to_btreemap(value: Value, field: &str) -> Result<BTreeMap<String, Value>> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| anyhow!("{field} must be a JSON object"))?;
+    Ok(obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+}
+
+fn write_answer_document(path: &Path, doc: &WizardAnswerDocument) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create answers output directory {}", parent.display()))?;
+    }
+    let bytes = serde_json::to_vec_pretty(doc).context("serialize answers document")?;
+    fs::write(path, bytes).with_context(|| format!("write answers file {}", path.display()))?;
+    Ok(())
+}
+
+fn answer_document_from_session(
+    session: &WizardSession,
+    locale: &str,
+    schema_version: &str,
+) -> Result<WizardAnswerDocument> {
+    let pack_dir = match session.last_pack_dir.as_deref() {
+        Some(path) => path.to_path_buf(),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+    let mut answers = BTreeMap::new();
+    answers.insert(
+        "pack_dir".to_string(),
+        Value::String(pack_dir.display().to_string()),
+    );
+    answers.insert("run_doctor".to_string(), Value::Bool(true));
+    answers.insert("run_build".to_string(), Value::Bool(true));
+    answers.insert("mode".to_string(), Value::String("interactive".to_string()));
+    if let Some(key) = session.sign_key_path.as_deref() {
+        answers.insert("sign".to_string(), Value::Bool(true));
+        answers.insert("sign_key_path".to_string(), Value::String(key.to_string()));
+    } else {
+        answers.insert("sign".to_string(), Value::Bool(false));
+    }
+    Ok(WizardAnswerDocument {
+        wizard_id: PACK_WIZARD_ID.to_string(),
+        schema_id: PACK_WIZARD_SCHEMA_ID.to_string(),
+        schema_version: schema_version.to_string(),
+        locale: locale.to_string(),
+        answers,
+        locks: BTreeMap::new(),
+    })
+}
+
+fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
+    if doc.wizard_id != PACK_WIZARD_ID {
+        return Err(anyhow!(
+            "unsupported wizard_id '{}', expected '{}'",
+            doc.wizard_id,
+            PACK_WIZARD_ID
+        ));
+    }
+    if doc.schema_id != PACK_WIZARD_SCHEMA_ID {
+        return Err(anyhow!(
+            "unsupported schema_id '{}', expected '{}'",
+            doc.schema_id,
+            PACK_WIZARD_SCHEMA_ID
+        ));
+    }
+    let plan = execution_plan_from_answers(&doc.answers)?;
+    if !plan.pack_dir.is_dir() {
+        return Err(anyhow!(
+            "pack_dir is not an existing directory: {}",
+            plan.pack_dir.display()
+        ));
+    }
+    if let Some(key) = plan.sign_key_path.as_deref()
+        && key.trim().is_empty()
+    {
+        return Err(anyhow!("sign_key_path must not be empty"));
+    }
+    Ok(())
+}
+
+fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
+    let plan = execution_plan_from_answers(&doc.answers)?;
+    let self_exe = wizard_self_exe()?;
+    if plan.run_doctor {
+        let doctor_ok = run_process(
+            &self_exe,
+            &["doctor", "--in", &plan.pack_dir.display().to_string()],
+            None,
+        )?;
+        if !doctor_ok {
+            return Err(anyhow!(
+                "wizard apply failed while running doctor for {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
+    if plan.run_build {
+        let build_ok = run_process(
+            &self_exe,
+            &["build", "--in", &plan.pack_dir.display().to_string()],
+            None,
+        )?;
+        if !build_ok {
+            return Err(anyhow!(
+                "wizard apply failed while running build for {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
+    if let Some(key_path) = plan.sign_key_path.as_deref() {
+        let sign_ok = run_process(
+            &self_exe,
+            &[
+                "sign",
+                "--pack",
+                &plan.pack_dir.display().to_string(),
+                "--key",
+                key_path,
+            ],
+            None,
+        )?;
+        if !sign_ok {
+            return Err(anyhow!(
+                "wizard apply failed while signing {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<WizardExecutionPlan> {
+    let pack_dir_raw = answers
+        .get("pack_dir")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("answers.pack_dir must be a string"))?;
+    let run_doctor = answer_bool(answers, "run_doctor", true)?;
+    let run_build = answer_bool(answers, "run_build", true)?;
+    let sign = answer_bool(answers, "sign", false)?;
+    let sign_key_path = answers
+        .get("sign_key_path")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    if sign && sign_key_path.is_none() {
+        return Err(anyhow!(
+            "answers.sign=true requires answers.sign_key_path string"
+        ));
+    }
+    let sign_key_path = if sign { sign_key_path } else { None };
+    Ok(WizardExecutionPlan {
+        pack_dir: PathBuf::from(pack_dir_raw),
+        run_doctor,
+        run_build,
+        sign_key_path,
+    })
+}
+
+fn answer_bool(answers: &BTreeMap<String, Value>, key: &str, default: bool) -> Result<bool> {
+    match answers.get(key) {
+        None => Ok(default),
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| anyhow!("answers.{key} must be a boolean")),
     }
 }
 
@@ -171,6 +580,7 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
     output: &mut W,
     i18n: &WizardI18n,
     runtime: Option<&RuntimeContext>,
+    session: &mut WizardSession,
 ) -> Result<()> {
     let catalog_ref = ask_text(
         input,
@@ -234,6 +644,7 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
         Some(&default_dir),
     )?;
     let pack_dir_path = PathBuf::from(pack_dir.trim());
+    session.last_pack_dir = Some(pack_dir_path.clone());
     let qa_answers = ask_template_qa_answers(input, output, i18n, &template)?;
     if let Err(err) = apply_template_plan(&template, &pack_dir_path, selected, i18n, &qa_answers) {
         wizard_ui::render_line(
@@ -248,12 +659,11 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
     }
 
     let self_exe = wizard_self_exe()?;
-    let mut session = WizardSession::default();
     let finalized = run_update_validate_sequence(
         input,
         output,
         i18n,
-        &mut session,
+        session,
         &self_exe,
         &pack_dir_path,
         true,
@@ -814,6 +1224,7 @@ fn run_create_application_pack<R: BufRead, W: Write>(
     )?;
 
     let pack_dir_path = PathBuf::from(pack_dir.trim());
+    session.last_pack_dir = Some(pack_dir_path.clone());
     let self_exe = wizard_self_exe()?;
 
     let scaffold_ok = run_process(
@@ -935,6 +1346,7 @@ fn run_update_application_pack<R: BufRead, W: Write>(
         Some("wizard.update_application_pack.ask_pack_dir_help"),
         Some("."),
     )?;
+    session.last_pack_dir = Some(pack_dir_path.clone());
     let self_exe = wizard_self_exe()?;
 
     loop {
@@ -1051,6 +1463,7 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
         Some("wizard.update_extension_pack.ask_pack_dir_help"),
         Some("."),
     )?;
+    session.last_pack_dir = Some(pack_dir_path.clone());
     let catalog_ref = ask_text(
         input,
         output,
