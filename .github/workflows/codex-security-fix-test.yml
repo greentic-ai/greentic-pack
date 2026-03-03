@@ -35,8 +35,7 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
-          # We continue on error so Codex can try to fix what was found
-          continue-on-error: true
+          warn-only: true
 
       - name: Fetch open security alerts
         id: alerts
