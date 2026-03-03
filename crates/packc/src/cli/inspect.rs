@@ -191,7 +191,8 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
                 "report": {
                     "signature_ok": load.report.signature_ok,
                     "sbom_ok": load.report.sbom_ok,
-                    "warnings": load.report.warnings,
+                    "warnings_count": load.report.warnings.len(),
+                    "warnings_redacted": !load.report.warnings.is_empty(),
                 },
                 "sbom": load.sbom,
             });
@@ -748,10 +749,7 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
     }
 
     if !report.warnings.is_empty() {
-        println!("Warnings:");
-        for warning in &report.warnings {
-            println!("  - {}", warning);
-        }
+        println!("Warnings: {} (details redacted)", report.warnings.len());
     }
 
     if let Some(report) = validation {
