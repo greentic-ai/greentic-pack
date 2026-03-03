@@ -122,7 +122,7 @@ jobs:
       - name: Post Codex Review
         if: github.event_name == 'pull_request' && hashFiles('SECURITY_FIX_REPORT.md') != ''
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
