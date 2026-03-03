@@ -1,0 +1,230 @@
+{
+  "extension_types": [
+    {
+      "id": "messaging",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "Messaging",
+      "description": "Messaging provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "messaging"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "bima"
+        }
+      ],
+      "templates": [
+        {
+          "id": "messaging-provider-v1",
+          "name": "Messaging provider scaffold",
+          "description": "Scaffold for messaging provider capability pack",
+          "qa_questions": [
+            {
+              "id": "display_name",
+              "title_key": "wizard.qa.display_name",
+              "default": "Messaging provider extension"
+            },
+            {
+              "id": "provider_type",
+              "title_key": "wizard.qa.provider_type",
+              "default": "messaging.custom"
+            }
+          ],
+          "plan": [
+            {
+              "type": "ensure_dir",
+              "paths": [
+                "flows",
+                "components",
+                "i18n",
+                "schemas/providers/messaging"
+              ]
+            },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\nProvider type: {{qa.provider_type}}\n",
+                "pack.yaml": "pack_id: messaging.extension\nversion: 0.1.0\nkind: application\npublisher: Greentic\n\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "events",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "Events",
+      "description": "Events provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "events"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "bharat"
+        }
+      ]
+    },
+    {
+      "id": "oauth",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "OAuth",
+      "description": "OAuth provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "oauth"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "osoro"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "MCP",
+      "description": "MCP provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "mcp"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "osoro"
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "State",
+      "description": "State provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "state"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "bima"
+        }
+      ]
+    },
+    {
+      "id": "telemetry",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "Telemetry",
+      "description": "Telemetry provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "telemetry"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "bima"
+        }
+      ]
+    },
+    {
+      "id": "secrets",
+      "canonical_extension_key": "greentic.provider-extension.v1",
+      "name": "Secrets",
+      "description": "Secrets provider pack extensions",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "secrets"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "platform"
+        }
+      ]
+    },
+    {
+      "id": "capability-offer",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Capability Offer",
+      "description": "Capability offer extension entries for Operator resolver",
+      "edit_questions": [
+        {
+          "id": "entry_label",
+          "title_key": "wizard.update_extension_pack.edit.entry_label",
+          "default": "capability-offer"
+        },
+        {
+          "id": "owner",
+          "title_key": "wizard.qa.owner",
+          "kind": "string",
+          "default": "platform"
+        }
+      ],
+      "templates": [
+        {
+          "id": "capability-offer-v1",
+          "name": "Capability offer scaffold",
+          "description": "Scaffold for greentic.ext.capabilities.v1",
+          "qa_questions": [
+            {
+              "id": "display_name",
+              "title_key": "wizard.qa.display_name",
+              "default": "Capability offer extension"
+            },
+            {
+              "id": "cap_id",
+              "title_key": "wizard.qa.capability_id",
+              "default": "greentic.cap.example.v1"
+            }
+          ],
+          "plan": [
+            {
+              "type": "ensure_dir",
+              "paths": [
+                "flows",
+                "components",
+                "i18n",
+                "qa"
+              ]
+            },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\nCapability id: {{qa.cap_id}}\n",
+                "pack.yaml": "pack_id: capability.offer.extension\nversion: 0.1.0\nkind: application\npublisher: Greentic\n\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

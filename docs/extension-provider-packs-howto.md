@@ -107,6 +107,23 @@ Rules: `inline.refs` is required; digest pinning is default; tag refs need
 Unknown extension kinds are preserved so you can carry organization-specific
 metadata.
 
+## Capability Pack Catalog Baseline
+
+For capability-first provider planning (Messaging, Events, OAuth, MCP, State,
+Telemetry, Secrets, Capability Offers), use the shared wizard catalog format in:
+
+- `docs/wizard_extension_catalog_v1.md`
+- `docs/extensions_capability_packs.catalog.v1.json`
+
+You can load it directly in the wizard with:
+
+```bash
+greentic-pack wizard
+# create/update extension pack
+# catalog ref:
+file://<absolute-path>/greentic-pack/docs/extensions_capability_packs.catalog.v1.json
+```
+
 ## Operations: How They Are Determined
 
 - Component operations come from component describe metadata.
