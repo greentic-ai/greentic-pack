@@ -12,6 +12,11 @@ exclude = [
 ]
 resolver = "2"
 
+[patch.crates-io]
+greentic-interfaces = { path = "crates/vendor/greentic-interfaces-0.4.107" }
+greentic-interfaces-host = { path = "crates/vendor/greentic-interfaces-host" }
+greentic-interfaces-wasmtime = { path = "crates/vendor/greentic-interfaces-wasmtime" }
+
 [workspace.package]
 edition = "2024"
 rust-version = "1.91"
