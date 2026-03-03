@@ -1,38 +1,47 @@
 # SECURITY_FIX_REPORT
 
-## Scope and Inputs
+## Scope
 - Reviewed provided Dependabot alerts: #14, #13, #6, #4.
-- Reviewed provided Code Scanning alerts: #10, #9, #8, #7, #6, #5, #4, #3.
-- Checked dependency-file deltas for PR context against `origin/master`.
+- Reviewed provided CodeQL alerts: #10, #9, #8, #7, #6, #5, #4, #3.
+- Checked PR-style dependency deltas against `origin/master...HEAD`.
 
-## Findings
-- Dependabot alerts all target `examples/qa-demo/.packc/pack_component/Cargo.lock`.
-- In this branch, that generated lockfile had `wasmtime 41.0.3` and `time 0.3.47`.
-- `time 0.3.47` already satisfies GHSA-r6v5-fh4h-64xc (CVE-2026-25727).
-- `wasmtime 41.0.3` is below the advisory-published patched line `41.0.4` for GHSA-852m-cvvp-9p4w and GHSA-243v-98vx-264h.
-- PR dependency check: the changed dependency file introducing this exposure is `examples/qa-demo/.packc/pack_component/Cargo.lock`.
+## Alert Analysis
 
-## Remediations Applied
-1. Removed vulnerable generated lockfile:
-- Deleted `examples/qa-demo/.packc/pack_component/Cargo.lock`.
-- Rationale: `.packc` is generated build output and already gitignored; removing the tracked stale lockfile removes the vulnerable manifest path Dependabot is alerting on.
+### Dependabot
+- Alerts #14 and #13 (`wasmtime`) require patched versions at/above `41.0.4` for the affected major line.
+- Alert #6 (`time`) is fixed in `0.3.47`.
+- Alert #4 (`wasmtime` AVX issue) is fixed in `>=40.0.3` / `>=41.0.1`; this repo already exceeds that specific floor where `41.x` is used.
 
-2. Reduced cleartext-sensitive output in inspect CLI:
-- Updated `crates/packc/src/cli/inspect.rs` JSON output:
-  - Replaced `report.warnings` with `report.warnings_count` and `report.warnings_redacted`.
-- Updated `crates/packc/src/cli/inspect.rs` human output:
-  - Replaced per-warning plaintext printing with a count-only line: `Warnings: <n> (details redacted)`.
+### Code Scanning (cleartext logging)
+- Existing branch already redacts warnings in `inspect` output.
+- Additional sensitive-field reduction was still needed in `build` logging around secret requirements.
 
-## Why this fix path
-- CI sandbox blocks network access, so lockfile upgrade commands cannot fetch/update crates metadata.
-- Directly deleting the tracked generated lockfile is the safest minimal remediation that removes the vulnerable dependency snapshot from the repository.
-- Warning redaction mitigates the CodeQL cleartext-logging class by avoiding plaintext emission of potentially sensitive warning payloads.
+## PR Dependency-Change Check
+- Compared `origin/master...HEAD`.
+- Dependency-file delta in this PR context was primarily the generated `.packc` lockfile path under `examples/qa-demo/.packc/pack_component/`.
+- No newly introduced vulnerable dependency version was found in active tracked lockfiles from this branch diff.
+
+## Fixes Applied
+1. Pinned Wasmtime to patched line in manifests:
+- Updated [Cargo.toml](/home/runner/work/greentic-pack/greentic-pack/Cargo.toml) to:
+  - `wasmtime = "41.0.4"`
+  - `wasmtime-wasi = "41.0.4"`
+- Updated [crates/vendor/greentic-flow/Cargo.toml](/home/runner/work/greentic-pack/greentic-pack/crates/vendor/greentic-flow/Cargo.toml) to:
+  - `[dependencies.wasmtime] version = "41.0.4"`
+
+2. Reduced secret-derived logging fields:
+- Updated [crates/packc/src/build.rs](/home/runner/work/greentic-pack/greentic-pack/crates/packc/src/build.rs) to remove secret-key material from `tracing::warn!` fields:
+  - removed `key = %secret_key_string(&req)`
+  - removed `key = %secret_key_string(base)`
 
 ## Validation Performed
-- Confirmed lockfile deletion is staged.
-- Confirmed inspect output changes are present in `crates/packc/src/cli/inspect.rs`.
-- Confirmed PR dependency delta includes the `.packc` lockfile path as the dependency-file change linked to these alerts.
+- Confirmed manifest pins are present via diff.
+- Confirmed secret-key log fields are removed in `build.rs`.
+- Confirmed `.packc` lockfiles are gitignored (`.gitignore` contains `**/.packc/`).
 
-## Residual Risk / Notes
-- No full test run was executed in this CI sandbox due rustup/crates network restrictions.
-- If this lockfile must remain tracked for policy reasons, it should be regenerated with `wasmtime >= 41.0.4` (or `42.0.0+`) in a network-enabled environment.
+## Constraints / Follow-up
+- This CI environment cannot access `index.crates.io` (DNS/network blocked), so lockfile regeneration/update commands could not be executed.
+- Required follow-up in a network-enabled runner:
+  1. regenerate/update relevant `Cargo.lock` files,
+  2. ensure resolved `wasmtime >= 41.0.4` (or newer patched line),
+  3. rerun Dependabot/CodeQL scans to verify alert closure.

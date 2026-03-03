@@ -232,7 +232,7 @@ version = "0.1"
 version = "2"
 
 [dependencies.wasmtime]
-version = "41"
+version = "41.0.4"
 features = ["component-model"]
 
 [dev-dependencies.assert_cmd]
