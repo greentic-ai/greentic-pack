@@ -58,6 +58,7 @@ fn has_external_guest_wit_mismatch(stdout: &str, stderr: &str) -> bool {
         || combined.contains("type 'host-error' not defined in interface")
         || combined
             .contains("could not find `greentic_component_0_6_0_component_v0_v6_v0` in `bindings`")
+        || combined.contains("Failed to locate canonical WIT root")
         || combined.contains("greentic-interfaces-guest")
             && (combined.contains("failed to resolve")
                 || combined.contains("could not find")

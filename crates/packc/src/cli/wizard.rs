@@ -891,7 +891,7 @@ fn render_template_string(
         .replace("{{template_name}}", &template.display_name(i18n))
         .replace(
             "{{canonical_extension_key}}",
-            "greentic.provider-extension.v1",
+            extension_type.canonical_extension_key(),
         )
         .replace(
             "{{not_implemented}}",
