@@ -186,12 +186,13 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
 
     match format {
         InspectFormat::Json => {
+            let warnings = sanitize_warnings(&load.report.warnings);
             let mut payload = serde_json::json!({
                 "manifest": load.manifest,
                 "report": {
                     "signature_ok": load.report.signature_ok,
                     "sbom_ok": load.report.sbom_ok,
-                    "warnings": load.report.warnings,
+                    "warnings": warnings,
                 },
                 "sbom": load.sbom,
             });
@@ -749,7 +750,7 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
 
     if !report.warnings.is_empty() {
         println!("Warnings:");
-        for warning in &report.warnings {
+        for warning in sanitize_warnings(&report.warnings) {
             println!("  - {}", warning);
         }
     }
@@ -757,6 +758,26 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
     if let Some(report) = validation {
         print_validation(report);
     }
+}
+
+fn sanitize_warnings(warnings: &[String]) -> Vec<String> {
+    warnings
+        .iter()
+        .map(|warning| {
+            if warning_contains_sensitive_terms(warning) {
+                "warning details redacted (contains sensitive terms)".to_string()
+            } else {
+                warning.clone()
+            }
+        })
+        .collect()
+}
+
+fn warning_contains_sensitive_terms(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    ["secret", "token", "password", "credential", "private key", "api key"]
+        .iter()
+        .any(|term| lower.contains(term))
 }
 
 #[derive(Clone, Debug, Serialize)]

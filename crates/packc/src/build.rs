@@ -1907,7 +1907,6 @@ fn aggregate_secret_requirements(
             if let Some(scope) = default_scope.clone() {
                 req.scope = Some(scope);
                 tracing::warn!(
-                    key = %secret_key_string(&req),
                     source,
                     "secret requirement missing scope; applying default scope"
                 );
@@ -2013,10 +2012,7 @@ fn merge_requirement(base: &mut SecretRequirement, incoming: &SecretRequirement)
         if base.schema.is_none() {
             base.schema = Some(schema.clone());
         } else if base.schema.as_ref() != Some(schema) {
-            tracing::warn!(
-                key = %secret_key_string(base),
-                "conflicting secret schema encountered; keeping first"
-            );
+            tracing::warn!("conflicting secret schema encountered; keeping first");
         }
     }
 
