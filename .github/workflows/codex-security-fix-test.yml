@@ -129,8 +129,8 @@ jobs:
           echo "Adding bot as reviewer"
           gh pr edit "${PR_URL}" --add-reviewer "@me" || echo "Could not add reviewer (might already be one)"
           
-          echo "Posting Codex report as a review comment to ${PR_URL}"
-          gh pr review "${PR_URL}" --comment --body-file SECURITY_FIX_REPORT.md
+          echo "Posting Codex report as a review requesting changes to ${PR_URL}"
+          gh pr review "${PR_URL}" --request-changes --body-file SECURITY_FIX_REPORT.md
 
       - name: Upload remediation artifacts
         if: always()
