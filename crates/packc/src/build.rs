@@ -3028,8 +3028,7 @@ nodes:
             )
             .expect("write flow");
 
-            let digest =
-                "sha256:0904bee6ecd737506265e3f38f3e4fe6b185c20fd1b0e7c06ce03cdeedc00340";
+            let digest = "sha256:0904bee6ecd737506265e3f38f3e4fe6b185c20fd1b0e7c06ce03cdeedc00340";
             let summary = serde_json::json!({
                 "schema_version": 1,
                 "flow": "main.ygtc",
@@ -3110,13 +3109,10 @@ flows:
             run(&opts).await.expect("build");
 
             let gtpack_path = opts.gtpack_out.expect("gtpack path");
-            let mut archive =
-                ZipArchive::new(File::open(&gtpack_path).expect("open gtpack"))
-                    .expect("read gtpack");
+            let mut archive = ZipArchive::new(File::open(&gtpack_path).expect("open gtpack"))
+                .expect("read gtpack");
             assert!(
-                archive
-                    .by_name("components/dummy.component.wasm")
-                    .is_ok(),
+                archive.by_name("components/dummy.component.wasm").is_ok(),
                 "missing lock component artifact in gtpack"
             );
         });
@@ -3318,4 +3314,3 @@ flows:
         );
     }
 }
-

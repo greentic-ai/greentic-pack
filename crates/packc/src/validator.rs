@@ -811,4 +811,3 @@ mod tests {
         assert_eq!(components[0].wasm, wasm_bytes);
     }
 }
-

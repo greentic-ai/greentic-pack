@@ -311,7 +311,7 @@ greentic-pack wizard
 AnswerDocument modes:
 
 ```
-greentic-pack wizard run [--answers <FILE>] [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
+greentic-pack wizard run [--answers <FILE>] [--emit-answers <FILE>] [--schema-version <VER>] [--migrate] [--dry-run]
 greentic-pack wizard validate --answers <FILE> [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
 greentic-pack wizard apply --answers <FILE> [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
 ```
@@ -319,10 +319,11 @@ greentic-pack wizard apply --answers <FILE> [--emit-answers <FILE>] [--schema-ve
 - `run`:
   - default interactive behavior when no subcommand is passed
   - with `--answers`, runs non-interactive apply semantics
+  - with `--dry-run`, records choices and emits answers without executing side effects
 - `validate`:
   - validates AnswerDocument content only (no side effects)
 - `apply`:
-  - executes side effects from AnswerDocument (`doctor`, `build`, optional `sign`)
+  - executes side effects from AnswerDocument (`greentic-flow`, `greentic-component`, `doctor`, `build`, optional `sign`)
 - `--emit-answers` writes the normalized/migrated AnswerDocument envelope.
 - `--migrate` allows missing/older schema metadata to be normalized to the target schema version.
 

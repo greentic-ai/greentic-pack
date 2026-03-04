@@ -465,9 +465,8 @@ mod tests {
                 NodeResolveSummaryV1 {
                     component_id: component_id.clone(),
                     source: FlowResolveSummarySourceRefV1::Oci {
-                        r#ref:
-                            "oci://ghcr.io/greenticai/components/component-adaptive-card:latest"
-                                .to_string(),
+                        r#ref: "oci://ghcr.io/greenticai/components/component-adaptive-card:latest"
+                            .to_string(),
                     },
                     digest: format!("sha256:{}", "a".repeat(64)),
                     manifest: None,
@@ -533,4 +532,3 @@ mod tests {
         assert!(err.to_string().contains("points to different artifacts"));
     }
 }
-

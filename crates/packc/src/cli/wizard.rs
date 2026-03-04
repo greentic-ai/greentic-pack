@@ -6,6 +6,7 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
@@ -30,6 +31,21 @@ const PACK_WIZARD_SCHEMA_VERSION: &str = "1.0.0";
 
 #[derive(Debug, Args, Default)]
 pub struct WizardArgs {
+    /// Load AnswerDocument JSON and run in non-interactive mode (implicit `run`)
+    #[arg(long, value_name = "FILE")]
+    pub answers: Option<PathBuf>,
+    /// Write AnswerDocument JSON after run (implicit `run`)
+    #[arg(long = "emit-answers", value_name = "FILE")]
+    pub emit_answers: Option<PathBuf>,
+    /// Pin schema version (default: 1.0.0) (implicit `run`)
+    #[arg(long = "schema-version", value_name = "VER")]
+    pub schema_version: Option<String>,
+    /// Allow migrating older AnswerDocument versions (implicit `run`)
+    #[arg(long, default_value_t = false)]
+    pub migrate: bool,
+    /// Record choices without running side effects (implicit `run`)
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
     #[command(subcommand)]
     pub command: Option<WizardCommand>,
 }
@@ -58,6 +74,9 @@ pub struct WizardRunArgs {
     /// Allow migrating older AnswerDocument versions to current target version
     #[arg(long, default_value_t = false)]
     pub migrate: bool,
+    /// Record choices without running side effects (for later `wizard apply --answers`)
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -117,6 +136,17 @@ enum RunMode {
 struct WizardSession {
     sign_key_path: Option<String>,
     last_pack_dir: Option<PathBuf>,
+    dry_run_delegate_pack_dir: Option<PathBuf>,
+    create_pack_id: Option<String>,
+    create_pack_scaffold: bool,
+    dry_run: bool,
+    run_delegate_flow: bool,
+    run_delegate_component: bool,
+    run_doctor: bool,
+    run_build: bool,
+    flow_wizard_answers: Option<Value>,
+    component_wizard_answers: Option<Value>,
+    selected_actions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,8 +164,14 @@ struct WizardAnswerDocument {
 #[derive(Debug)]
 struct WizardExecutionPlan {
     pack_dir: PathBuf,
+    create_pack_id: Option<String>,
+    create_pack_scaffold: bool,
+    run_delegate_flow: bool,
+    run_delegate_component: bool,
     run_doctor: bool,
     run_build: bool,
+    flow_wizard_answers: Option<Value>,
+    component_wizard_answers: Option<Value>,
     sign_key_path: Option<String>,
 }
 
@@ -144,8 +180,15 @@ pub fn handle(
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
 ) -> Result<()> {
+    let implicit_run_args = WizardRunArgs {
+        answers: args.answers,
+        emit_answers: args.emit_answers,
+        schema_version: args.schema_version,
+        migrate: args.migrate,
+        dry_run: args.dry_run,
+    };
     match args.command {
-        None => run_interactive_command(WizardRunArgs::default(), runtime, requested_locale),
+        None => run_interactive_command(implicit_run_args, runtime, requested_locale),
         Some(WizardCommand::Run(cmd)) => run_interactive_command(cmd, runtime, requested_locale),
         Some(WizardCommand::Validate(cmd)) => run_validate_command(cmd, requested_locale),
         Some(WizardCommand::Apply(cmd)) => run_apply_command(cmd, requested_locale),
@@ -159,6 +202,7 @@ pub fn run_with_io<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Resul
         detect_requested_locale().as_deref(),
         RunMode::Harness,
         None,
+        false,
     )?;
     Ok(())
 }
@@ -168,7 +212,14 @@ pub fn run_with_io_and_locale<R: BufRead, W: Write>(
     output: &mut W,
     requested_locale: Option<&str>,
 ) -> Result<()> {
-    run_with_mode(input, output, requested_locale, RunMode::Harness, None)?;
+    run_with_mode(
+        input,
+        output,
+        requested_locale,
+        RunMode::Harness,
+        None,
+        false,
+    )?;
     Ok(())
 }
 
@@ -177,7 +228,7 @@ pub fn run_cli_with_io_and_locale<R: BufRead, W: Write>(
     output: &mut W,
     requested_locale: Option<&str>,
 ) -> Result<()> {
-    run_with_mode(input, output, requested_locale, RunMode::Cli, None)?;
+    run_with_mode(input, output, requested_locale, RunMode::Cli, None, false)?;
     Ok(())
 }
 
@@ -187,66 +238,93 @@ fn run_with_mode<R: BufRead, W: Write>(
     requested_locale: Option<&str>,
     mode: RunMode,
     runtime: Option<&RuntimeContext>,
+    dry_run: bool,
 ) -> Result<WizardSession> {
     let i18n = WizardI18n::new(requested_locale);
-    let mut session = WizardSession::default();
+    let mut session = WizardSession {
+        dry_run,
+        ..WizardSession::default()
+    };
 
     loop {
         let choice = ask_main_menu(input, output, &i18n)?;
         match choice {
-            MainChoice::CreateApplicationPack => match mode {
-                RunMode::Harness => {
-                    let _ = ask_placeholder_submenu(
-                        input,
-                        output,
-                        &i18n,
-                        "wizard.create_application_pack.title",
-                    )?;
+            MainChoice::CreateApplicationPack => {
+                session
+                    .selected_actions
+                    .push("main.create_application_pack".to_string());
+                match mode {
+                    RunMode::Harness => {
+                        let _ = ask_placeholder_submenu(
+                            input,
+                            output,
+                            &i18n,
+                            "wizard.create_application_pack.title",
+                        )?;
+                    }
+                    RunMode::Cli => {
+                        run_create_application_pack(input, output, &i18n, &mut session)?;
+                    }
                 }
-                RunMode::Cli => {
-                    run_create_application_pack(input, output, &i18n, &mut session)?;
+            }
+            MainChoice::UpdateApplicationPack => {
+                session
+                    .selected_actions
+                    .push("main.update_application_pack".to_string());
+                match mode {
+                    RunMode::Harness => {
+                        let _ = ask_placeholder_submenu(
+                            input,
+                            output,
+                            &i18n,
+                            "wizard.update_application_pack.title",
+                        )?;
+                    }
+                    RunMode::Cli => {
+                        run_update_application_pack(input, output, &i18n, &mut session)?;
+                    }
                 }
-            },
-            MainChoice::UpdateApplicationPack => match mode {
-                RunMode::Harness => {
-                    let _ = ask_placeholder_submenu(
-                        input,
-                        output,
-                        &i18n,
-                        "wizard.update_application_pack.title",
-                    )?;
+            }
+            MainChoice::CreateExtensionPack => {
+                session
+                    .selected_actions
+                    .push("main.create_extension_pack".to_string());
+                match mode {
+                    RunMode::Harness => {
+                        let _ = ask_placeholder_submenu(
+                            input,
+                            output,
+                            &i18n,
+                            "wizard.create_extension_pack.title",
+                        )?;
+                    }
+                    RunMode::Cli => {
+                        run_create_extension_pack(input, output, &i18n, runtime, &mut session)?;
+                    }
                 }
-                RunMode::Cli => {
-                    run_update_application_pack(input, output, &i18n, &mut session)?;
+            }
+            MainChoice::UpdateExtensionPack => {
+                session
+                    .selected_actions
+                    .push("main.update_extension_pack".to_string());
+                match mode {
+                    RunMode::Harness => {
+                        let _ = ask_placeholder_submenu(
+                            input,
+                            output,
+                            &i18n,
+                            "wizard.update_extension_pack.title",
+                        )?;
+                    }
+                    RunMode::Cli => {
+                        run_update_extension_pack(input, output, &i18n, &mut session, runtime)?;
+                    }
                 }
-            },
-            MainChoice::CreateExtensionPack => match mode {
-                RunMode::Harness => {
-                    let _ = ask_placeholder_submenu(
-                        input,
-                        output,
-                        &i18n,
-                        "wizard.create_extension_pack.title",
-                    )?;
-                }
-                RunMode::Cli => {
-                    run_create_extension_pack(input, output, &i18n, runtime, &mut session)?;
-                }
-            },
-            MainChoice::UpdateExtensionPack => match mode {
-                RunMode::Harness => {
-                    let _ = ask_placeholder_submenu(
-                        input,
-                        output,
-                        &i18n,
-                        "wizard.update_extension_pack.title",
-                    )?;
-                }
-                RunMode::Cli => {
-                    run_update_extension_pack(input, output, &i18n, &mut session, runtime)?;
-                }
-            },
-            MainChoice::Exit => return Ok(session),
+            }
+            MainChoice::Exit => {
+                session.selected_actions.push("main.exit".to_string());
+                return Ok(session);
+            }
         }
     }
 }
@@ -262,7 +340,9 @@ fn run_interactive_command(
         let doc =
             load_answer_document(path, &target_schema_version, cmd.migrate, requested_locale)?;
         validate_answer_document(&doc)?;
-        apply_answer_document(&doc)?;
+        if !cmd.dry_run {
+            apply_answer_document(&doc)?;
+        }
         if let Some(out) = cmd.emit_answers.as_deref() {
             write_answer_document(out, &doc)?;
         }
@@ -279,6 +359,7 @@ fn run_interactive_command(
         requested_locale,
         RunMode::Cli,
         Some(runtime),
+        cmd.dry_run,
     )?;
     if let Some(path) = cmd.emit_answers.as_deref() {
         let doc = answer_document_from_session(&session, &locale, &target_schema_version)?;
@@ -440,9 +521,53 @@ fn answer_document_from_session(
         "pack_dir".to_string(),
         Value::String(pack_dir.display().to_string()),
     );
-    answers.insert("run_doctor".to_string(), Value::Bool(true));
-    answers.insert("run_build".to_string(), Value::Bool(true));
-    answers.insert("mode".to_string(), Value::String("interactive".to_string()));
+    if session.create_pack_scaffold {
+        answers.insert("create_pack_scaffold".to_string(), Value::Bool(true));
+    }
+    if let Some(pack_id) = session.create_pack_id.as_deref() {
+        answers.insert(
+            "create_pack_id".to_string(),
+            Value::String(pack_id.to_string()),
+        );
+    }
+    answers.insert(
+        "run_delegate_flow".to_string(),
+        Value::Bool(session.run_delegate_flow),
+    );
+    answers.insert(
+        "run_delegate_component".to_string(),
+        Value::Bool(session.run_delegate_component),
+    );
+    answers.insert("run_doctor".to_string(), Value::Bool(session.run_doctor));
+    answers.insert("run_build".to_string(), Value::Bool(session.run_build));
+    answers.insert(
+        "mode".to_string(),
+        Value::String(if session.dry_run {
+            "interactive-dry-run".to_string()
+        } else {
+            "interactive".to_string()
+        }),
+    );
+    answers.insert("dry_run".to_string(), Value::Bool(session.dry_run));
+    answers.insert(
+        "selected_actions".to_string(),
+        Value::Array(
+            session
+                .selected_actions
+                .iter()
+                .map(|item| Value::String(item.clone()))
+                .collect(),
+        ),
+    );
+    if let Some(flow_answers) = session.flow_wizard_answers.as_ref() {
+        answers.insert("flow_wizard_answers".to_string(), flow_answers.clone());
+    }
+    if let Some(component_answers) = session.component_wizard_answers.as_ref() {
+        answers.insert(
+            "component_wizard_answers".to_string(),
+            component_answers.clone(),
+        );
+    }
     if let Some(key) = session.sign_key_path.as_deref() {
         answers.insert("sign".to_string(), Value::Bool(true));
         answers.insert("sign_key_path".to_string(), Value::String(key.to_string()));
@@ -475,10 +600,15 @@ fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
         ));
     }
     let plan = execution_plan_from_answers(&doc.answers)?;
-    if !plan.pack_dir.is_dir() {
+    if !plan.create_pack_scaffold && !plan.pack_dir.is_dir() {
         return Err(anyhow!(
             "pack_dir is not an existing directory: {}",
             plan.pack_dir.display()
+        ));
+    }
+    if plan.create_pack_scaffold && plan.create_pack_id.is_none() {
+        return Err(anyhow!(
+            "create_pack_scaffold=true requires answers.create_pack_id string"
         ));
     }
     if let Some(key) = plan.sign_key_path.as_deref()
@@ -492,6 +622,47 @@ fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
 fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
     let plan = execution_plan_from_answers(&doc.answers)?;
     let self_exe = wizard_self_exe()?;
+    if plan.create_pack_scaffold {
+        let pack_id = plan
+            .create_pack_id
+            .as_deref()
+            .ok_or_else(|| anyhow!("missing create_pack_id for scaffold apply"))?;
+        let scaffold_ok = run_process(
+            &self_exe,
+            &[
+                "new",
+                "--dir",
+                &plan.pack_dir.display().to_string(),
+                pack_id,
+            ],
+            None,
+        )?;
+        if !scaffold_ok {
+            return Err(anyhow!(
+                "wizard apply failed while creating application pack {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
+    if plan.run_delegate_flow {
+        let ok = run_flow_delegate_replay(&plan.pack_dir, plan.flow_wizard_answers.as_ref());
+        if !ok {
+            return Err(anyhow!(
+                "wizard apply failed while running flow delegate for {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
+    if plan.run_delegate_component {
+        let ok =
+            run_component_delegate_replay(&plan.pack_dir, plan.component_wizard_answers.as_ref());
+        if !ok {
+            return Err(anyhow!(
+                "wizard apply failed while running component delegate for {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
     if plan.run_doctor {
         let doctor_ok = run_process(
             &self_exe,
@@ -545,8 +716,17 @@ fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<Wiza
         .get("pack_dir")
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("answers.pack_dir must be a string"))?;
+    let create_pack_scaffold = answer_bool(answers, "create_pack_scaffold", false)?;
+    let create_pack_id = answers
+        .get("create_pack_id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let run_delegate_flow = answer_bool(answers, "run_delegate_flow", false)?;
+    let run_delegate_component = answer_bool(answers, "run_delegate_component", false)?;
     let run_doctor = answer_bool(answers, "run_doctor", true)?;
     let run_build = answer_bool(answers, "run_build", true)?;
+    let flow_wizard_answers = answers.get("flow_wizard_answers").cloned();
+    let component_wizard_answers = answers.get("component_wizard_answers").cloned();
     let sign = answer_bool(answers, "sign", false)?;
     let sign_key_path = answers
         .get("sign_key_path")
@@ -560,8 +740,14 @@ fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<Wiza
     let sign_key_path = if sign { sign_key_path } else { None };
     Ok(WizardExecutionPlan {
         pack_dir: PathBuf::from(pack_dir_raw),
+        create_pack_id,
+        create_pack_scaffold,
+        run_delegate_flow,
+        run_delegate_component,
         run_doctor,
         run_build,
+        flow_wizard_answers,
+        component_wizard_answers,
         sign_key_path,
     })
 }
@@ -582,6 +768,9 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
     runtime: Option<&RuntimeContext>,
     session: &mut WizardSession,
 ) -> Result<()> {
+    session
+        .selected_actions
+        .push("create_extension_pack.start".to_string());
     let catalog_ref = ask_text(
         input,
         output,
@@ -646,7 +835,11 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
     let pack_dir_path = PathBuf::from(pack_dir.trim());
     session.last_pack_dir = Some(pack_dir_path.clone());
     let qa_answers = ask_template_qa_answers(input, output, i18n, &template)?;
-    if let Err(err) = apply_template_plan(&template, &pack_dir_path, selected, i18n, &qa_answers) {
+    if session.dry_run {
+        wizard_ui::render_line(output, &i18n.t("wizard.dry_run.skipping_template_apply"))?;
+    } else if let Err(err) =
+        apply_template_plan(&template, &pack_dir_path, selected, i18n, &qa_answers)
+    {
         wizard_ui::render_line(
             output,
             &format!("{}: {err}", i18n.t("wizard.error.template_apply_failed")),
@@ -1202,6 +1395,9 @@ fn run_create_application_pack<R: BufRead, W: Write>(
     i18n: &WizardI18n,
     session: &mut WizardSession,
 ) -> Result<()> {
+    session
+        .selected_actions
+        .push("create_application_pack.start".to_string());
     let pack_id = ask_text(
         input,
         output,
@@ -1225,18 +1421,39 @@ fn run_create_application_pack<R: BufRead, W: Write>(
 
     let pack_dir_path = PathBuf::from(pack_dir.trim());
     session.last_pack_dir = Some(pack_dir_path.clone());
+    session.create_pack_scaffold = true;
+    session.create_pack_id = Some(pack_id.clone());
     let self_exe = wizard_self_exe()?;
 
-    let scaffold_ok = run_process(
-        &self_exe,
-        &[
-            "new",
-            "--dir",
-            &pack_dir_path.display().to_string(),
-            &pack_id,
-        ],
-        None,
-    )?;
+    let scaffold_ok = if session.dry_run {
+        wizard_ui::render_line(output, &i18n.t("wizard.dry_run.skipping_scaffold"))?;
+        let temp_pack_dir = temp_answers_path("greentic-pack-dry-run-pack");
+        let ok = run_process(
+            &self_exe,
+            &[
+                "new",
+                "--dir",
+                &temp_pack_dir.display().to_string(),
+                &pack_id,
+            ],
+            None,
+        )?;
+        if ok {
+            session.dry_run_delegate_pack_dir = Some(temp_pack_dir);
+        }
+        ok
+    } else {
+        run_process(
+            &self_exe,
+            &[
+                "new",
+                "--dir",
+                &pack_dir_path.display().to_string(),
+                &pack_id,
+            ],
+            None,
+        )?
+    };
     if !scaffold_ok {
         wizard_ui::render_line(output, &i18n.t("wizard.error.create_app_failed"))?;
         let nav = ask_failure_nav(input, output, i18n)?;
@@ -1247,6 +1464,11 @@ fn run_create_application_pack<R: BufRead, W: Write>(
     }
 
     loop {
+        let delegate_pack_dir = session
+            .dry_run_delegate_pack_dir
+            .as_deref()
+            .unwrap_or(&pack_dir_path)
+            .to_path_buf();
         let setup_choice = ask_enum(
             input,
             output,
@@ -1272,30 +1494,33 @@ fn run_create_application_pack<R: BufRead, W: Write>(
 
         match setup_choice.as_str() {
             "1" => {
-                let delegate_ok = run_delegate("greentic-flow", &["wizard", "."], &pack_dir_path);
-                if !delegate_ok {
-                    wizard_ui::render_line(output, &i18n.t("wizard.error.delegate_flow_failed"))?;
-                    if matches!(
-                        ask_failure_nav(input, output, i18n)?,
-                        SubmenuAction::MainMenu
-                    ) {
-                        return Ok(());
-                    }
+                session.run_delegate_flow = true;
+                let delegate_ok = run_flow_delegate_for_session(session, &delegate_pack_dir);
+                if !delegate_ok
+                    && handle_delegate_failure(
+                        input,
+                        output,
+                        i18n,
+                        session,
+                        "wizard.error.delegate_flow_failed",
+                    )?
+                {
+                    return Ok(());
                 }
             }
             "2" => {
-                let delegate_ok = run_delegate("greentic-component", &["wizard"], &pack_dir_path);
-                if !delegate_ok {
-                    wizard_ui::render_line(
+                session.run_delegate_component = true;
+                let delegate_ok = run_component_delegate_for_session(session, &delegate_pack_dir);
+                if !delegate_ok
+                    && handle_delegate_failure(
+                        input,
                         output,
-                        &i18n.t("wizard.error.delegate_component_failed"),
-                    )?;
-                    if matches!(
-                        ask_failure_nav(input, output, i18n)?,
-                        SubmenuAction::MainMenu
-                    ) {
-                        return Ok(());
-                    }
+                        i18n,
+                        session,
+                        "wizard.error.delegate_component_failed",
+                    )?
+                {
+                    return Ok(());
                 }
             }
             "3" => {
@@ -1376,7 +1601,11 @@ fn run_update_application_pack<R: BufRead, W: Write>(
 
         match choice.as_str() {
             "1" => {
-                let delegate_ok = run_delegate("greentic-flow", &["wizard", "."], &pack_dir_path);
+                session
+                    .selected_actions
+                    .push("update_application_pack.edit_flows".to_string());
+                session.run_delegate_flow = true;
+                let delegate_ok = run_flow_delegate_for_session(session, &pack_dir_path);
                 if delegate_ok {
                     let _ = run_update_validate_sequence(
                         input,
@@ -1388,18 +1617,22 @@ fn run_update_application_pack<R: BufRead, W: Write>(
                         true,
                         "wizard.progress.auto_run_update_validate",
                     )?;
-                } else {
-                    wizard_ui::render_line(output, &i18n.t("wizard.error.delegate_flow_failed"))?;
-                    if matches!(
-                        ask_failure_nav(input, output, i18n)?,
-                        SubmenuAction::MainMenu
-                    ) {
-                        return Ok(());
-                    }
+                } else if handle_delegate_failure(
+                    input,
+                    output,
+                    i18n,
+                    session,
+                    "wizard.error.delegate_flow_failed",
+                )? {
+                    return Ok(());
                 }
             }
             "2" => {
-                let delegate_ok = run_delegate("greentic-component", &["wizard"], &pack_dir_path);
+                session
+                    .selected_actions
+                    .push("update_application_pack.add_edit_components".to_string());
+                session.run_delegate_component = true;
+                let delegate_ok = run_component_delegate_for_session(session, &pack_dir_path);
                 if delegate_ok {
                     let _ = run_update_validate_sequence(
                         input,
@@ -1411,20 +1644,20 @@ fn run_update_application_pack<R: BufRead, W: Write>(
                         true,
                         "wizard.progress.auto_run_update_validate",
                     )?;
-                } else {
-                    wizard_ui::render_line(
-                        output,
-                        &i18n.t("wizard.error.delegate_component_failed"),
-                    )?;
-                    if matches!(
-                        ask_failure_nav(input, output, i18n)?,
-                        SubmenuAction::MainMenu
-                    ) {
-                        return Ok(());
-                    }
+                } else if handle_delegate_failure(
+                    input,
+                    output,
+                    i18n,
+                    session,
+                    "wizard.error.delegate_component_failed",
+                )? {
+                    return Ok(());
                 }
             }
             "3" => {
+                session
+                    .selected_actions
+                    .push("update_application_pack.run_update_validate".to_string());
                 let _ = run_update_validate_sequence(
                     input,
                     output,
@@ -1437,6 +1670,9 @@ fn run_update_application_pack<R: BufRead, W: Write>(
                 )?;
             }
             "4" => {
+                session
+                    .selected_actions
+                    .push("update_application_pack.sign".to_string());
                 let _ = run_sign_for_pack(input, output, i18n, session, &self_exe, &pack_dir_path)?;
             }
             "0" | "M" | "m" => return Ok(()),
@@ -1454,6 +1690,9 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
     session: &mut WizardSession,
     runtime: Option<&RuntimeContext>,
 ) -> Result<()> {
+    session
+        .selected_actions
+        .push("update_extension_pack.start".to_string());
     let pack_dir_path = ask_existing_pack_dir(
         input,
         output,
@@ -1529,7 +1768,14 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
                     .find(|item| item.id == type_choice)
                     .ok_or_else(|| anyhow!("selected extension type not found"))?;
                 let answers = ask_extension_edit_answers(input, output, i18n, selected)?;
-                persist_extension_edit_answers(&pack_dir_path, selected, &answers)?;
+                if !session.dry_run {
+                    persist_extension_edit_answers(&pack_dir_path, selected, &answers)?;
+                } else {
+                    wizard_ui::render_line(
+                        output,
+                        &i18n.t("wizard.dry_run.skipping_edit_entry_persist"),
+                    )?;
+                }
                 wizard_ui::render_line(
                     output,
                     &format!(
@@ -1540,30 +1786,33 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
                 )?;
             }
             "2" => {
-                let delegate_ok = run_delegate("greentic-flow", &["wizard", "."], &pack_dir_path);
-                if !delegate_ok {
-                    wizard_ui::render_line(output, &i18n.t("wizard.error.delegate_flow_failed"))?;
-                    if matches!(
-                        ask_failure_nav(input, output, i18n)?,
-                        SubmenuAction::MainMenu
-                    ) {
-                        return Ok(());
-                    }
+                session.run_delegate_flow = true;
+                let delegate_ok = run_flow_delegate_for_session(session, &pack_dir_path);
+                if !delegate_ok
+                    && handle_delegate_failure(
+                        input,
+                        output,
+                        i18n,
+                        session,
+                        "wizard.error.delegate_flow_failed",
+                    )?
+                {
+                    return Ok(());
                 }
             }
             "3" => {
-                let delegate_ok = run_delegate("greentic-component", &["wizard"], &pack_dir_path);
-                if !delegate_ok {
-                    wizard_ui::render_line(
+                session.run_delegate_component = true;
+                let delegate_ok = run_component_delegate_for_session(session, &pack_dir_path);
+                if !delegate_ok
+                    && handle_delegate_failure(
+                        input,
                         output,
-                        &i18n.t("wizard.error.delegate_component_failed"),
-                    )?;
-                    if matches!(
-                        ask_failure_nav(input, output, i18n)?,
-                        SubmenuAction::MainMenu
-                    ) {
-                        return Ok(());
-                    }
+                        i18n,
+                        session,
+                        "wizard.error.delegate_component_failed",
+                    )?
+                {
+                    return Ok(());
                 }
             }
             "4" => {
@@ -1600,6 +1849,22 @@ fn run_update_validate_sequence<R: BufRead, W: Write>(
     prompt_sign_after: bool,
     progress_key: &str,
 ) -> Result<bool> {
+    session.run_doctor = true;
+    session.run_build = true;
+    session
+        .selected_actions
+        .push("pipeline.update_validate".to_string());
+    if session.dry_run {
+        wizard_ui::render_line(output, &i18n.t(progress_key))?;
+        wizard_ui::render_line(output, &i18n.t("wizard.progress.running_doctor"))?;
+        wizard_ui::render_line(output, &i18n.t("wizard.progress.running_build"))?;
+        return if prompt_sign_after {
+            run_sign_prompt_after_finalize(input, output, i18n, session, self_exe, pack_dir_path)
+        } else {
+            Ok(true)
+        };
+    }
+
     wizard_ui::render_line(output, &i18n.t(progress_key))?;
     wizard_ui::render_line(output, &i18n.t("wizard.progress.running_doctor"))?;
     let doctor_ok = run_process(
@@ -1655,9 +1920,24 @@ fn run_sign_prompt_after_finalize<R: BufRead, W: Write>(
     )?;
 
     match sign_choice.as_str() {
-        "2" => Ok(true),
-        "M" | "m" => Ok(true),
-        "0" => Ok(false),
+        "2" => {
+            session
+                .selected_actions
+                .push("pipeline.sign_prompt.skip".to_string());
+            Ok(true)
+        }
+        "M" | "m" => {
+            session
+                .selected_actions
+                .push("pipeline.sign_prompt.main_menu".to_string());
+            Ok(true)
+        }
+        "0" => {
+            session
+                .selected_actions
+                .push("pipeline.sign_prompt.back".to_string());
+            Ok(false)
+        }
         "1" => run_sign_for_pack(input, output, i18n, session, self_exe, pack_dir_path),
         _ => {
             wizard_ui::render_line(output, &i18n.t("wizard.error.invalid_selection"))?;
@@ -1674,6 +1954,7 @@ fn run_sign_for_pack<R: BufRead, W: Write>(
     self_exe: &Path,
     pack_dir_path: &Path,
 ) -> Result<bool> {
+    session.selected_actions.push("pipeline.sign".to_string());
     let key_path = ask_text(
         input,
         output,
@@ -1683,17 +1964,22 @@ fn run_sign_for_pack<R: BufRead, W: Write>(
         None,
         session.sign_key_path.as_deref(),
     )?;
-    let sign_ok = run_process(
-        self_exe,
-        &[
-            "sign",
-            "--pack",
-            &pack_dir_path.display().to_string(),
-            "--key",
-            &key_path,
-        ],
-        None,
-    )?;
+    let sign_ok = if session.dry_run {
+        wizard_ui::render_line(output, &i18n.t("wizard.dry_run.skipping_sign"))?;
+        true
+    } else {
+        run_process(
+            self_exe,
+            &[
+                "sign",
+                "--pack",
+                &pack_dir_path.display().to_string(),
+                "--key",
+                &key_path,
+            ],
+            None,
+        )?
+    };
     if !sign_ok {
         wizard_ui::render_line(output, &i18n.t("wizard.error.sign_failed"))?;
         return Ok(false);
@@ -2087,6 +2373,135 @@ fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn run_delegate_owned(binary: &str, args: &[String], cwd: &Path) -> bool {
+    let argv = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_delegate(binary, &argv, cwd)
+}
+
+fn temp_answers_path(prefix: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("{prefix}-{}-{stamp}.json", std::process::id()))
+}
+
+fn read_json_value(path: &Path) -> Option<Value> {
+    let bytes = fs::read(path).ok()?;
+    serde_json::from_slice::<Value>(&bytes).ok()
+}
+
+fn write_json_value(path: &Path, value: &Value) -> bool {
+    serde_json::to_vec_pretty(value)
+        .ok()
+        .and_then(|bytes| fs::write(path, bytes).ok())
+        .is_some()
+}
+
+fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
+    if !session.dry_run {
+        return run_delegate("greentic-flow", &["wizard", "."], pack_dir);
+    }
+    let answers_path = temp_answers_path("greentic-flow-wizard-answers");
+    let args = vec![
+        "wizard".to_string(),
+        ".".to_string(),
+        "--dry-run".to_string(),
+        "--emit-answers".to_string(),
+        answers_path.display().to_string(),
+    ];
+    let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
+    if ok {
+        session.flow_wizard_answers = read_json_value(&answers_path);
+    }
+    let _ = fs::remove_file(&answers_path);
+    ok
+}
+
+fn run_component_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
+    if !session.dry_run {
+        return run_delegate("greentic-component", &["wizard"], pack_dir);
+    }
+    let answers_path = temp_answers_path("greentic-component-wizard-answers");
+    let args = vec![
+        "wizard".to_string(),
+        "--project-root".to_string(),
+        ".".to_string(),
+        "--execution".to_string(),
+        "dry-run".to_string(),
+        "--qa-answers-out".to_string(),
+        answers_path.display().to_string(),
+    ];
+    let ok = run_delegate_owned("greentic-component", &args, pack_dir);
+    if ok {
+        session.component_wizard_answers = read_json_value(&answers_path);
+    }
+    let _ = fs::remove_file(&answers_path);
+    ok
+}
+
+fn run_flow_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
+    if let Some(answers) = answers {
+        let answers_path = temp_answers_path("greentic-flow-wizard-replay");
+        if !write_json_value(&answers_path, answers) {
+            return false;
+        }
+        let args = vec![
+            "wizard".to_string(),
+            ".".to_string(),
+            "--answers-file".to_string(),
+            answers_path.display().to_string(),
+        ];
+        let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
+        let _ = fs::remove_file(&answers_path);
+        return ok;
+    }
+    run_delegate("greentic-flow", &["wizard", "."], pack_dir)
+}
+
+fn run_component_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
+    if let Some(answers) = answers {
+        let answers_path = temp_answers_path("greentic-component-wizard-replay");
+        if !write_json_value(&answers_path, answers) {
+            return false;
+        }
+        let args = vec![
+            "wizard".to_string(),
+            "--project-root".to_string(),
+            ".".to_string(),
+            "--execution".to_string(),
+            "execute".to_string(),
+            "--qa-answers".to_string(),
+            answers_path.display().to_string(),
+        ];
+        let ok = run_delegate_owned("greentic-component", &args, pack_dir);
+        let _ = fs::remove_file(&answers_path);
+        return ok;
+    }
+    run_delegate("greentic-component", &["wizard"], pack_dir)
+}
+
+fn handle_delegate_failure<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    i18n: &WizardI18n,
+    session: &WizardSession,
+    error_key: &str,
+) -> Result<bool> {
+    if session.dry_run {
+        wizard_ui::render_line(output, &i18n.t("wizard.dry_run.child_wizard_returned"))?;
+        return Ok(false);
+    }
+    wizard_ui::render_line(output, &i18n.t(error_key))?;
+    if matches!(
+        ask_failure_nav(input, output, i18n)?,
+        SubmenuAction::MainMenu
+    ) {
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn delegate_override_binary(binary: &str) -> Option<PathBuf> {

@@ -304,4 +304,3 @@ fn doctor_rejects_missing_component_sources() {
         "expected missing component reference diagnostic"
     );
 }
-

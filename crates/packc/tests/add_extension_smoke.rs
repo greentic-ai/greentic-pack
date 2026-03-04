@@ -156,4 +156,3 @@ fn add_extension_updates_pack_yaml_in_place() {
         "provider entry missing from pack.yaml"
     );
 }
-
