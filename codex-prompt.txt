@@ -8,3 +8,7 @@ Task:
 
 Security alerts JSON:
 {"dependabot": [], "code_scanning": []}
+
+
+New PR Dependency Vulnerabilities:
+[]
