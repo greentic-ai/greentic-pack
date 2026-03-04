@@ -187,11 +187,11 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
     match format {
         InspectFormat::Json => {
             let mut payload = serde_json::json!({
-                "manifest": load.manifest,
+                "manifest": redacted_manifest_json(&load.manifest)?,
                 "report": {
                     "signature_ok": load.report.signature_ok,
                     "sbom_ok": load.report.sbom_ok,
-                    "warnings": load.report.warnings,
+                    "warnings": redact_warnings(&load.report.warnings),
                 },
                 "sbom": load.sbom,
             });
@@ -749,7 +749,7 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
 
     if !report.warnings.is_empty() {
         println!("Warnings:");
-        for warning in &report.warnings {
+        for warning in redact_warnings(&report.warnings) {
             println!("  - {}", warning);
         }
     }
@@ -757,6 +757,27 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
     if let Some(report) = validation {
         print_validation(report);
     }
+}
+
+fn redact_manifest_json(manifest: &PackManifest) -> Result<Value> {
+    let mut value = serde_json::to_value(manifest)?;
+    if let Value::Object(map) = &mut value {
+        map.remove("secret_requirements");
+    }
+    Ok(value)
+}
+
+fn redact_warnings(warnings: &[String]) -> Vec<String> {
+    warnings
+        .iter()
+        .map(|warning| {
+            if warning.to_ascii_lowercase().contains("secret") {
+                "warning contains sensitive secret details (redacted)".to_string()
+            } else {
+                warning.clone()
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Serialize)]
