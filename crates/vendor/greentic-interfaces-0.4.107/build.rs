@@ -5,6 +5,8 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{Duration, SystemTime};
 
 use wit_bindgen_core::Files;
 use wit_bindgen_core::WorldGenerator;
@@ -25,6 +27,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let staged_root = manifest_dir.join("target").join("wit-staging");
+    let staged_lock = manifest_dir.join("target").join("wit-staging.lock");
+    let _lock_guard = acquire_staging_lock(&staged_lock)?;
     // Keep staging stable for `src/wit_all.rs` relative paths and avoid
     // concurrent build-script races by not deleting the shared directory.
     fs::create_dir_all(&staged_root)?;
@@ -49,6 +53,63 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
 
     Ok(())
+}
+
+struct StagingLock {
+    lock_path: PathBuf,
+}
+
+impl Drop for StagingLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.lock_path);
+    }
+}
+
+fn acquire_staging_lock(lock_path: &Path) -> Result<StagingLock, Box<dyn Error>> {
+    const RETRY_DELAY: Duration = Duration::from_millis(100);
+    const STALE_AFTER: Duration = Duration::from_secs(180);
+    const MAX_WAIT: Duration = Duration::from_secs(120);
+
+    let started = SystemTime::now();
+    loop {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock_path)
+        {
+            Ok(_) => {
+                return Ok(StagingLock {
+                    lock_path: lock_path.to_path_buf(),
+                });
+            }
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+                if let Ok(meta) = fs::metadata(lock_path) {
+                    if let Ok(modified) = meta.modified() {
+                        if modified.elapsed().unwrap_or(Duration::ZERO) > STALE_AFTER {
+                            let _ = fs::remove_file(lock_path);
+                            continue;
+                        }
+                    }
+                }
+
+                if started.elapsed().unwrap_or(Duration::ZERO) > MAX_WAIT {
+                    return Err(format!(
+                        "timed out waiting for staging lock at {}",
+                        lock_path.display()
+                    )
+                    .into());
+                }
+                thread::sleep(RETRY_DELAY);
+            }
+            Err(err) => {
+                return Err(format!(
+                    "failed to acquire staging lock {}: {err}",
+                    lock_path.display()
+                )
+                .into());
+            }
+        }
+    }
 }
 
 fn resolve_wit_root(manifest_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
