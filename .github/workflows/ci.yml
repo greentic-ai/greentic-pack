@@ -60,36 +60,36 @@ jobs:
         run: mkdir -p "$TMPDIR"
       - name: Check for duplicate canonical WIT
         run: bash ci/check_no_duplicate_canonical_wit.sh
-      - name: Install mold + clang (Linux only)
+      - name: Install lld + clang (Linux only)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mold clang
-      - name: Configure mold for native Linux builds
+          sudo apt-get install -y lld clang
+      - name: Configure lld for native Linux builds
         if: runner.os == 'Linux'
         run: |
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [target.x86_64-unknown-linux-gnu]
           linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
           EOF
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-rust-1.91-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install mold + clang (Linux only)
+      - name: Install lld + clang (Linux only)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mold clang
-      - name: Configure mold for native Linux builds
+          sudo apt-get install -y lld clang
+      - name: Configure lld for native Linux builds
         if: runner.os == 'Linux'
         run: |
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [target.x86_64-unknown-linux-gnu]
           linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
           EOF
       - name: Cache cargo-binstall
         id: cache-cargo-binstall
@@ -129,19 +129,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.0
-      - name: Install mold + clang (Linux only)
+      - name: Install lld + clang (Linux only)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mold clang
-      - name: Configure mold for native Linux builds
+          sudo apt-get install -y lld clang
+      - name: Configure lld for native Linux builds
         if: runner.os == 'Linux'
         run: |
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [target.x86_64-unknown-linux-gnu]
           linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
           EOF
       - uses: Swatinem/rust-cache@v2
         with:
@@ -197,15 +197,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mold clang gcc-aarch64-linux-gnu
-      - name: Configure mold for native Linux x86_64 builds
+          sudo apt-get install -y lld clang gcc-aarch64-linux-gnu
+      - name: Configure lld for native Linux x86_64 builds
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [target.x86_64-unknown-linux-gnu]
           linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
           EOF
       - name: Configure linker for Linux aarch64 builds
         if: matrix.target == 'aarch64-unknown-linux-gnu'
