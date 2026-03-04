@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Parser;
 use greentic_flow::compile_ygtc_str;
+use greentic_pack::validate::oauth_capability_requirement_diagnostics_for_flow;
 use tracing::info;
 
 use crate::config::load_pack_config;
@@ -27,11 +29,40 @@ pub fn handle(args: LintArgs, json: bool) -> Result<()> {
     let cfg = load_pack_config(&pack_dir)?;
     crate::extensions::validate_components_extension(&cfg.extensions, args.allow_oci_tags)?;
 
+    let required_capabilities: BTreeSet<String> = cfg
+        .dependencies
+        .iter()
+        .flat_map(|dep| dep.required_capabilities.iter())
+        .map(|cap| cap.trim().to_string())
+        .filter(|cap| !cap.is_empty())
+        .collect();
+
     let mut compiled = 0usize;
+    let mut oauth_diagnostics = Vec::new();
     for flow in &cfg.flows {
         let src = std::fs::read_to_string(&flow.file)?;
-        compile_ygtc_str(&src)?;
+        let compiled_flow = compile_ygtc_str(&src)?;
+        oauth_diagnostics.extend(oauth_capability_requirement_diagnostics_for_flow(
+            flow.id.as_str(),
+            &compiled_flow,
+            &required_capabilities,
+        ));
         compiled += 1;
+    }
+
+    if !oauth_diagnostics.is_empty() {
+        let mut message = String::from("OAuth capability requirement checks failed during lint:\n");
+        for diag in oauth_diagnostics {
+            if let Some(path) = diag.path.as_deref() {
+                message.push_str(&format!("- [{}] {}: {}\n", diag.code, path, diag.message));
+            } else {
+                message.push_str(&format!("- [{}] {}\n", diag.code, diag.message));
+            }
+            if let Some(hint) = diag.hint.as_deref() {
+                message.push_str(&format!("  hint: {hint}\n"));
+            }
+        }
+        bail!(message.trim_end().to_string());
     }
 
     if json {
