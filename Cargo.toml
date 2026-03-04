@@ -21,7 +21,7 @@ greentic-interfaces-wasmtime = { path = "crates/vendor/greentic-interfaces-wasmt
 [workspace.package]
 edition = "2024"
 rust-version = "1.91"
-version = "0.4.100"
+version = "0.4.101"
 license = "MIT"
 
 [workspace.dependencies]
