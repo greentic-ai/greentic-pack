@@ -40,7 +40,6 @@ jobs:
         with:
           fail-on-severity: moderate
           warn-only: true
-          comment-summary-in-pr: always
 
       - name: Fetch open security alerts
         id: alerts
@@ -49,10 +48,15 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
           MAX_ALERTS: ${{ github.event.inputs.max_alerts || 20 }}
+          PR_VULN_CHANGES: ${{ steps.dependency_review.outputs.vulnerable-changes }}
+          PR_COMMENT_CONTENT: ${{ steps.dependency_review.outputs.comment-content }}
         run: |
           set -euo pipefail
 
           if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "$PR_VULN_CHANGES" > pr-vulnerable-changes.json
+            echo "$PR_COMMENT_CONTENT" > pr-comment.md
+            
             echo "[]" > all-dependabot-alerts.json
             echo "[]" > dependabot-alerts.json
             echo "[]" > all-code-scanning-alerts.json
@@ -62,6 +66,9 @@ jobs:
             echo "Skipping global alerts fetch for pull request - Codex will only evaluate PR vulnerabilities."
             exit 0
           fi
+          
+          echo "[]" > pr-vulnerable-changes.json
+          echo "" > pr-comment.md
 
           # Fetch Dependabot alerts
           gh api \
@@ -104,6 +111,11 @@ jobs:
           PROMPT
 
           cat security-alerts.json >> codex-prompt.txt
+          
+          if [ -s pr-vulnerable-changes.json ]; then
+            echo -e "\n\nNew PR Dependency Vulnerabilities:" >> codex-prompt.txt
+            cat pr-vulnerable-changes.json >> codex-prompt.txt
+          fi
 
       - name: Run Codex remediation
         if: steps.alerts.outputs.count != '0' || github.event_name == 'pull_request'
@@ -132,17 +144,31 @@ jobs:
           git push origin "HEAD:${BRANCH}"
 
       - name: Post Codex Review
-        if: github.event_name == 'pull_request' && hashFiles('SECURITY_FIX_REPORT.md') != ''
+        if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
+          
+          # Combine the Dependency Review scorecard and the Codex report
+          if [ -s pr-comment.md ]; then
+             cat pr-comment.md > COMBINED_REPORT.md
+          else
+             echo "## Dependency Review Scorecard" > COMBINED_REPORT.md
+             echo "No dependency changes detected." >> COMBINED_REPORT.md
+          fi
+
+          if [ -f SECURITY_FIX_REPORT.md ]; then
+             echo -e "\n\n---\n\n" >> COMBINED_REPORT.md
+             cat SECURITY_FIX_REPORT.md >> COMBINED_REPORT.md
+          fi
+          
           echo "Adding bot as reviewer"
           gh pr edit "${PR_URL}" --add-reviewer "@me" || echo "Could not add reviewer (might already be one)"
           
-          echo "Posting Codex report as a review comment to ${PR_URL}"
-          gh pr review "${PR_URL}" --comment --body-file SECURITY_FIX_REPORT.md
+          echo "Posting Combined report as a review comment to ${PR_URL}"
+          gh pr review "${PR_URL}" --comment --body-file COMBINED_REPORT.md
 
       - name: Upload remediation artifacts
         if: always()
