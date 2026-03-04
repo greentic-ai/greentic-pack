@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -596,16 +597,44 @@ impl RegistryClient for DefaultRegistryClient {
         reference: &Reference,
         accepted_manifest_types: &[&str],
     ) -> Result<PulledImage, OciDistributionError> {
+        let auth = registry_auth_for(reference);
         let image = self
             .inner
             .pull(
                 reference,
-                &RegistryAuth::Anonymous,
+                &auth,
                 accepted_manifest_types.to_vec(),
             )
             .await?;
         Ok(convert_image(image))
     }
+}
+
+fn registry_auth_for(reference: &Reference) -> RegistryAuth {
+    if let (Ok(user), Ok(password)) = (
+        env::var("GREENTIC_OCI_USERNAME"),
+        env::var("GREENTIC_OCI_PASSWORD"),
+    ) {
+        if !user.is_empty() && !password.is_empty() {
+            return RegistryAuth::Basic(user, password);
+        }
+    }
+
+    let registry = reference.registry();
+    if registry == "ghcr.io" {
+        let user = env::var("GHCR_USER")
+            .ok()
+            .or_else(|| env::var("GHCR_USERNAME").ok())
+            .or_else(|| env::var("GITHUB_ACTOR").ok())
+            .unwrap_or_default();
+        if let Ok(token) = env::var("GHCR_TOKEN") {
+            if !user.is_empty() && !token.is_empty() {
+                return RegistryAuth::Basic(user, token);
+            }
+        }
+    }
+
+    RegistryAuth::Anonymous
 }
 
 #[cfg(test)]
