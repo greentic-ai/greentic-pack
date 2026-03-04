@@ -3038,7 +3038,7 @@ nodes:
                         "component_id": "dummy.component",
                         "source": {
                             "kind": "oci",
-                            "ref": format!("oci://ghcr.io/greentic-ai/components/templates@{digest}")
+                            "ref": format!("oci://ghcr.io/greenticai/components/templates@{digest}")
                         },
                         "digest": digest
                     }
@@ -3318,3 +3318,4 @@ flows:
         );
     }
 }
+
