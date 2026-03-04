@@ -66,9 +66,14 @@ extensions:
 ### Validation rules
 
 - `schema_version` must be `1`.
-- Each offer `provider.component_ref` must match an id from `components[].id` in `pack.yaml`.
+- Each offer `provider.component_ref` must match either:
+  - an id from `components[].id` in `pack.yaml`, or
+  - a component id present in `pack.lock` (lock-backed component source ids).
 - If `requires_setup: true`:
   - `setup` must be present;
   - `setup.qa_ref` must be non-empty and reference an existing file under the pack root.
 
-These checks run in `greentic-pack build`/`lint` paths for source packs.
+Notes:
+
+- `greentic-pack build` validates against `pack.yaml` + `pack.lock`, so lock-backed `provider.component_ref` ids are accepted there.
+- `greentic-pack lint` validates source shape and still expects ids declared in `pack.yaml`.

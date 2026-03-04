@@ -177,21 +177,6 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         "loaded pack.yaml"
     );
     validate_components_extension(&config.extensions, opts.allow_oci_tags)?;
-    let known_component_ids = config
-        .components
-        .iter()
-        .map(|component| component.id.clone())
-        .collect::<Vec<_>>();
-    validate_capabilities_extension(&config.extensions, &opts.pack_dir, &known_component_ids)?;
-
-    let secret_requirements_override =
-        resolve_secret_requirements_override(&opts.pack_dir, opts.secrets_req.as_ref());
-    let secret_requirements = aggregate_secret_requirements(
-        &config.components,
-        secret_requirements_override.as_deref(),
-        opts.default_secret_scope.as_deref(),
-    )?;
-
     if !opts.lock_path.exists() {
         anyhow::bail!(
             "pack.lock.cbor is required (run `greentic-pack resolve`); missing: {}",
@@ -204,6 +189,22 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
             opts.lock_path.display()
         )
     })?;
+    let mut known_component_ids = config
+        .components
+        .iter()
+        .map(|component| component.id.clone())
+        .collect::<BTreeSet<_>>();
+    known_component_ids.extend(pack_lock.components.keys().cloned());
+    let known_component_ids = known_component_ids.into_iter().collect::<Vec<_>>();
+    validate_capabilities_extension(&config.extensions, &opts.pack_dir, &known_component_ids)?;
+
+    let secret_requirements_override =
+        resolve_secret_requirements_override(&opts.pack_dir, opts.secrets_req.as_ref());
+    let secret_requirements = aggregate_secret_requirements(
+        &config.components,
+        secret_requirements_override.as_deref(),
+        opts.default_secret_scope.as_deref(),
+    )?;
 
     let mut build = assemble_manifest(
         &config,
