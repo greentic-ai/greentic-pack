@@ -1526,9 +1526,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-distributor-client"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a0af5740eb1fea2e8949baecfdda94abcb7863da4d5417fdf34ad19a1ea1e9"
+checksum = "74e562e01667fa1fcdb72c427cdb3b630e6d10f30570a40908acb54882675de5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1668,7 +1668,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-pack"
-version = "0.4.101"
+version = "0.4.102"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1722,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-pack-lib"
-version = "0.4.101"
+version = "0.4.102"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2872,7 +2872,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "pack_component"
-version = "0.4.101"
+version = "0.4.102"
 dependencies = [
  "greentic-interfaces-host",
  "serde",
@@ -2882,7 +2882,7 @@ dependencies = [
 
 [[package]]
 name = "pack_component_template"
-version = "0.4.101"
+version = "0.4.102"
 
 [[package]]
 name = "parking_lot"

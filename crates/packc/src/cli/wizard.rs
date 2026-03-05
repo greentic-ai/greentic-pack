@@ -778,7 +778,7 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
         "pack.wizard.create_ext.catalog_ref",
         "wizard.create_extension_pack.ask_catalog_ref",
         Some("wizard.create_extension_pack.ask_catalog_ref_help"),
-        Some("oci://ghcr.io/greenticai/catalogs/extensions:latest"),
+        Some("fixture://extensions.json"),
     )?;
 
     let catalog = match load_extension_catalog(catalog_ref.trim(), runtime) {
@@ -1038,7 +1038,8 @@ fn apply_template_plan(
             WizardStep::Delegate { target, .. } => {
                 let ok = match target {
                     greentic_types::WizardTarget::Flow => {
-                        run_delegate("greentic-flow", &["wizard", "."], pack_dir)
+                        let args = flow_delegate_args(pack_dir);
+                        run_delegate_owned("greentic-flow", &args, pack_dir)
                     }
                     greentic_types::WizardTarget::Component => {
                         run_delegate("greentic-component", &["wizard"], pack_dir)
@@ -1710,7 +1711,7 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
         "pack.wizard.update_ext.catalog_ref",
         "wizard.update_extension_pack.ask_catalog_ref",
         Some("wizard.update_extension_pack.ask_catalog_ref_help"),
-        Some("oci://ghcr.io/greenticai/catalogs/extensions:latest"),
+        Some("fixture://extensions.json"),
     )?;
 
     let catalog = match load_extension_catalog(catalog_ref.trim(), runtime) {
@@ -2400,23 +2401,49 @@ fn write_json_value(path: &Path, value: &Value) -> bool {
         .is_some()
 }
 
-fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
-    if !session.dry_run {
-        return run_delegate("greentic-flow", &["wizard", "."], pack_dir);
-    }
-    let answers_path = temp_answers_path("greentic-flow-wizard-answers");
-    let args = vec![
+fn flow_delegate_args(pack_dir: &Path) -> Vec<String> {
+    let flow_path =
+        primary_flow_path_for_delegate(pack_dir).unwrap_or_else(|| "flows/main.ygtc".to_string());
+    vec![
         "wizard".to_string(),
-        ".".to_string(),
-        "--dry-run".to_string(),
-        "--emit-answers".to_string(),
-        answers_path.display().to_string(),
-    ];
-    let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
-    if ok {
-        session.flow_wizard_answers = read_json_value(&answers_path);
+        "edit".to_string(),
+        "--flow".to_string(),
+        flow_path,
+    ]
+}
+
+fn primary_flow_path_for_delegate(pack_dir: &Path) -> Option<String> {
+    let main = pack_dir.join("flows").join("main.ygtc");
+    if main.exists() {
+        return Some("flows/main.ygtc".to_string());
     }
-    let _ = fs::remove_file(&answers_path);
+    let flows_dir = pack_dir.join("flows");
+    if !flows_dir.is_dir() {
+        return None;
+    }
+    let mut entries = fs::read_dir(flows_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok().map(|value| value.path()))
+        .filter(|path| {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("ygtc"))
+                .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    let first = entries.first()?;
+    let name = first.file_name()?.to_str()?;
+    Some(format!("flows/{name}"))
+}
+
+fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
+    let args = flow_delegate_args(pack_dir);
+    let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
+    if ok && session.dry_run {
+        // greentic-flow wizard no longer emits replayable answer docs in this path.
+        session.flow_wizard_answers = None;
+    }
     ok
 }
 
@@ -2443,22 +2470,9 @@ fn run_component_delegate_for_session(session: &mut WizardSession, pack_dir: &Pa
 }
 
 fn run_flow_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
-    if let Some(answers) = answers {
-        let answers_path = temp_answers_path("greentic-flow-wizard-replay");
-        if !write_json_value(&answers_path, answers) {
-            return false;
-        }
-        let args = vec![
-            "wizard".to_string(),
-            ".".to_string(),
-            "--answers-file".to_string(),
-            answers_path.display().to_string(),
-        ];
-        let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
-        let _ = fs::remove_file(&answers_path);
-        return ok;
-    }
-    run_delegate("greentic-flow", &["wizard", "."], pack_dir)
+    let _ = answers;
+    let args = flow_delegate_args(pack_dir);
+    run_delegate_owned("greentic-flow", &args, pack_dir)
 }
 
 fn run_component_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {

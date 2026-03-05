@@ -356,7 +356,7 @@ Update application pack flow:
 - after successful delegate from flows/components, wizard auto-runs update & validate
 
 Create extension pack flow:
-- asks catalog ref (default `oci://ghcr.io/greenticai/catalogs/extensions:latest`)
+- asks catalog ref (default `fixture://extensions.json`)
 - supports `fixture://extensions.json`, `file://<path>`, and `oci://...`
 - choose extension type (with explanation), choose template, choose pack dir
 - catalog labels can be provided via i18n keys in catalog (`name_key`, `description_key`)
