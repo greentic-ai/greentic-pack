@@ -1,162 +1,102 @@
-# Extension Provider Packs Howto
+# Extension Capability Packs Howto
 
-## What This Guide Covers
+## Scope
 
-This guide explains:
+This guide covers the canonical v0.6 extension path for new packs:
 
-- how to create extension packs with the wizard
-- how extensions are declared and packaged
-- how component operations are discovered and used
-- how validation works
-- how QA wizard questions and i18n work
+- author capability offers in `extensions.greentic.ext.capabilities.v1`
+- use `greentic-pack add-extension capability` for deterministic edits
+- validate with `lint`, `resolve`, `build`, and `doctor`
 
-## How Extensions Work
+The provider-extension/schema-core track is legacy-only. If you maintain old
+deployments, see `docs/provider_extension.md` and `docs/vision/legacy.md`.
 
-Extensions are extra metadata under `pack.yaml`:
+## Extension shape
 
 ```yaml
 extensions:
-  <extension-key>:
-    kind: <extension-kind>
-    version: <extension-version>
-    inline: <extension-payload>
+  greentic.ext.capabilities.v1:
+    kind: greentic.ext.capabilities.v1
+    version: 1.0.0
+    inline:
+      schema_version: 1
+      offers:
+        - offer_id: policy.pre.10
+          cap_id: greentic.cap.op_hook.pre
+          version: v1
+          provider:
+            component_ref: policy.hook
+            op: hook.evaluate
+          priority: 10
+          requires_setup: false
+          applies_to:
+            op_names: [send]
 ```
 
-Source is YAML, but built pack artifacts are CBOR-first (`manifest.cbor`, optional
-`pack.cbor`, optional `pack.lock.cbor` after resolve).
+## Recommended workflow
 
-## Create an Extension Pack With the Wizard
-
-1. Scaffold an extension pack.
+1. Scaffold a pack:
 
 ```bash
-greentic-pack wizard new-extension <PACK_ID> --kind <KIND> --out <DIR> --locale en --name "<Display Name>"
+greentic-pack new <PACK_ID> --dir <DIR>
 ```
 
-2. Add components to the pack.
-
-```bash
-greentic-pack wizard add-component <REF_OR_ID> --pack <DIR>
-```
-
-3. Sync `pack.yaml` with on-disk components/flows.
+2. Add or sync components and flows:
 
 ```bash
 greentic-pack update --in <DIR>
 ```
 
-4. Validate, resolve, build, inspect.
+3. Add capability offers:
+
+```bash
+greentic-pack add-extension capability --pack-dir <DIR> \
+  --offer-id <ID> \
+  --cap-id <CAP_ID> \
+  --component-ref <COMPONENT_ID> \
+  --op <OP_ID> \
+  --priority 10
+```
+
+4. Validate and build:
 
 ```bash
 greentic-pack lint --in <DIR>
 greentic-pack resolve --in <DIR>
-greentic-pack build --in <DIR>
-greentic-pack inspect --in <DIR>/dist/pack.gtpack --json
+greentic-pack build --in <DIR> --gtpack-out <DIR>/dist/pack.gtpack
+greentic-pack doctor <DIR>/dist/pack.gtpack
 ```
 
-## Multiple Extension Types
+## Validation rules for capability offers
 
-### Provider extension (`greentic.provider-extension.v1`)
+- `schema_version` must be `1`.
+- `provider.component_ref` must reference:
+  - a component id from `pack.yaml`, or
+  - a lock-backed component id from `pack.lock.cbor` (build path).
+- if `requires_setup: true`:
+  - `setup` is required;
+  - `setup.qa_ref` must be non-empty and point to an existing file in the pack.
 
-Use when you need provider declarations (types/capabilities/ops/runtime binding).
+## Wizard catalog notes
 
-```yaml
-extensions:
-  greentic.provider-extension.v1:
-    kind: greentic.provider-extension.v1
-    version: 1.0.0
-    inline:
-      providers:
-        - provider_type: "messaging.telegram.bot"
-          capabilities: ["send", "receive"]
-          ops: ["send", "reply"]
-          config_schema_ref: "schemas/messaging/telegram/config.schema.json"
-          state_schema_ref: "schemas/messaging/telegram/state.schema.json"
-          runtime:
-            component_ref: "telegram-provider@1.0.0"
-            export: "run"
-            world: "greentic:provider/schema-core@1.0.0"
-```
+`greentic-pack wizard` can load extension catalogs (`fixture://`, `file://`,
+`oci://`) for scaffolding and editing extension entries.
 
-Provider helper commands:
+For new extension packs, catalog entries should resolve to:
 
-- `greentic-pack add-extension provider ...`
-- `greentic-pack providers list --pack <path> [--json]`
-- `greentic-pack providers info <id> --pack <path> [--json]`
-- `greentic-pack providers validate --pack <path> [--strict]`
+- `canonical_extension_key = greentic.ext.capabilities.v1`
 
-### Components extension (`greentic.components`)
-
-Use when you want external OCI component refs.
-
-```yaml
-extensions:
-  greentic.components:
-    kind: greentic.components
-    version: v1
-    inline:
-      refs:
-        - ghcr.io/org/name@sha256:<64-hex>
-```
-
-Rules: `inline.refs` is required; digest pinning is default; tag refs need
-`--allow-oci-tags`.
-
-### Custom extension kinds
-
-Unknown extension kinds are preserved so you can carry organization-specific
-metadata.
-
-## Capability Pack Catalog Baseline
-
-For capability-first provider planning (Messaging, Events, OAuth, MCP, State,
-Telemetry, Secrets, Capability Offers), use the shared wizard catalog format in:
+Reference files:
 
 - `docs/wizard_extension_catalog_v1.md`
 - `docs/extensions_capability_packs.catalog.v1.json`
 
-You can load it directly in the wizard with:
+## Legacy commands (migration only)
 
-```bash
-greentic-pack wizard
-# create/update extension pack
-# catalog ref:
-file://<absolute-path>/greentic-pack/docs/extensions_capability_packs.catalog.v1.json
-```
+Do not use these for new docs/examples:
 
-## Operations: How They Are Determined
+- `greentic-pack providers ...`
+- `greentic-pack add-extension provider ...`
 
-- Component operations come from component describe metadata.
-- During `wizard add-component` / `resolve`, operations are collected and written
-  into lock/manifests.
-- Flow nodes using `component.exec` are normalized to explicit operations, so
-  runtime behavior is deterministic.
-
-## Validation: What Is Checked
-
-- `greentic-pack lint` validates pack config, flows, and known extension shapes.
-- `greentic-pack providers validate` validates provider-extension content and
-  refs (use `--strict` for stronger pinning).
-- `greentic-pack resolve` verifies component refs and writes deterministic lock
-  data (`pack.lock.cbor`).
-- `greentic-pack doctor` and `inspect` verify packaged output.
-
-## QA Wizard Questions and i18n
-
-`greentic-pack qa` runs the QA pipeline:
-
-- `describe -> qa-spec -> ask -> apply-answers -> strict schema validation`
-
-Outputs:
-
-- `answers/<mode>.answers.json`
-- `answers/<mode>.answers.cbor` (canonical)
-
-I18n behavior:
-
-- QA labels/help text are resolved from `assets/i18n/<locale>.json` (`--locale`
-  controls locale).
-- Components and pack QA use `I18nText` keys; missing keys fall back to inline
-  default text where provided.
-- Pack-level QA can be declared in `pack.cbor` metadata (`greentic.qa`) and can
-  point to canonical CBOR files like `qa/pack/default.cbor`.
+They are kept only to migrate/maintain existing provider-extension/schema-core
+deployments.

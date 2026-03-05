@@ -8,13 +8,12 @@ Make pack UX text locale-aware across:
 - component QA prompts
 - pack-level QA prompts
 
-## 1) Start with wizard locale scaffolding
+## 1) Start with a pack scaffold
 
-Use wizard commands with a locale so the pack starts with i18n structure:
+Start from a new pack scaffold, then add locale bundles:
 
 ```bash
-greentic-pack wizard new-app <PACK_ID> --out <DIR> --locale en --name "My Pack"
-greentic-pack wizard new-extension <PACK_ID> --kind <KIND> --out <DIR> --locale en --name "My Extension"
+greentic-pack new <PACK_ID> --dir <DIR>
 ```
 
 This creates:

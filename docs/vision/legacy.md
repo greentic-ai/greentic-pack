@@ -24,6 +24,11 @@ primary v0.6 learning path.
 The schema-core provider-extension flow is a legacy track and is not part of the
 default component v0.6 QA runner path.
 
+Migration-only commands in this track:
+
+- `greentic-pack providers ...`
+- `greentic-pack add-extension provider ...`
+
 See:
 
 - `docs/extension-provider-packs-howto.md`

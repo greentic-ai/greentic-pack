@@ -2,7 +2,7 @@
   "extension_types": [
     {
       "id": "messaging",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Messaging",
       "description": "Messaging provider pack extensions",
       "edit_questions": [
@@ -58,7 +58,7 @@
     },
     {
       "id": "events",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Events",
       "description": "Events provider pack extensions",
       "edit_questions": [
@@ -77,7 +77,7 @@
     },
     {
       "id": "oauth",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "OAuth",
       "description": "OAuth provider pack extensions",
       "edit_questions": [
@@ -96,7 +96,7 @@
     },
     {
       "id": "mcp",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "MCP",
       "description": "MCP provider pack extensions",
       "edit_questions": [
@@ -115,7 +115,7 @@
     },
     {
       "id": "state",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "State",
       "description": "State provider pack extensions",
       "edit_questions": [
@@ -134,7 +134,7 @@
     },
     {
       "id": "telemetry",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Telemetry",
       "description": "Telemetry provider pack extensions",
       "edit_questions": [
@@ -153,7 +153,7 @@
     },
     {
       "id": "secrets",
-      "canonical_extension_key": "greentic.provider-extension.v1",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Secrets",
       "description": "Secrets provider pack extensions",
       "edit_questions": [

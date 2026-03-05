@@ -57,10 +57,7 @@ impl ExtensionType {
         if let Some(value) = self.canonical_extension_key.as_deref() {
             return value;
         }
-        match self.id.as_str() {
-            "capability-offer" => "greentic.ext.capabilities.v1",
-            _ => "greentic.provider-extension.v1",
-        }
+        "greentic.ext.capabilities.v1"
     }
 
     pub(crate) fn display_name(&self, i18n: &WizardI18n) -> String {
@@ -180,7 +177,7 @@ fn parse_catalog_bytes(bytes: &[u8]) -> Result<ExtensionCatalog> {
     {
         catalog.extension_types.push(ExtensionType {
             id: "custom-scaffold".to_string(),
-            canonical_extension_key: Some("greentic.provider-extension.v1".to_string()),
+            canonical_extension_key: Some("greentic.ext.capabilities.v1".to_string()),
             name: Some("Custom extension".to_string()),
             name_key: None,
             description: Some("Scaffold only".to_string()),
