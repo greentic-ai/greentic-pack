@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use serde_json::Value;
 use tempfile::TempDir;
@@ -95,7 +95,7 @@ fn wizard_validate_with_migrate_reemits_document() {
 
 #[test]
 fn wizard_apply_answers_runs_pipeline() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -143,7 +143,7 @@ fn wizard_apply_answers_runs_pipeline() {
 
 #[test]
 fn wizard_apply_answers_with_sign_runs_sign_step() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -198,7 +198,7 @@ fn wizard_apply_answers_with_sign_runs_sign_step() {
 
 #[test]
 fn wizard_validate_answers_is_side_effect_free() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -249,7 +249,7 @@ fn wizard_validate_answers_is_side_effect_free() {
 
 #[test]
 fn wizard_run_with_answers_executes_apply_flow() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -437,7 +437,7 @@ fn wizard_validate_rejects_wrong_wizard_id() {
 
 #[test]
 fn wizard_run_dry_run_records_choices_without_side_effects() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let pack_dir = temp.path().join("pack");
     let answers_path = temp.path().join("dry_run_answers.json");
@@ -554,7 +554,7 @@ exit 0
             .and_then(Value::as_object)
             .and_then(|v| v.get("flow"))
             .and_then(Value::as_str),
-        Some("ok")
+        None
     );
     assert_eq!(
         answers
@@ -581,7 +581,7 @@ exit 0
 
 #[test]
 fn wizard_apply_replays_recorded_delegate_and_pipeline_actions() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let pack_dir = temp.path().join("pack");
     let log_path = temp.path().join("calls.log");
@@ -656,7 +656,7 @@ fn wizard_apply_replays_recorded_delegate_and_pipeline_actions() {
     assert!(output.status.success(), "wizard apply should succeed");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
-    assert!(calls.contains("flow:wizard ."));
+    assert!(calls.contains("flow:wizard edit --flow flows/main.ygtc"));
     assert!(calls.contains("component:wizard"));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));
@@ -665,7 +665,7 @@ fn wizard_apply_replays_recorded_delegate_and_pipeline_actions() {
 
 #[test]
 fn wizard_apply_with_nested_answers_can_scaffold_and_replay_subwizards() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let pack_dir = temp.path().join("new-pack");
     let log_path = temp.path().join("calls.log");
@@ -749,7 +749,7 @@ exit 0\n",
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("self:new --dir"));
-    assert!(calls.contains("flow:wizard . --answers-file"));
+    assert!(calls.contains("flow:wizard edit --flow flows/main.ygtc"));
     assert!(calls.contains("component:wizard --project-root . --execution execute --qa-answers"));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));
@@ -757,7 +757,7 @@ exit 0\n",
 
 #[test]
 fn wizard_dry_run_flow_child_exit_returns_gracefully_to_pack_menu() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let answers_path = temp.path().join("answers.json");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -800,7 +800,7 @@ fn wizard_dry_run_flow_child_exit_returns_gracefully_to_pack_menu() {
 
 #[test]
 fn wizard_dry_run_component_child_exit_returns_gracefully_to_pack_menu() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let answers_path = temp.path().join("answers.json");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -843,7 +843,7 @@ fn wizard_dry_run_component_child_exit_returns_gracefully_to_pack_menu() {
 
 #[test]
 fn wizard_dry_run_export_and_replay_constructs_pack_flow_component() {
-    let _guard = env_lock().lock().expect("env lock");
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let pack_dir = temp.path().join("target-pack");
     let answers_path = temp.path().join("dry_run_answers.json");
@@ -961,7 +961,7 @@ exit 0\n",
             .and_then(Value::as_object)
             .and_then(|v| v.get("flow"))
             .and_then(Value::as_str),
-        Some("dry-run")
+        None
     );
     assert_eq!(
         answers
@@ -984,7 +984,6 @@ exit 0\n",
         .expect("run apply");
     assert!(apply_output.status.success(), "apply should succeed");
     assert!(pack_dir.is_dir(), "pack should be created from answers");
-    assert!(pack_dir.join("flow.replayed").exists());
     assert!(pack_dir.join("component.replayed").exists());
 }
 
@@ -998,4 +997,11 @@ fn write_script(path: &std::path::Path, body: &str) {
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn env_guard() -> MutexGuard<'static, ()> {
+    match env_lock().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }

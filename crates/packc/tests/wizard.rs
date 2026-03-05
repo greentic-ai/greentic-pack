@@ -14,6 +14,7 @@ fn wizard_boots_and_exits_with_zero() {
 
     let rendered = String::from_utf8(output).expect("utf8 output");
     assert!(rendered.contains("Main Menu"));
+    assert!(rendered.contains("Add extension"));
     assert!(rendered.contains("0) Exit"));
 }
 
@@ -56,6 +57,32 @@ fn wizard_create_extension_catalog_fixture_renders_type_explanations() {
     assert!(rendered.contains("Choose extension type"));
     assert!(rendered.contains("Messaging - Messaging channels and connectors"));
     assert!(rendered.contains("Custom extension - Scaffold only"));
+}
+
+#[test]
+fn wizard_add_extension_writes_answers_and_updates_pack_yaml() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(
+        pack_dir.join("pack.yaml"),
+        "pack_id: demo\nversion: 0.1.0\nkind: application\npublisher: Greentic\n\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n",
+    )
+    .expect("write pack yaml");
+
+    let input_script = format!(
+        "5\n{}\nfixture://extensions.json\n1\n\n0\n",
+        pack_dir.display()
+    );
+    let mut input = Cursor::new(input_script.into_bytes());
+    let mut output = Vec::new();
+
+    wizard::run_cli_with_io_and_locale(&mut input, &mut output, Some("en-GB"))
+        .expect("wizard add extension flow should run");
+
+    assert!(pack_dir.join("extensions/messaging.json").exists());
+    let updated_pack = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    assert!(updated_pack.contains("greentic.wizard.messaging.v1"));
 }
 
 #[test]

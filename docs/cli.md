@@ -332,6 +332,7 @@ Main menu:
 - Update application pack
 - Create extension pack
 - Update extension pack
+- Add extension
 - Exit
 
 Navigation contract:
@@ -369,6 +370,11 @@ Update extension pack flow:
 - menu: `Edit extension entries`, `Edit flows`, `Add/edit components`, `Run update & validate`, `Sign`
 - `Run update & validate` executes `doctor --in <DIR>` then `build --in <DIR>` then optional sign
 - `Edit extension entries` writes catalog answers under `extensions/<type>.json` and merges inline extension data into `pack.yaml`
+
+Add extension flow:
+- asks pack dir + catalog ref (default `fixture://extensions.json`)
+- chooses extension type and asks edit questions
+- writes catalog answers under `extensions/<type>.json` and merges inline extension data into `pack.yaml`
 
 ### `config`
 

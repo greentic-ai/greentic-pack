@@ -117,6 +117,7 @@ enum MainChoice {
     UpdateApplicationPack,
     CreateExtensionPack,
     UpdateExtensionPack,
+    AddExtension,
     Exit,
 }
 
@@ -318,6 +319,24 @@ fn run_with_mode<R: BufRead, W: Write>(
                     }
                     RunMode::Cli => {
                         run_update_extension_pack(input, output, &i18n, &mut session, runtime)?;
+                    }
+                }
+            }
+            MainChoice::AddExtension => {
+                session
+                    .selected_actions
+                    .push("main.add_extension".to_string());
+                match mode {
+                    RunMode::Harness => {
+                        let _ = ask_placeholder_submenu(
+                            input,
+                            output,
+                            &i18n,
+                            "wizard.main.option.add_extension",
+                        )?;
+                    }
+                    RunMode::Cli => {
+                        run_add_extension(input, output, &i18n, &mut session, runtime)?;
                     }
                 }
             }
@@ -1364,6 +1383,7 @@ fn ask_main_menu<R: BufRead, W: Write>(
             ("2", "wizard.main.option.update_application_pack"),
             ("3", "wizard.main.option.create_extension_pack"),
             ("4", "wizard.main.option.update_extension_pack"),
+            ("5", "wizard.main.option.add_extension"),
             ("0", "wizard.main.option.exit"),
         ],
         "0",
@@ -1837,6 +1857,82 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+fn run_add_extension<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    i18n: &WizardI18n,
+    session: &mut WizardSession,
+    runtime: Option<&RuntimeContext>,
+) -> Result<()> {
+    session
+        .selected_actions
+        .push("add_extension.start".to_string());
+    let pack_dir_path = ask_existing_pack_dir(
+        input,
+        output,
+        i18n,
+        "pack.wizard.add_ext.pack_dir",
+        "wizard.update_extension_pack.ask_pack_dir",
+        Some("wizard.update_extension_pack.ask_pack_dir_help"),
+        Some("."),
+    )?;
+    session.last_pack_dir = Some(pack_dir_path.clone());
+    let catalog_ref = ask_text(
+        input,
+        output,
+        i18n,
+        "pack.wizard.add_ext.catalog_ref",
+        "wizard.update_extension_pack.ask_catalog_ref",
+        Some("wizard.update_extension_pack.ask_catalog_ref_help"),
+        Some("fixture://extensions.json"),
+    )?;
+
+    let catalog = match load_extension_catalog(catalog_ref.trim(), runtime) {
+        Ok(value) => value,
+        Err(err) => {
+            wizard_ui::render_line(
+                output,
+                &format!("{}: {}", i18n.t("wizard.error.catalog_load_failed"), err),
+            )?;
+            let nav = ask_failure_nav(input, output, i18n)?;
+            if matches!(nav, SubmenuAction::MainMenu) {
+                return Ok(());
+            }
+            return Ok(());
+        }
+    };
+
+    let type_choice = ask_extension_type(input, output, i18n, &catalog)?;
+    if type_choice == "0" || type_choice.eq_ignore_ascii_case("m") {
+        return Ok(());
+    }
+    let selected = catalog
+        .extension_types
+        .iter()
+        .find(|item| item.id == type_choice)
+        .ok_or_else(|| anyhow!("selected extension type not found"))?;
+    let answers = ask_extension_edit_answers(input, output, i18n, selected)?;
+    if !session.dry_run {
+        persist_extension_edit_answers(&pack_dir_path, selected, &answers)?;
+        wizard_ui::render_line(output, &i18n.t("cli.wizard.updated_pack_yaml"))?;
+    } else {
+        wizard_ui::render_line(output, &i18n.t("cli.wizard.dry_run.update_pack_yaml"))?;
+        let extension_path = pack_dir_path
+            .join("extensions")
+            .join(format!("{}.json", selected.id));
+        let would_write = i18n.t("cli.wizard.dry_run.would_write").replacen(
+            "{}",
+            &extension_path.display().to_string(),
+            1,
+        );
+        wizard_ui::render_line(output, &would_write)?;
+    }
+    session
+        .selected_actions
+        .push("add_extension.edit_entries".to_string());
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2664,6 +2760,7 @@ impl MainChoice {
             "2" => Ok(Self::UpdateApplicationPack),
             "3" => Ok(Self::CreateExtensionPack),
             "4" => Ok(Self::UpdateExtensionPack),
+            "5" => Ok(Self::AddExtension),
             "0" => Ok(Self::Exit),
             _ => Err(anyhow!("invalid main selection `{choice}`")),
         }
