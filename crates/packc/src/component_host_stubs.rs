@@ -24,8 +24,6 @@ impl Default for DescribeHostState {
         // Describe-only paths should be offline-safe: no inherited env/args,
         // no preopened directories, and no ambient stdio requirements.
         let mut wasi = WasiCtxBuilder::new();
-        wasi.allow_ip_name_lookup(true);
-        wasi.inherit_network();
         Self {
             table: ResourceTable::new(),
             wasi: wasi.build(),
