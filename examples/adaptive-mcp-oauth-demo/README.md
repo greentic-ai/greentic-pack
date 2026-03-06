@@ -1,6 +1,6 @@
 # Adaptive Card + MCP + OAuth Demo (Team Setup)
 
-This example is prepared for reproducible local runs in terminal via `greentic-pack` + `greentic-operator wizard`.
+This example is prepared for reproducible local runs in terminal via `greentic-pack wizard` + `greentic-operator wizard`.
 
 ## What it gives
 
@@ -24,11 +24,26 @@ cd <root>/component-adaptive-card
 cargo component build --release
 ```
 
-## 1) Build demo pack
+## 1) Build demo pack (via `greentic-pack wizard apply`)
 
 ```bash
 cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
 ./scripts/build_local_pack.sh <root>/tmp/adaptive-mcp-oauth-demo.gtpack
+```
+
+This script:
+
+- prepares local adaptive-card component assets,
+- generates a temporary `AnswerDocument`,
+- runs `greentic-pack wizard validate`,
+- runs `greentic-pack wizard apply` (which builds the pack),
+- copies resulting `.gtpack` to the output path.
+
+Optional interactive pack wizard menu:
+
+```bash
+cd <root>/greentic-pack
+cargo run -p greentic-pack -- wizard
 ```
 
 ## 2) Create bundle with wizard (interactive)
