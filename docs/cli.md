@@ -297,7 +297,7 @@ Options:
 - `--dry-run`: show the updated `pack.yaml` without persisting changes.
 - `--contract-id <ID>`: deployer contract identifier.
 - `--op <OP>`: supported deployer operation (repeatable). Defaults to
-  `generate`, `plan`, `apply`, `remove`, `status`, `rollback`.
+  `generate`, `plan`, `apply`, `destroy`, `status`, `rollback`.
 - `--flow-ref <OP=PATH>`: optional explicit flow ref mapping written into
   deployer metadata and used by validation.
 

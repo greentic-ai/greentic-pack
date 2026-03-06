@@ -1742,7 +1742,7 @@ fn build_deployer_payload(
 ) -> Result<Value> {
     let contract_id = required_answer(edit_answers, "contract_id")?;
     let ops = optional_answer(edit_answers, "supported_ops")
-        .unwrap_or_else(|| "generate,plan,apply,remove,status,rollback".to_string())
+        .unwrap_or_else(|| "generate,plan,apply,destroy,status,rollback".to_string())
         .split(',')
         .map(str::trim)
         .filter(|item| !item.is_empty())

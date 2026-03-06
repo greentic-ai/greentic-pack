@@ -387,7 +387,7 @@
         { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "deployer" },
         { "id": "contract_id", "title_key": "wizard.qa.contract_id", "default": "greentic.deployer.example.v1" },
         { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "deployer" },
-        { "id": "supported_ops", "title_key": "wizard.qa.supported_ops", "default": "generate,plan,apply,remove,status,rollback" }
+        { "id": "supported_ops", "title_key": "wizard.qa.supported_ops", "default": "generate,plan,apply,destroy,status,rollback" }
       ],
       "templates": [
         {
@@ -414,7 +414,7 @@
                 "flows/generate.ygtc": "id: generate\ntype: messaging\nnodes: {}\n",
                 "flows/plan.ygtc": "id: plan\ntype: messaging\nnodes: {}\n",
                 "flows/apply.ygtc": "id: apply\ntype: messaging\nnodes: {}\n",
-                "flows/remove.ygtc": "id: remove\ntype: messaging\nnodes: {}\n",
+                "flows/destroy.ygtc": "id: destroy\ntype: messaging\nnodes: {}\n",
                 "flows/status.ygtc": "id: status\ntype: messaging\nnodes: {}\n",
                 "flows/rollback.ygtc": "id: rollback\ntype: messaging\nnodes: {}\n"
               }

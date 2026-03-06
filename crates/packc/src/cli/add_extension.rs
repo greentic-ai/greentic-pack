@@ -314,7 +314,7 @@ impl DeployerArgs {
                 "generate".to_string(),
                 "plan".to_string(),
                 "apply".to_string(),
-                "remove".to_string(),
+                "destroy".to_string(),
                 "status".to_string(),
                 "rollback".to_string(),
             ]

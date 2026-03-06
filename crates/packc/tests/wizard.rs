@@ -402,6 +402,7 @@ fn wizard_create_deployer_scaffold_writes_generic_bundle_without_capabilities_me
     );
     assert!(pack_dir.join("assets/examples/sample-input.json").exists());
     assert!(pack_dir.join("flows/generate.ygtc").exists());
+    assert!(pack_dir.join("flows/destroy.ygtc").exists());
     assert!(pack_dir.join("flows/rollback.ygtc").exists());
     assert!(
         pack_dir
@@ -421,9 +422,13 @@ fn wizard_create_deployer_scaffold_writes_generic_bundle_without_capabilities_me
 
     let apply_flow =
         fs::read_to_string(pack_dir.join("flows/apply.ygtc")).expect("read apply flow");
+    let destroy_flow =
+        fs::read_to_string(pack_dir.join("flows/destroy.ygtc")).expect("read destroy flow");
     assert!(apply_flow.contains("type: messaging"));
     assert!(apply_flow.contains("nodes: {}"));
     assert!(!apply_flow.contains("type: deployer"));
+    assert!(destroy_flow.contains("id: destroy"));
+    assert!(!pack_dir.join("flows/remove.ygtc").exists());
 
     let persisted =
         fs::read_to_string(pack_dir.join("extensions/deployer.json")).expect("read extension");

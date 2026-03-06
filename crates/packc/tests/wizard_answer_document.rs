@@ -1122,6 +1122,115 @@ fn wizard_apply_ops_answers_scaffolds_ops_bundle() {
 }
 
 #[test]
+fn wizard_run_dry_run_then_apply_deployer_destroy_answers_succeeds() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let answers_path = temp.path().join("pack-wizard-sample.json");
+    let pack_dir = temp.path().join("deploy-test");
+    let input = format!(
+        "3\nn\n10\n1\n{}\n\n\ndeployer\ngreentic.deployer.example.v1\ndeployer\ngenerate,plan,apply,destroy,status,rollback\n2\n0\n",
+        pack_dir.display()
+    );
+
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--emit-answers")
+        .arg(&answers_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn wizard run");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(input.as_bytes())
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait output");
+    assert!(output.status.success(), "wizard run should succeed");
+
+    let apply = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(apply.status.success(), "wizard apply should succeed");
+
+    let extension =
+        fs::read_to_string(pack_dir.join("extensions/deployer.json")).expect("read extension");
+    assert!(extension.contains("\"destroy\""));
+    assert!(!extension.contains("\"remove\""));
+    assert!(pack_dir.join("flows/destroy.ygtc").exists());
+    assert!(!pack_dir.join("flows/remove.ygtc").exists());
+}
+
+#[test]
+fn wizard_apply_deployer_legacy_remove_answers_fail() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("legacy-deployer-pack");
+    let answers_path = temp.path().join("legacy_deployer_answers.json");
+    fs::write(
+        &answers_path,
+        format!(
+            r#"{{
+  "wizard_id":"greentic-pack.wizard.run",
+  "schema_id":"greentic-pack.wizard.answers",
+  "schema_version":"1.0.0",
+  "locale":"en-GB",
+  "answers":{{
+    "pack_dir":"{}",
+    "extension_operation":"create_extension_pack",
+    "extension_catalog_ref":"{}",
+    "extension_type_id":"deployer",
+    "extension_template_id":"deployer-basic",
+    "extension_template_qa_answers":{{
+      "display_name":"Generic deployer extension",
+      "pack_id":"deployer.extension"
+    }},
+    "extension_edit_answers":{{
+      "entry_label":"deployer",
+      "contract_id":"greentic.deployer.example.v1",
+      "component_ref":"deployer",
+      "supported_ops":"generate,plan,apply,remove,status,rollback"
+    }},
+    "run_doctor":true,
+    "run_build":true,
+    "sign":false
+  }},
+  "locks":{{}}
+}}"#,
+            pack_dir.display(),
+            default_catalog_ref()
+        ),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(
+        !output.status.success(),
+        "legacy remove answers should fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("flows/remove.ygtc"));
+    let extension =
+        fs::read_to_string(pack_dir.join("extensions/deployer.json")).expect("read extension");
+    assert!(extension.contains("\"remove\""));
+    assert!(!extension.contains("\"destroy\""));
+}
+
+#[test]
 fn wizard_dry_run_flow_child_exit_returns_gracefully_to_pack_menu() {
     let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");

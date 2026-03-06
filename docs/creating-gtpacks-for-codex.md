@@ -142,7 +142,7 @@ Extension pack scaffold baseline:
   `components/{{edit.component_ref}}/component.wasm`
 - the default catalog now also includes a scaffold-first `deployer` type with canonical key
   `greentic.deployer.v1`
-- the deployer template writes placeholder flows (`generate`, `plan`, `apply`, `remove`, `status`, `rollback`),
+- the deployer template writes placeholder flows (`generate`, `plan`, `apply`, `destroy`, `status`, `rollback`),
   JSON schemas under `assets/schemas/`, a sample input under `assets/examples/`,
   and a component bundle under `components/{{edit.component_ref}}/`
 - deployer persistence now writes both `extensions/deployer.json` and
