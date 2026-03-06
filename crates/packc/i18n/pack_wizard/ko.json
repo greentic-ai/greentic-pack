@@ -79,7 +79,7 @@
   "wizard.failure_nav.description": "다음으로 이동할 위치를 선택하세요",
   "wizard.failure_nav.title": "작업 실패",
   "wizard.main.description": "팩 마법사",
-  "wizard.main.option.add_extension": "확장 추가",
+  "wizard.main.option.add_extension": "기존 팩에 확장 프로그램 추가",
   "wizard.main.option.create_application_pack": "애플리케이션 팩 생성",
   "wizard.main.option.create_extension_pack": "확장 팩 생성",
   "wizard.main.option.exit": "종료",

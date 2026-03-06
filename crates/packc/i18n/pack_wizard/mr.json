@@ -79,7 +79,7 @@
   "wizard.failure_nav.description": "पुढे कुठे जायचे ते निवडा",
   "wizard.failure_nav.title": "क्रिया अयशस्वी",
   "wizard.main.description": "पॅक विजार्ड",
-  "wizard.main.option.add_extension": "विस्तार जोडा",
+  "wizard.main.option.add_extension": "विद्यमान पॅकमध्ये विस्तार जोडा",
   "wizard.main.option.create_application_pack": "अनुप्रयोग पॅक तयार करा",
   "wizard.main.option.create_extension_pack": "विस्तार पॅक तयार करा",
   "wizard.main.option.exit": "बाहेर पडा",

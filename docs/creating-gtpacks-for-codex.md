@@ -2,6 +2,27 @@
 
 This guide defines the Codex/replay workflow for `greentic-pack`.
 
+## Prerequisites
+
+Before running wizard flows that delegate to component editing, ensure
+`greentic-component` is available on `PATH`.
+
+Preferred install path:
+
+```bash
+if ! command -v greentic-component >/dev/null 2>&1; then
+  cargo install cargo-binstall || true
+  cargo binstall greentic-component
+fi
+```
+
+If `cargo binstall` is rate-limited by the GitHub API or binstall fallback is
+disabled in the environment, use:
+
+```bash
+cargo install --locked greentic-component
+```
+
 ## Deterministic contract
 
 Use AnswerDocument flow:

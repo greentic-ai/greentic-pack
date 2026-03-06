@@ -79,7 +79,7 @@
   "wizard.failure_nav.description": "Scegli dove andare dopo",
   "wizard.failure_nav.title": "Azione non riuscita",
   "wizard.main.description": "Procedura guidata pacchetti",
-  "wizard.main.option.add_extension": "Aggiungi estensione",
+  "wizard.main.option.add_extension": "Aggiungi estensione a un pacchetto esistente",
   "wizard.main.option.create_application_pack": "Crea pacchetto applicazione",
   "wizard.main.option.create_extension_pack": "Crea pacchetto estensione",
   "wizard.main.option.exit": "Esci",

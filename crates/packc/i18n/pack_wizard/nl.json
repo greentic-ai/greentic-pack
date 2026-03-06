@@ -79,7 +79,7 @@
   "wizard.failure_nav.description": "Kies waar je hierna naartoe gaat",
   "wizard.failure_nav.title": "Actie mislukt",
   "wizard.main.description": "Pack-wizard",
-  "wizard.main.option.add_extension": "Extensie toevoegen",
+  "wizard.main.option.add_extension": "Extensie toevoegen aan bestaand pakket",
   "wizard.main.option.create_application_pack": "Applicatiepakket maken",
   "wizard.main.option.create_extension_pack": "Extensiepakket maken",
   "wizard.main.option.exit": "Afsluiten",

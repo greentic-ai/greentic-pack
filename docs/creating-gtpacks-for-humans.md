@@ -14,6 +14,19 @@ Use wizard-first workflows for new packs and edits:
 - `greentic-pack` installed and on `PATH`
 - `greentic-flow` and `greentic-component` installed (wizard delegates to both)
 
+If `greentic-component` is missing, install it with:
+
+```bash
+cargo install cargo-binstall   # run once
+cargo binstall greentic-component
+```
+
+If GitHub API rate limits block `cargo binstall`, use:
+
+```bash
+cargo install --locked greentic-component
+```
+
 ## 1) Application pack (new)
 
 Run:
