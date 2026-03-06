@@ -332,7 +332,7 @@ Main menu:
 - Update application pack
 - Create extension pack
 - Update extension pack
-- Add extension
+- Add extension to existing pack
 - Exit
 
 Navigation contract:
@@ -357,10 +357,21 @@ Update application pack flow:
 - after successful delegate from flows/components, wizard auto-runs update & validate
 
 Create extension pack flow:
-- asks catalog ref (default `fixture://extensions.json`)
-- supports `fixture://extensions.json`, `file://<path>`, and `oci://...`
+- asks `Check for a new version [Y/n]`
+- `Enter` / `Y` opens a second prompt for catalog URL with default:
+  `https://github.com/greenticai/greentic-pack/blob/master/docs/extensions_capability_packs.catalog.v1.json`
+- `n` uses the bundled/local default catalog ref:
+  `file://docs/extensions_capability_packs.catalog.v1.json`
+- direct refs still work when pasted at the first prompt (`fixture://...`, `file://<path>`, `https://...`, `oci://...`)
+- if the default GitHub URL cannot be fetched, the wizard falls back to the bundled default catalog
 - choose extension type (with explanation), choose template, choose pack dir
+- records selected type, template, template QA answers, and edit answers in the AnswerDocument for replay
 - catalog labels can be provided via i18n keys in catalog (`name_key`, `description_key`)
+- creates a full base extension-pack scaffold before applying the selected template:
+  `flows/`, `components/`, `i18n/`, `assets/`, `qa/`, `extensions/`
+- seeds `assets/README.md` and `qa/README.md` when absent
+- catalog templates may interpolate `{{edit.*}}` placeholders in file paths and
+  contents, and may write binary scaffold artifacts with `write_binary_files`
 - applies scaffold plan, then runs finalize (`doctor --in`, `build --in`, optional sign)
 - includes a required `Custom extension` scaffold path
 - on catalog/template/delegate failures: localized error + `0) Back` / `M) Main Menu`
@@ -369,12 +380,12 @@ Update extension pack flow:
 - asks pack dir + catalog ref
 - menu: `Edit extension entries`, `Edit flows`, `Add/edit components`, `Run update & validate`, `Sign`
 - `Run update & validate` executes `doctor --in <DIR>` then `build --in <DIR>` then optional sign
-- `Edit extension entries` writes catalog answers under `extensions/<type>.json` and merges inline extension data into `pack.yaml`
+- `Edit extension entries` writes catalog answers under `extensions/<type>.json` and merges canonical `extensions.greentic.ext.capabilities.v1` data into `pack.yaml`
 
-Add extension flow:
-- asks pack dir + catalog ref (default `fixture://extensions.json`)
+Add extension to existing pack flow:
+- asks pack dir + the same catalog prompt flow used by create/update extension
 - chooses extension type and asks edit questions
-- writes catalog answers under `extensions/<type>.json` and merges inline extension data into `pack.yaml`
+- writes catalog answers under `extensions/<type>.json` and merges canonical `extensions.greentic.ext.capabilities.v1` data into `pack.yaml`
 
 ### `config`
 

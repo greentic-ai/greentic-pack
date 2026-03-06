@@ -60,10 +60,27 @@ greentic-pack wizard
 Pick:
 
 1. `Create extension pack`
-2. Enter catalog ref (`fixture://extensions.json`, `file://...`, or `oci://...`)
+2. Answer `Check for a new version [Y/n]`
+   - `Enter` / `Y`: wizard offers the GitHub docs URL for `extensions_capability_packs.catalog.v1.json` as the default and lets you overwrite it
+   - `n`: wizard uses the bundled/local default catalog (`file://docs/extensions_capability_packs.catalog.v1.json`)
+   - you can also paste an explicit catalog ref directly at that prompt (`fixture://...`, `file://...`, `oci://...`, or `https://...`)
+   - if the default GitHub URL cannot be fetched, the wizard falls back to the bundled default catalog instead of failing
 3. Select extension type and template
 4. Enter output `pack dir`
-5. Finalize (`doctor` + `build`, optional sign)
+5. Answer template and extension-entry questions
+6. Finalize (`doctor` + `build`, optional sign)
+
+New extension packs always start from the same base scaffold:
+
+- directories: `flows/`, `components/`, `i18n/`, `assets/`, `qa/`, `extensions/`
+- seed files: `assets/README.md`, `qa/README.md`
+
+The selected extension template then adds its own `pack.yaml`, README, and any extra files on top of that base.
+
+Templates can also use edit answers such as `component_ref` in scaffold paths
+and contents. That means a control template can generate
+`components/controller/...` while another provider can generate
+`components/provider/...` without `greentic-pack` hardcoding those names.
 
 ## 4) Extension pack (update existing)
 
@@ -77,9 +94,9 @@ Pick:
 
 1. `Update extension pack`
 2. Enter existing `pack dir`
-3. Enter catalog ref
+3. Answer the same catalog prompt flow as create-extension (`Y/n`, editable GitHub URL, or explicit ref)
 4. Use:
-   - `Edit extension entries` (writes `extensions/<type>.json` and updates `pack.yaml`)
+   - `Edit extension entries` (writes `extensions/<type>.json` and updates canonical `extensions.greentic.ext.capabilities.v1` data in `pack.yaml`)
    - `Edit flows`
    - `Add/edit components`
    - `Run update & validate`
@@ -92,7 +109,7 @@ Interactive path:
 greentic-pack wizard
 ```
 
-Pick `Add extension`, then select type and answer questions.
+Pick `Add extension to existing pack`, then select type and answer questions.
 
 Deterministic capability-first path (recommended for CI and repeatability):
 

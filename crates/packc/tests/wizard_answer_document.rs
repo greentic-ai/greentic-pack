@@ -52,6 +52,61 @@ fn wizard_run_emit_answers_writes_envelope() {
 }
 
 #[test]
+fn wizard_run_emit_answers_records_extension_operation() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let answers_path = temp.path().join("extension_answers.json");
+    let pack_dir = temp.path().join("control-pack");
+    let input = format!(
+        "3\nfixture://extensions.json\n7\n1\n{}\n\n\ncontrol-entry\n0\n\n\n\n\n0\n0\n\n2\n0\n",
+        pack_dir.display()
+    );
+
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--emit-answers")
+        .arg(&answers_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn wizard run");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(input.as_bytes())
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait output");
+    assert!(output.status.success(), "wizard run should succeed");
+
+    let doc: Value = serde_json::from_slice(&fs::read(&answers_path).expect("read answers"))
+        .expect("parse answers");
+    let answers = doc
+        .get("answers")
+        .and_then(Value::as_object)
+        .expect("answers object");
+    assert_eq!(
+        answers.get("extension_operation").and_then(Value::as_str),
+        Some("create_extension_pack")
+    );
+    assert_eq!(
+        answers.get("extension_catalog_ref").and_then(Value::as_str),
+        Some("fixture://extensions.json")
+    );
+    assert_eq!(
+        answers.get("extension_type_id").and_then(Value::as_str),
+        Some("control")
+    );
+    assert_eq!(
+        answers.get("extension_template_id").and_then(Value::as_str),
+        Some("control-basic")
+    );
+}
+
+#[test]
 fn wizard_validate_with_migrate_reemits_document() {
     let temp = TempDir::new().expect("tempdir");
     let input_path = temp.path().join("old_answers.json");
@@ -753,6 +808,98 @@ exit 0\n",
     assert!(calls.contains("component:wizard --project-root . --execution execute --qa-answers"));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));
+}
+
+#[test]
+fn wizard_apply_control_extension_answers_is_deterministic() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("control-pack");
+    let answers_path = temp.path().join("control_answers.json");
+    fs::write(
+        &answers_path,
+        format!(
+            r#"{{
+  "wizard_id":"greentic-pack.wizard.run",
+  "schema_id":"greentic-pack.wizard.answers",
+  "schema_version":"1.0.0",
+  "locale":"en-GB",
+  "answers":{{
+    "pack_dir":"{}",
+    "extension_operation":"create_extension_pack",
+    "extension_catalog_ref":"fixture://extensions.json",
+    "extension_type_id":"control",
+    "extension_template_id":"control-basic",
+    "extension_template_qa_answers":{{
+      "display_name":"Routing ingress control chain",
+      "pack_id":"routing.ingress.control.chain"
+    }},
+    "extension_edit_answers":{{
+      "entry_label":"control",
+      "create_offer":"false",
+      "offer_id":"control-offer",
+      "cap_id":"greentic.cap.control.chain.v1",
+      "component_ref":"controller",
+      "op":"apply",
+      "version":"v1",
+      "priority":"0",
+      "requires_setup":"false",
+      "qa_ref":"qa/control-setup.json",
+      "hook_op_names":""
+    }},
+    "run_doctor":true,
+    "run_build":true,
+    "sign":false
+  }},
+  "locks":{{}}
+}}"#,
+            pack_dir.display()
+        ),
+    )
+    .expect("write answers");
+
+    let first = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run first apply");
+    assert!(first.status.success(), "first apply should succeed");
+
+    let pack_yaml_before = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    let extension_before =
+        fs::read_to_string(pack_dir.join("extensions/control.json")).expect("read extension json");
+    assert!(pack_dir.join("flows").is_dir());
+    assert!(pack_dir.join("components").is_dir());
+    assert!(pack_dir.join("i18n").is_dir());
+    assert!(pack_dir.join("assets").is_dir());
+    assert!(pack_dir.join("qa").is_dir());
+    assert!(pack_dir.join("assets/README.md").exists());
+    assert!(pack_dir.join("qa/README.md").exists());
+    assert!(pack_yaml_before.contains("greentic.ext.capabilities.v1"));
+    assert!(pack_yaml_before.contains("offers: []"));
+
+    let second = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run second apply");
+    assert!(second.status.success(), "second apply should succeed");
+
+    let pack_yaml_after = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    let extension_after =
+        fs::read_to_string(pack_dir.join("extensions/control.json")).expect("read extension json");
+    assert_eq!(
+        pack_yaml_before, pack_yaml_after,
+        "pack.yaml should be idempotent"
+    );
+    assert_eq!(
+        extension_before, extension_after,
+        "extensions/control.json should be idempotent"
+    );
 }
 
 #[test]

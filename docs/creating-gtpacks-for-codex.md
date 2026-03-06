@@ -56,6 +56,13 @@ greentic-pack wizard apply --answers .codex/pack-wizard.answers.normalized.json
 - `run_build` (bool)
 - `sign` (bool)
 - `sign_key_path` (string, required when `sign=true`)
+- optional extension replay fields:
+  - `extension_operation`
+  - `extension_catalog_ref`
+  - `extension_type_id`
+  - `extension_template_id`
+  - `extension_template_qa_answers`
+  - `extension_edit_answers`
 - optional passthrough:
   - `flow_wizard_answers`
   - `component_wizard_answers`
@@ -82,11 +89,41 @@ greentic-pack wizard apply --answers .codex/pack-wizard.answers.normalized.json
 }
 ```
 
-## Coverage note (important)
+## Extension replay note
 
-Current `greentic-pack wizard` AnswerDocument apply path is strongest for application-pack scaffold + validate/build/sign replay.
+Extension create/update/add flows now emit replay-complete AnswerDocuments.
 
-For extension-entry creation/update, keep deterministic automation on CLI commands (especially `add-extension capability`) until extension-specific wizard answer schema is expanded.
+Canonical persistence stays capability-first:
+
+- `extensions/<type>.json` stores the catalog answers and derived capability payload
+- `pack.yaml` is updated through `extensions.greentic.ext.capabilities.v1`
+
+Default catalog behavior:
+
+- the wizard now asks `Check for a new version [Y/n]` for the default extension catalog path only
+- `Enter` / `Y` uses an editable default GitHub docs URL:
+  `https://github.com/greenticai/greentic-pack/blob/master/docs/extensions_capability_packs.catalog.v1.json`
+- `n` uses the bundled/local default catalog ref `file://docs/extensions_capability_packs.catalog.v1.json`
+- if the default GitHub URL cannot be fetched, the wizard falls back to an embedded copy bundled with the binary
+- disconnected/offline environments therefore do not fail just because the docs file is absent
+
+Extension pack scaffold baseline:
+
+- all extension pack create/apply paths now create the same base pack structure before extension-specific template content is written
+- baseline directories: `flows/`, `components/`, `i18n/`, `assets/`, `qa/`, `extensions/`
+- baseline seed files: `assets/README.md`, `qa/README.md`
+- catalog templates can derive scaffold file names and contents from edit answers such as
+  `{{edit.component_ref}}`, in addition to template QA answers such as `{{qa.pack_id}}`
+- catalog templates can now include scaffold code and other checked-in assets directly in the template plan:
+  text files via `write_files` and binary artifacts via `write_binary_files`
+- both `write_files` and `write_binary_files` support variable interpolation in relative paths as well as file contents, so a provider template can generate named code/assets like
+  `components/{{edit.component_ref}}/component.manifest.json` and
+  `components/{{edit.component_ref}}/component.wasm`
+
+For CI or low-level scripted edits, `greentic-pack add-extension capability` remains the canonical direct command.
+
+In the interactive main menu this path is labeled `Add extension to existing pack`
+to distinguish it from `Create extension pack`.
 
 ## i18n compliance note
 

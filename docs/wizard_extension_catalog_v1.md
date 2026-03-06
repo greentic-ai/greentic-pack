@@ -1,6 +1,8 @@
 # Wizard Extension Catalog V1 (Capability Packs)
 
-This document defines the baseline catalog format used by `greentic-pack wizard` for extension packs and standardizes extension type entries for provider capability packs.
+This document defines the baseline catalog format used by
+`greentic-pack wizard` for extension packs and standardizes extension type
+entries for capability-first extension packs.
 
 ## Goal
 
@@ -13,9 +15,13 @@ Provide one reusable catalog shape for:
 - State
 - Telemetry
 - Secrets
+- Control
+- Observer
 - Capability offers
+- Custom scaffold
 
-Each extension type can be owned by a provider team while keeping one wizard contract and one setup/update flow.
+Each extension type can be owned by a team while keeping one wizard contract
+and one setup/update/apply flow.
 
 ## Catalog JSON shape
 
@@ -43,8 +49,19 @@ Each extension type:
 Notes:
 
 - `canonical_extension_key` is optional; CLI fallback is `greentic.ext.capabilities.v1`.
-- `templates` is optional; if empty, wizard injects a default scaffold template.
-- `edit_questions` is optional; if empty, wizard injects default `entry_label`.
+- Production catalogs should define meaningful `edit_questions`.
+- Production catalogs should define at least one concrete template with
+  `qa_questions` and a usable `plan`.
+- `fixture://extensions.json` remains useful for tests/dev.
+- For the default production catalog path only, the wizard now asks
+  `Check for a new version [Y/n]`.
+- `Enter` / `Y` offers the GitHub docs URL for
+  `extensions_capability_packs.catalog.v1.json` as the default, but the user
+  can overwrite it with any supported catalog ref or URL.
+- `n` uses the bundled/local default catalog ref
+  `file://docs/extensions_capability_packs.catalog.v1.json`.
+- If the default GitHub URL cannot be fetched, the wizard falls back to the
+  embedded bundled default catalog instead of failing.
 
 ## Question format
 
@@ -75,7 +92,7 @@ Notes:
 }
 ```
 
-Supported plan steps: `ensure_dir`, `write_files`, `delegate`, `run_cli`.
+Supported plan steps: `ensure_dir`, `write_files`, `write_binary_files`, `delegate`, `run_cli`.
 
 Template variables:
 
@@ -85,6 +102,31 @@ Template variables:
 - `{{template_name}}`
 - `{{canonical_extension_key}}`
 - `{{qa.<question_id>}}`
+- `{{edit.<question_id>}}`
+
+`write_files` and `write_binary_files` interpolate variables in both relative
+paths and file contents. That lets provider templates scaffold named files like
+`components/{{edit.component_ref}}/component.manifest.json` without hardcoding
+`provider`, `controller`, or similar ids in Rust.
+
+Wizard replay/apply persists:
+
+- selected extension type
+- selected template
+- template QA answers
+- edit answers
+- pack dir
+
+Catalog-driven persistence remains capability-first:
+
+- `extensions/<type>.json` stores catalog answers and derived capability data
+- `pack.yaml` is updated through `extensions.greentic.ext.capabilities.v1`
+
+Wizard create/apply also guarantees a common base extension-pack scaffold
+before template-specific files are written:
+
+- directories: `flows/`, `components/`, `i18n/`, `assets/`, `qa/`, `extensions/`
+- seed files: `assets/README.md`, `qa/README.md`
 
 ## Canonical extension mapping for capability packs
 
@@ -95,8 +137,12 @@ Template variables:
 - `state` -> `greentic.ext.capabilities.v1`
 - `telemetry` -> `greentic.ext.capabilities.v1`
 - `secrets` -> `greentic.ext.capabilities.v1`
+- `control` -> `greentic.ext.capabilities.v1`
+- `observer` -> `greentic.ext.capabilities.v1`
 - `capability-offer` -> `greentic.ext.capabilities.v1`
+- `custom-scaffold` -> `greentic.ext.capabilities.v1`
 
 ## Reference catalog
 
-Use [`extensions_capability_packs.catalog.v1.json`](./extensions_capability_packs.catalog.v1.json) as the baseline file for owner alignment and OCI catalog publishing.
+Use [extensions_capability_packs.catalog.v1.json](/projects/ai/greentic-ng/greentic-pack/docs/extensions_capability_packs.catalog.v1.json)
+as the baseline file for owner alignment and OCI catalog publishing.

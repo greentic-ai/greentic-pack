@@ -1610,6 +1610,8 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces"
 version = "0.4.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48f12dfed1aac9df63e6f89c39bf868ad76cb6c7b9f569a73f57292092b399a"
 dependencies = [
  "anyhow",
  "greentic-types",
@@ -1625,6 +1627,8 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces-guest"
 version = "0.4.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3ff7be6464fca2ba0919697ef11e9be00ce0d06a6548813261051803ef88493"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1636,6 +1640,8 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces-host"
 version = "0.4.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48ac4236167bb349b8bcbfcd0d5088d9e2a0975d407d0845c05597a6e9f96a1b"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1647,6 +1653,8 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces-wasmtime"
 version = "0.4.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89bf67cbbd2698c739c2f9ffd6f9549bdc127ae81a3a694c14e25ff59980ca40"
 dependencies = [
  "anyhow",
  "camino",
@@ -1689,6 +1697,7 @@ dependencies = [
  "pkcs8",
  "predicates",
  "regex",
+ "reqwest 0.12.28",
  "schemars 1.2.1",
  "semver",
  "serde",
@@ -4747,9 +4756,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.21.0"
+version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
+checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -5802,9 +5811,9 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "winnow"
-version = "0.7.14"
+version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a5364e9d77fcdeeaa6062ced926ee3381faa2ee02d3eb83a5c27a8825540829"
+checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 
 [[package]]
 name = "winx"

@@ -9,17 +9,19 @@ use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
+use base64::Engine;
 use clap::{Args, Subcommand};
 use greentic_qa_lib::{WizardDriver, WizardFrontend, WizardRunConfig};
-use greentic_types::ExtensionRef;
-use greentic_types::WizardStep;
-use greentic_types::pack_manifest::ExtensionInline;
+use greentic_types::pack::extensions::capabilities::CapabilitiesExtensionV1;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::cli::add_extension::{
+    CapabilityOfferSpec, ensure_capabilities_extension, inject_capability_offer_spec,
+};
 use crate::cli::wizard_catalog::{
-    CatalogQuestion, CatalogQuestionKind, ExtensionCatalog, ExtensionTemplate, ExtensionType,
-    load_extension_catalog,
+    CatalogQuestion, CatalogQuestionKind, DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL, ExtensionCatalog,
+    ExtensionTemplate, ExtensionType, TemplatePlanStep, load_extension_catalog,
 };
 use crate::cli::wizard_i18n::{WizardI18n, detect_requested_locale};
 use crate::cli::wizard_ui;
@@ -28,6 +30,8 @@ use crate::runtime::RuntimeContext;
 const PACK_WIZARD_ID: &str = "greentic-pack.wizard.run";
 const PACK_WIZARD_SCHEMA_ID: &str = "greentic-pack.wizard.answers";
 const PACK_WIZARD_SCHEMA_VERSION: &str = "1.0.0";
+const DEFAULT_EXTENSION_CATALOG_REF: &str =
+    "file://docs/extensions_capability_packs.catalog.v1.json";
 
 #[derive(Debug, Args, Default)]
 pub struct WizardArgs {
@@ -148,6 +152,20 @@ struct WizardSession {
     flow_wizard_answers: Option<Value>,
     component_wizard_answers: Option<Value>,
     selected_actions: Vec<String>,
+    extension_operation: Option<ExtensionOperationRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ExtensionOperationRecord {
+    operation: String,
+    catalog_ref: String,
+    extension_type_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    template_id: Option<String>,
+    #[serde(default)]
+    template_qa_answers: BTreeMap<String, String>,
+    #[serde(default)]
+    edit_answers: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,6 +192,7 @@ struct WizardExecutionPlan {
     flow_wizard_answers: Option<Value>,
     component_wizard_answers: Option<Value>,
     sign_key_path: Option<String>,
+    extension_operation: Option<ExtensionOperationRecord>,
 }
 
 pub fn handle(
@@ -587,6 +606,34 @@ fn answer_document_from_session(
             component_answers.clone(),
         );
     }
+    if let Some(extension) = session.extension_operation.as_ref() {
+        answers.insert(
+            "extension_operation".to_string(),
+            Value::String(extension.operation.clone()),
+        );
+        answers.insert(
+            "extension_catalog_ref".to_string(),
+            Value::String(extension.catalog_ref.clone()),
+        );
+        answers.insert(
+            "extension_type_id".to_string(),
+            Value::String(extension.extension_type_id.clone()),
+        );
+        if let Some(template_id) = extension.template_id.as_ref() {
+            answers.insert(
+                "extension_template_id".to_string(),
+                Value::String(template_id.clone()),
+            );
+        }
+        answers.insert(
+            "extension_template_qa_answers".to_string(),
+            string_map_to_json_value(&extension.template_qa_answers),
+        );
+        answers.insert(
+            "extension_edit_answers".to_string(),
+            string_map_to_json_value(&extension.edit_answers),
+        );
+    }
     if let Some(key) = session.sign_key_path.as_deref() {
         answers.insert("sign".to_string(), Value::Bool(true));
         answers.insert("sign_key_path".to_string(), Value::String(key.to_string()));
@@ -619,7 +666,14 @@ fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
         ));
     }
     let plan = execution_plan_from_answers(&doc.answers)?;
-    if !plan.create_pack_scaffold && !plan.pack_dir.is_dir() {
+    let pack_dir_must_exist = !plan.create_pack_scaffold
+        && !matches!(
+            plan.extension_operation
+                .as_ref()
+                .map(|item| item.operation.as_str()),
+            Some("create_extension_pack")
+        );
+    if pack_dir_must_exist && !plan.pack_dir.is_dir() {
         return Err(anyhow!(
             "pack_dir is not an existing directory: {}",
             plan.pack_dir.display()
@@ -634,6 +688,9 @@ fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
         && key.trim().is_empty()
     {
         return Err(anyhow!("sign_key_path must not be empty"));
+    }
+    if let Some(extension) = plan.extension_operation.as_ref() {
+        validate_extension_operation_record(extension)?;
     }
     Ok(())
 }
@@ -662,6 +719,9 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
                 plan.pack_dir.display()
             ));
         }
+    }
+    if let Some(extension) = plan.extension_operation.as_ref() {
+        apply_extension_operation(&plan.pack_dir, extension)?;
     }
     if plan.run_delegate_flow {
         let ok = run_flow_delegate_replay(&plan.pack_dir, plan.flow_wizard_answers.as_ref());
@@ -757,6 +817,7 @@ fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<Wiza
         ));
     }
     let sign_key_path = if sign { sign_key_path } else { None };
+    let extension_operation = parse_extension_operation_record(answers)?;
     Ok(WizardExecutionPlan {
         pack_dir: PathBuf::from(pack_dir_raw),
         create_pack_id,
@@ -768,6 +829,7 @@ fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<Wiza
         flow_wizard_answers,
         component_wizard_answers,
         sign_key_path,
+        extension_operation,
     })
 }
 
@@ -780,6 +842,70 @@ fn answer_bool(answers: &BTreeMap<String, Value>, key: &str, default: bool) -> R
     }
 }
 
+fn string_map_to_json_value(map: &BTreeMap<String, String>) -> Value {
+    Value::Object(
+        map.iter()
+            .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+            .collect(),
+    )
+}
+
+fn json_value_to_string_map(
+    value: Option<&Value>,
+    field: &str,
+) -> Result<BTreeMap<String, String>> {
+    let Some(value) = value else {
+        return Ok(BTreeMap::new());
+    };
+    let obj = value
+        .as_object()
+        .ok_or_else(|| anyhow!("answers.{field} must be an object"))?;
+    let mut map = BTreeMap::new();
+    for (key, value) in obj {
+        let value = value
+            .as_str()
+            .ok_or_else(|| anyhow!("answers.{field}.{key} must be a string"))?;
+        map.insert(key.clone(), value.to_string());
+    }
+    Ok(map)
+}
+
+fn parse_extension_operation_record(
+    answers: &BTreeMap<String, Value>,
+) -> Result<Option<ExtensionOperationRecord>> {
+    let Some(operation) = answers.get("extension_operation").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    let catalog_ref = answers
+        .get("extension_catalog_ref")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("answers.extension_catalog_ref must be a string"))?;
+    let extension_type_id = answers
+        .get("extension_type_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("answers.extension_type_id must be a string"))?;
+    let template_id = answers
+        .get("extension_template_id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let template_qa_answers = json_value_to_string_map(
+        answers.get("extension_template_qa_answers"),
+        "extension_template_qa_answers",
+    )?;
+    let edit_answers = json_value_to_string_map(
+        answers.get("extension_edit_answers"),
+        "extension_edit_answers",
+    )?;
+    Ok(Some(ExtensionOperationRecord {
+        operation: operation.to_string(),
+        catalog_ref: catalog_ref.to_string(),
+        extension_type_id: extension_type_id.to_string(),
+        template_id,
+        template_qa_answers,
+        edit_answers,
+    }))
+}
+
 fn run_create_extension_pack<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -790,15 +916,7 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
     session
         .selected_actions
         .push("create_extension_pack.start".to_string());
-    let catalog_ref = ask_text(
-        input,
-        output,
-        i18n,
-        "pack.wizard.create_ext.catalog_ref",
-        "wizard.create_extension_pack.ask_catalog_ref",
-        Some("wizard.create_extension_pack.ask_catalog_ref_help"),
-        Some("fixture://extensions.json"),
-    )?;
+    let catalog_ref = prompt_for_extension_catalog_ref(input, output, i18n)?;
 
     let catalog = match load_extension_catalog(catalog_ref.trim(), runtime) {
         Ok(value) => value,
@@ -854,20 +972,44 @@ fn run_create_extension_pack<R: BufRead, W: Write>(
     let pack_dir_path = PathBuf::from(pack_dir.trim());
     session.last_pack_dir = Some(pack_dir_path.clone());
     let qa_answers = ask_template_qa_answers(input, output, i18n, &template)?;
+    let edit_answers = ask_extension_edit_answers(input, output, i18n, selected)?;
+    session.extension_operation = Some(ExtensionOperationRecord {
+        operation: "create_extension_pack".to_string(),
+        catalog_ref: catalog_ref.trim().to_string(),
+        extension_type_id: selected.id.clone(),
+        template_id: Some(template.id.clone()),
+        template_qa_answers: qa_answers.clone(),
+        edit_answers: edit_answers.clone(),
+    });
     if session.dry_run {
         wizard_ui::render_line(output, &i18n.t("wizard.dry_run.skipping_template_apply"))?;
-    } else if let Err(err) =
-        apply_template_plan(&template, &pack_dir_path, selected, i18n, &qa_answers)
-    {
-        wizard_ui::render_line(
-            output,
-            &format!("{}: {err}", i18n.t("wizard.error.template_apply_failed")),
-        )?;
-        let nav = ask_failure_nav(input, output, i18n)?;
-        if matches!(nav, SubmenuAction::MainMenu) {
+    } else {
+        if let Err(err) = apply_template_plan(
+            &template,
+            &pack_dir_path,
+            selected,
+            i18n,
+            &qa_answers,
+            &edit_answers,
+        ) {
+            wizard_ui::render_line(
+                output,
+                &format!("{}: {err}", i18n.t("wizard.error.template_apply_failed")),
+            )?;
+            let nav = ask_failure_nav(input, output, i18n)?;
+            if matches!(nav, SubmenuAction::MainMenu) {
+                return Ok(());
+            }
             return Ok(());
         }
-        return Ok(());
+        persist_extension_state(
+            &pack_dir_path,
+            selected,
+            &session
+                .extension_operation
+                .clone()
+                .expect("extension operation recorded"),
+        )?;
     }
 
     let self_exe = wizard_self_exe()?;
@@ -1003,21 +1145,35 @@ fn apply_template_plan(
     extension_type: &ExtensionType,
     i18n: &WizardI18n,
     qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
 ) -> Result<()> {
-    fs::create_dir_all(pack_dir)
-        .with_context(|| format!("create extension pack dir {}", pack_dir.display()))?;
+    ensure_extension_pack_base_scaffold(pack_dir)?;
     for step in &template.plan {
         match step {
-            WizardStep::EnsureDir { paths } => {
+            TemplatePlanStep::EnsureDir { paths } => {
                 for rel in paths {
-                    let target = pack_dir.join(rel);
+                    let target = pack_dir.join(render_template_string(
+                        rel,
+                        extension_type,
+                        template,
+                        i18n,
+                        qa_answers,
+                        edit_answers,
+                    ));
                     fs::create_dir_all(&target)
                         .with_context(|| format!("create directory {}", target.display()))?;
                 }
             }
-            WizardStep::WriteFiles { files } => {
+            TemplatePlanStep::WriteFiles { files } => {
                 for (rel, content) in files {
-                    let target = pack_dir.join(rel);
+                    let target = pack_dir.join(render_template_string(
+                        rel,
+                        extension_type,
+                        template,
+                        i18n,
+                        qa_answers,
+                        edit_answers,
+                    ));
                     if let Some(parent) = target.parent() {
                         fs::create_dir_all(parent).with_context(|| {
                             format!("create parent directory {}", parent.display())
@@ -1029,12 +1185,37 @@ fn apply_template_plan(
                         template,
                         i18n,
                         qa_answers,
+                        edit_answers,
                     );
                     fs::write(&target, rendered)
                         .with_context(|| format!("write file {}", target.display()))?;
                 }
             }
-            WizardStep::RunCli { command, args } => {
+            TemplatePlanStep::WriteBinaryFiles { files } => {
+                for (rel, encoded) in files {
+                    let target = pack_dir.join(render_template_string(
+                        rel,
+                        extension_type,
+                        template,
+                        i18n,
+                        qa_answers,
+                        edit_answers,
+                    ));
+                    if let Some(parent) = target.parent() {
+                        fs::create_dir_all(parent).with_context(|| {
+                            format!("create parent directory {}", parent.display())
+                        })?;
+                    }
+                    let bytes = base64::engine::general_purpose::STANDARD
+                        .decode(encoded)
+                        .with_context(|| {
+                            format!("decode base64 binary scaffold for {}", target.display())
+                        })?;
+                    fs::write(&target, bytes)
+                        .with_context(|| format!("write file {}", target.display()))?;
+                }
+            }
+            TemplatePlanStep::RunCli { command, args } => {
                 let (rendered_command, rendered_args) = render_run_cli_invocation(
                     command,
                     args,
@@ -1042,6 +1223,7 @@ fn apply_template_plan(
                     template,
                     i18n,
                     qa_answers,
+                    edit_answers,
                 )?;
                 let argv = rendered_args.iter().map(String::as_str).collect::<Vec<_>>();
                 let ok = run_process(Path::new(&rendered_command), &argv, Some(pack_dir))
@@ -1054,7 +1236,7 @@ fn apply_template_plan(
                     ));
                 }
             }
-            WizardStep::Delegate { target, .. } => {
+            TemplatePlanStep::Delegate { target, .. } => {
                 let ok = match target {
                     greentic_types::WizardTarget::Flow => {
                         let args = flow_delegate_args(pack_dir);
@@ -1077,14 +1259,46 @@ fn apply_template_plan(
     Ok(())
 }
 
+fn ensure_extension_pack_base_scaffold(pack_dir: &Path) -> Result<()> {
+    fs::create_dir_all(pack_dir)
+        .with_context(|| format!("create extension pack dir {}", pack_dir.display()))?;
+
+    for rel in ["flows", "components", "i18n", "assets", "qa", "extensions"] {
+        let target = pack_dir.join(rel);
+        fs::create_dir_all(&target)
+            .with_context(|| format!("create directory {}", target.display()))?;
+    }
+
+    for (rel, contents) in [
+        ("assets/README.md", "Add extension assets here.\n"),
+        ("qa/README.md", "Add extension QA/setup documents here.\n"),
+    ] {
+        let target = pack_dir.join(rel);
+        if !target.exists() {
+            fs::write(&target, contents)
+                .with_context(|| format!("write file {}", target.display()))?;
+        }
+    }
+
+    Ok(())
+}
+
 fn render_template_content(
     content: &str,
     extension_type: &ExtensionType,
     template: &ExtensionTemplate,
     i18n: &WizardI18n,
     qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
 ) -> String {
-    render_template_string(content, extension_type, template, i18n, qa_answers)
+    render_template_string(
+        content,
+        extension_type,
+        template,
+        i18n,
+        qa_answers,
+        edit_answers,
+    )
 }
 
 fn render_template_string(
@@ -1093,6 +1307,7 @@ fn render_template_string(
     template: &ExtensionTemplate,
     i18n: &WizardI18n,
     qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
 ) -> String {
     let mut rendered = raw
         .replace("{{extension_type_id}}", &extension_type.id)
@@ -1113,6 +1328,9 @@ fn render_template_string(
     for (key, value) in qa_answers {
         rendered = rendered.replace(&format!("{{{{qa.{key}}}}}"), value);
     }
+    for (key, value) in edit_answers {
+        rendered = rendered.replace(&format!("{{{{edit.{key}}}}}"), value);
+    }
     rendered
 }
 
@@ -1123,14 +1341,28 @@ fn render_run_cli_invocation(
     template: &ExtensionTemplate,
     i18n: &WizardI18n,
     qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
 ) -> Result<(String, Vec<String>)> {
-    let rendered_command =
-        render_template_string(command, extension_type, template, i18n, qa_answers);
+    let rendered_command = render_template_string(
+        command,
+        extension_type,
+        template,
+        i18n,
+        qa_answers,
+        edit_answers,
+    );
     validate_run_cli_token(&rendered_command, "command", true)?;
 
     let mut rendered_args = Vec::with_capacity(args.len());
     for (idx, arg) in args.iter().enumerate() {
-        let rendered = render_template_string(arg, extension_type, template, i18n, qa_answers);
+        let rendered = render_template_string(
+            arg,
+            extension_type,
+            template,
+            i18n,
+            qa_answers,
+            edit_answers,
+        );
         validate_run_cli_token(&rendered, &format!("arg[{idx}]"), false)?;
         rendered_args.push(rendered);
     }
@@ -1191,7 +1423,27 @@ fn ask_extension_edit_answers<R: BufRead, W: Write>(
     extension_type: &ExtensionType,
 ) -> Result<BTreeMap<String, String>> {
     let mut answers = BTreeMap::new();
+    let mut create_offer = None;
+    let mut requires_setup = None;
     for question in &extension_type.edit_questions {
+        let is_offer_field = matches!(
+            question.id.as_str(),
+            "offer_id"
+                | "cap_id"
+                | "component_ref"
+                | "op"
+                | "version"
+                | "priority"
+                | "requires_setup"
+                | "qa_ref"
+                | "hook_op_names"
+        );
+        if is_offer_field && create_offer == Some(false) {
+            continue;
+        }
+        if question.id == "qa_ref" && requires_setup == Some(false) {
+            continue;
+        }
         let value = ask_catalog_question(
             input,
             output,
@@ -1202,6 +1454,12 @@ fn ask_extension_edit_answers<R: BufRead, W: Write>(
             ),
             question,
         )?;
+        if question.id == "create_offer" {
+            create_offer = Some(value.trim() == "true");
+        }
+        if question.id == "requires_setup" {
+            requires_setup = Some(value.trim() == "true");
+        }
         answers.insert(question.id.clone(), value);
     }
     Ok(answers)
@@ -1315,55 +1573,277 @@ fn ask_catalog_question<R: BufRead, W: Write>(
 fn persist_extension_edit_answers(
     pack_dir: &Path,
     extension_type: &ExtensionType,
-    answers: &BTreeMap<String, String>,
+    operation: &ExtensionOperationRecord,
 ) -> Result<()> {
+    validate_capability_offer_component_ref(
+        pack_dir,
+        extension_type,
+        &operation.template_qa_answers,
+        &operation.edit_answers,
+    )?;
     let dir = pack_dir.join("extensions");
     fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     let path = dir.join(format!("{}.json", extension_type.id));
     let payload = json!({
         "extension_type": extension_type.id,
-        "answers": answers,
+        "canonical_extension_key": extension_type.canonical_extension_key(),
+        "operation": operation.operation,
+        "catalog_ref": operation.catalog_ref,
+        "template_id": operation.template_id,
+        "template_qa_answers": operation.template_qa_answers,
+        "edit_answers": operation.edit_answers,
+        "capabilities_extension": build_capabilities_payload(extension_type, &operation.template_qa_answers, &operation.edit_answers)?,
     });
     let bytes =
         serde_json::to_vec_pretty(&payload).context("serialize extension edit answers payload")?;
     fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))?;
-    merge_extension_answers_into_pack_yaml(pack_dir, extension_type, answers)?;
+    merge_extension_answers_into_pack_yaml(
+        pack_dir,
+        extension_type,
+        &operation.template_qa_answers,
+        &operation.edit_answers,
+    )?;
     Ok(())
 }
 
 fn merge_extension_answers_into_pack_yaml(
     pack_dir: &Path,
     extension_type: &ExtensionType,
-    answers: &BTreeMap<String, String>,
+    template_qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
 ) -> Result<()> {
     let pack_yaml = pack_dir.join("pack.yaml");
     if !pack_yaml.exists() {
         return Ok(());
     }
-
-    let mut cfg = crate::config::load_pack_config(pack_dir)?;
-    let key = format!("greentic.wizard.{}.v1", extension_type.id);
-    let inline_payload = json!({
-        "extension_type": extension_type.id,
-        "answers": answers,
-    });
-
-    let mut extensions = cfg.extensions.unwrap_or_default();
-    extensions.insert(
-        key.clone(),
-        ExtensionRef {
-            kind: key,
-            version: "v1".to_string(),
-            location: None,
-            digest: None,
-            inline: Some(ExtensionInline::Other(inline_payload)),
-        },
-    );
-    cfg.extensions = Some(extensions);
-
-    let serialized = serde_yaml_bw::to_string(&cfg).context("serialize updated pack.yaml")?;
+    let contents =
+        fs::read_to_string(&pack_yaml).with_context(|| format!("read {}", pack_yaml.display()))?;
+    let capabilities =
+        build_capabilities_payload(extension_type, template_qa_answers, edit_answers)?;
+    let serialized = if let Some(spec) =
+        capability_offer_spec_from_answers(extension_type, template_qa_answers, edit_answers)?
+    {
+        inject_capability_offer_spec(&contents, &spec)?
+    } else {
+        ensure_capabilities_extension(&contents)?
+    };
+    let _ = capabilities;
     fs::write(&pack_yaml, serialized).with_context(|| format!("write {}", pack_yaml.display()))?;
     Ok(())
+}
+
+fn validate_capability_offer_component_ref(
+    pack_dir: &Path,
+    extension_type: &ExtensionType,
+    template_qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
+) -> Result<()> {
+    let Some(spec) =
+        capability_offer_spec_from_answers(extension_type, template_qa_answers, edit_answers)?
+    else {
+        return Ok(());
+    };
+    let pack_yaml = pack_dir.join("pack.yaml");
+    if !pack_yaml.exists() {
+        return Ok(());
+    }
+    let config = crate::config::load_pack_config(pack_dir)?;
+    if config
+        .components
+        .iter()
+        .any(|item| item.id == spec.component_ref)
+    {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "capability offer component_ref `{}` does not match any components[].id in pack.yaml; scaffold a component with that id or set create_offer=false",
+        spec.component_ref
+    ))
+}
+
+fn persist_extension_state(
+    pack_dir: &Path,
+    extension_type: &ExtensionType,
+    operation: &ExtensionOperationRecord,
+) -> Result<()> {
+    persist_extension_edit_answers(pack_dir, extension_type, operation)
+}
+
+fn build_capabilities_payload(
+    extension_type: &ExtensionType,
+    template_qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
+) -> Result<CapabilitiesExtensionV1> {
+    let offer =
+        capability_offer_spec_from_answers(extension_type, template_qa_answers, edit_answers)?.map(
+            |spec| greentic_types::pack::extensions::capabilities::CapabilityOfferV1 {
+                offer_id: spec.offer_id,
+                cap_id: spec.cap_id,
+                version: spec.version,
+                provider: greentic_types::pack::extensions::capabilities::CapabilityProviderRefV1 {
+                    component_ref: spec.component_ref,
+                    op: spec.op,
+                },
+                scope: None,
+                priority: spec.priority,
+                requires_setup: spec.requires_setup,
+                setup: spec.qa_ref.map(|qa_ref| {
+                    greentic_types::pack::extensions::capabilities::CapabilitySetupV1 { qa_ref }
+                }),
+                applies_to: (!spec.hook_op_names.is_empty()).then_some(
+                    greentic_types::pack::extensions::capabilities::CapabilityHookAppliesToV1 {
+                        op_names: spec.hook_op_names,
+                    },
+                ),
+            },
+        );
+    Ok(CapabilitiesExtensionV1::new(offer.into_iter().collect()))
+}
+
+fn capability_offer_spec_from_answers(
+    extension_type: &ExtensionType,
+    template_qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
+) -> Result<Option<CapabilityOfferSpec>> {
+    let create_offer = match edit_answers.get("create_offer").map(|value| value.trim()) {
+        None | Some("") => false,
+        Some("true") => true,
+        Some("false") => false,
+        Some(other) => return Err(anyhow!("invalid create_offer value `{other}`")),
+    };
+    if !create_offer {
+        return Ok(None);
+    }
+
+    let offer_id = required_answer(edit_answers, "offer_id")?;
+    let cap_id = required_answer(edit_answers, "cap_id")?;
+    let component_ref = required_answer(edit_answers, "component_ref")?;
+    let op = required_answer(edit_answers, "op")?;
+    let version = optional_answer(edit_answers, "version")
+        .unwrap_or_else(|| default_capability_version(extension_type));
+    let priority = optional_answer(edit_answers, "priority")
+        .unwrap_or_else(|| "0".to_string())
+        .parse::<i32>()
+        .with_context(|| format!("invalid priority for extension type {}", extension_type.id))?;
+    let requires_setup = matches!(
+        edit_answers.get("requires_setup").map(|value| value.trim()),
+        Some("true")
+    );
+    let qa_ref = if requires_setup {
+        optional_answer(edit_answers, "qa_ref")
+            .or_else(|| optional_answer(template_qa_answers, "qa_ref"))
+    } else {
+        None
+    };
+    if requires_setup && qa_ref.is_none() {
+        return Err(anyhow!(
+            "extension type {} requires qa_ref when requires_setup=true",
+            extension_type.id
+        ));
+    }
+    let hook_op_names = optional_answer(edit_answers, "hook_op_names")
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(Some(CapabilityOfferSpec {
+        offer_id,
+        cap_id,
+        version,
+        component_ref,
+        op,
+        priority,
+        requires_setup,
+        qa_ref,
+        hook_op_names,
+    }))
+}
+
+fn required_answer(answers: &BTreeMap<String, String>, key: &str) -> Result<String> {
+    answers
+        .get(key)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| anyhow!("missing required answer `{key}`"))
+}
+
+fn optional_answer(answers: &BTreeMap<String, String>, key: &str) -> Option<String> {
+    answers
+        .get(key)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn default_capability_version(_extension_type: &ExtensionType) -> String {
+    "v1".to_string()
+}
+
+fn validate_extension_operation_record(operation: &ExtensionOperationRecord) -> Result<()> {
+    match operation.operation.as_str() {
+        "create_extension_pack" | "update_extension_pack" | "add_extension" => {}
+        other => {
+            return Err(anyhow!(
+                "unsupported extension operation `{other}` in answers document"
+            ));
+        }
+    }
+    if operation.catalog_ref.trim().is_empty() {
+        return Err(anyhow!("extension catalog ref must not be empty"));
+    }
+    if operation.extension_type_id.trim().is_empty() {
+        return Err(anyhow!("extension type id must not be empty"));
+    }
+    if operation.operation == "create_extension_pack" && operation.template_id.is_none() {
+        return Err(anyhow!(
+            "create_extension_pack requires answers.extension_template_id"
+        ));
+    }
+    Ok(())
+}
+
+fn apply_extension_operation(pack_dir: &Path, operation: &ExtensionOperationRecord) -> Result<()> {
+    let catalog = load_extension_catalog(&operation.catalog_ref, None)?;
+    let extension_type = catalog
+        .extension_types
+        .iter()
+        .find(|item| item.id == operation.extension_type_id)
+        .ok_or_else(|| {
+            anyhow!(
+                "extension type `{}` not found in catalog",
+                operation.extension_type_id
+            )
+        })?;
+
+    if operation.operation == "create_extension_pack" {
+        let template_id = operation
+            .template_id
+            .as_deref()
+            .ok_or_else(|| anyhow!("missing template_id for create_extension_pack"))?;
+        let template = extension_type
+            .templates
+            .iter()
+            .find(|item| item.id == template_id)
+            .ok_or_else(|| anyhow!("template `{template_id}` not found in catalog"))?;
+        let i18n = WizardI18n::new(Some("en-GB"));
+        apply_template_plan(
+            template,
+            pack_dir,
+            extension_type,
+            &i18n,
+            &operation.template_qa_answers,
+            &operation.edit_answers,
+        )?;
+    }
+
+    persist_extension_state(pack_dir, extension_type, operation)
 }
 
 fn ask_main_menu<R: BufRead, W: Write>(
@@ -1724,15 +2204,7 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
         Some("."),
     )?;
     session.last_pack_dir = Some(pack_dir_path.clone());
-    let catalog_ref = ask_text(
-        input,
-        output,
-        i18n,
-        "pack.wizard.update_ext.catalog_ref",
-        "wizard.update_extension_pack.ask_catalog_ref",
-        Some("wizard.update_extension_pack.ask_catalog_ref_help"),
-        Some("fixture://extensions.json"),
-    )?;
+    let catalog_ref = prompt_for_extension_catalog_ref(input, output, i18n)?;
 
     let catalog = match load_extension_catalog(catalog_ref.trim(), runtime) {
         Ok(value) => value,
@@ -1789,8 +2261,17 @@ fn run_update_extension_pack<R: BufRead, W: Write>(
                     .find(|item| item.id == type_choice)
                     .ok_or_else(|| anyhow!("selected extension type not found"))?;
                 let answers = ask_extension_edit_answers(input, output, i18n, selected)?;
+                let operation = ExtensionOperationRecord {
+                    operation: "update_extension_pack".to_string(),
+                    catalog_ref: catalog_ref.trim().to_string(),
+                    extension_type_id: selected.id.clone(),
+                    template_id: None,
+                    template_qa_answers: BTreeMap::new(),
+                    edit_answers: answers.clone(),
+                };
+                session.extension_operation = Some(operation.clone());
                 if !session.dry_run {
-                    persist_extension_edit_answers(&pack_dir_path, selected, &answers)?;
+                    persist_extension_edit_answers(&pack_dir_path, selected, &operation)?;
                 } else {
                     wizard_ui::render_line(
                         output,
@@ -1879,15 +2360,7 @@ fn run_add_extension<R: BufRead, W: Write>(
         Some("."),
     )?;
     session.last_pack_dir = Some(pack_dir_path.clone());
-    let catalog_ref = ask_text(
-        input,
-        output,
-        i18n,
-        "pack.wizard.add_ext.catalog_ref",
-        "wizard.update_extension_pack.ask_catalog_ref",
-        Some("wizard.update_extension_pack.ask_catalog_ref_help"),
-        Some("fixture://extensions.json"),
-    )?;
+    let catalog_ref = prompt_for_extension_catalog_ref(input, output, i18n)?;
 
     let catalog = match load_extension_catalog(catalog_ref.trim(), runtime) {
         Ok(value) => value,
@@ -1914,8 +2387,17 @@ fn run_add_extension<R: BufRead, W: Write>(
         .find(|item| item.id == type_choice)
         .ok_or_else(|| anyhow!("selected extension type not found"))?;
     let answers = ask_extension_edit_answers(input, output, i18n, selected)?;
+    let operation = ExtensionOperationRecord {
+        operation: "add_extension".to_string(),
+        catalog_ref: catalog_ref.trim().to_string(),
+        extension_type_id: selected.id.clone(),
+        template_id: None,
+        template_qa_answers: BTreeMap::new(),
+        edit_answers: answers.clone(),
+    };
+    session.extension_operation = Some(operation.clone());
     if !session.dry_run {
-        persist_extension_edit_answers(&pack_dir_path, selected, &answers)?;
+        persist_extension_edit_answers(&pack_dir_path, selected, &operation)?;
         wizard_ui::render_line(output, &i18n.t("cli.wizard.updated_pack_yaml"))?;
     } else {
         wizard_ui::render_line(output, &i18n.t("cli.wizard.dry_run.update_pack_yaml"))?;
@@ -2387,6 +2869,50 @@ fn ask_text<R: BufRead, W: Write>(
         .and_then(Value::as_str)
         .map(ToString::to_string)
         .ok_or_else(|| anyhow!("missing text answer"))
+}
+
+fn prompt_for_extension_catalog_ref<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    i18n: &WizardI18n,
+) -> Result<String> {
+    loop {
+        wizard_ui::render_line(output, &i18n.t("wizard.extension_catalog.check_newer"))?;
+        wizard_ui::render_line(output, &i18n.t("wizard.extension_catalog.check_newer_help"))?;
+        wizard_ui::render_prompt(output, &i18n.t("wizard.prompt"))?;
+
+        let Some(line) = read_trimmed_line(input)? else {
+            return Ok(DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL.to_string());
+        };
+        let trimmed = line.trim();
+
+        if trimmed.is_empty()
+            || trimmed.eq_ignore_ascii_case("y")
+            || trimmed.eq_ignore_ascii_case("yes")
+        {
+            return ask_text(
+                input,
+                output,
+                i18n,
+                "pack.wizard.extension_catalog.url",
+                "wizard.extension_catalog.url",
+                Some("wizard.extension_catalog.url_help"),
+                Some(DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL),
+            );
+        }
+        if trimmed.eq_ignore_ascii_case("n") || trimmed.eq_ignore_ascii_case("no") {
+            return Ok(DEFAULT_EXTENSION_CATALOG_REF.to_string());
+        }
+        if looks_like_catalog_ref(trimmed) {
+            return Ok(trimmed.to_string());
+        }
+
+        wizard_ui::render_line(output, &i18n.t("wizard.error.invalid_selection"))?;
+    }
+}
+
+fn looks_like_catalog_ref(value: &str) -> bool {
+    value.contains("://")
 }
 
 fn ask_existing_pack_dir<R: BufRead, W: Write>(

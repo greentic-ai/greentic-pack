@@ -14,7 +14,7 @@ fn wizard_boots_and_exits_with_zero() {
 
     let rendered = String::from_utf8(output).expect("utf8 output");
     assert!(rendered.contains("Main Menu"));
-    assert!(rendered.contains("Add extension"));
+    assert!(rendered.contains("Add extension to existing pack"));
     assert!(rendered.contains("0) Exit"));
 }
 
@@ -60,6 +60,39 @@ fn wizard_create_extension_catalog_fixture_renders_type_explanations() {
 }
 
 #[test]
+fn wizard_default_messaging_catalog_does_not_show_legacy_prompt_keys() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("messaging-default");
+    let input_script = format!(
+        "3\nn\n1\n1\n{}\n\n\n\n0\n\n\n\n\n0\n0\n\n2\n0\n",
+        pack_dir.display()
+    );
+    let mut input = Cursor::new(input_script.into_bytes());
+    let mut output = Vec::new();
+
+    wizard::run_cli_with_io_and_locale(&mut input, &mut output, Some("en-GB"))
+        .expect("wizard default catalog messaging flow should run");
+
+    let rendered = String::from_utf8(output).expect("utf8 output");
+    assert!(
+        !rendered.contains("??wizard.qa.provider_type??"),
+        "default catalog should not use legacy provider_type prompt"
+    );
+    assert!(
+        !rendered.contains("??wizard.qa.owner??"),
+        "default catalog should not use legacy owner prompt"
+    );
+    assert!(
+        !rendered.contains("provider_type"),
+        "default catalog should not prompt for provider_type"
+    );
+    assert!(
+        !rendered.contains("owner"),
+        "default catalog should not prompt for owner"
+    );
+}
+
+#[test]
 fn wizard_add_extension_writes_answers_and_updates_pack_yaml() {
     let temp = TempDir::new().expect("tempdir");
     let pack_dir = temp.path().join("pack");
@@ -71,7 +104,7 @@ fn wizard_add_extension_writes_answers_and_updates_pack_yaml() {
     .expect("write pack yaml");
 
     let input_script = format!(
-        "5\n{}\nfixture://extensions.json\n1\n\n0\n",
+        "5\n{}\nfixture://extensions.json\n1\n\n0\n\n\n\n\n\n0\n0\n\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
@@ -82,12 +115,14 @@ fn wizard_add_extension_writes_answers_and_updates_pack_yaml() {
 
     assert!(pack_dir.join("extensions/messaging.json").exists());
     let updated_pack = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
-    assert!(updated_pack.contains("greentic.wizard.messaging.v1"));
+    assert!(updated_pack.contains("greentic.ext.capabilities.v1"));
 }
 
 #[test]
 fn wizard_update_flow_auto_runs_validate_after_delegate_success() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -143,7 +178,9 @@ fn wizard_update_flow_auto_runs_validate_after_delegate_success() {
 
 #[test]
 fn wizard_update_flow_delegate_failure_does_not_auto_run_validate() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -210,7 +247,9 @@ fn test_env_lock() -> &'static Mutex<()> {
 
 #[test]
 fn wizard_create_extension_custom_scaffold_creates_expected_files() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -229,7 +268,7 @@ fn wizard_create_extension_custom_scaffold_creates_expected_files() {
     }
 
     let input_script = format!(
-        "3\nfixture://extensions.json\n10\n1\n{}\n\n2\n0\n",
+        "3\nfixture://extensions.json\n10\n1\n{}\n\n\nmy-custom-entry\n0\n\n\n\n\n0\n0\n\n2\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
@@ -257,8 +296,73 @@ fn wizard_create_extension_custom_scaffold_creates_expected_files() {
 }
 
 #[test]
+fn wizard_create_control_scaffold_uses_component_ref_for_component_bundle() {
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    let temp = TempDir::new().expect("tempdir");
+    let log_path = temp.path().join("calls.log");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let pack_dir = temp.path().join("control-ext");
+
+    write_script(
+        &self_exe,
+        &format!(
+            "#!/usr/bin/env bash\necho \"self:$*\" >> \"{}\"\nexit 0\n",
+            log_path.display()
+        ),
+    );
+
+    unsafe {
+        std::env::set_var("GREENTIC_PACK_WIZARD_SELF_EXE", self_exe.as_os_str());
+    }
+
+    let input_script = format!(
+        "3\nn\n8\n1\n{}\n\n\n\n1\n\n\n\n\n\n2\n0\n\n2\n0\n",
+        pack_dir.display()
+    );
+    let mut input = Cursor::new(input_script.into_bytes());
+    let mut output = Vec::new();
+
+    wizard::run_cli_with_io_and_locale(&mut input, &mut output, Some("en-GB"))
+        .expect("wizard control scaffold should run");
+
+    assert!(pack_dir.join("components/controller/README.md").exists());
+    assert!(
+        pack_dir
+            .join("components/controller/component.manifest.json")
+            .exists()
+    );
+    assert!(
+        pack_dir
+            .join("components/controller/component.wasm")
+            .exists()
+    );
+    assert!(pack_dir.join("qa/control-setup.json").exists());
+
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack.yaml");
+    assert!(pack_yaml.contains("id: controller"));
+    assert!(pack_yaml.contains("wasm: components/controller/component.wasm"));
+
+    let manifest =
+        fs::read_to_string(pack_dir.join("components/controller/component.manifest.json"))
+            .expect("read component manifest");
+    assert!(manifest.contains("\"id\": \"controller\""));
+    assert!(manifest.contains("\"name\": \"apply\""));
+
+    let qa = fs::read_to_string(pack_dir.join("qa/control-setup.json")).expect("read qa");
+    assert!(qa.contains("\"id\": \"control-offer-setup\""));
+
+    unsafe {
+        std::env::remove_var("GREENTIC_PACK_WIZARD_SELF_EXE");
+    }
+}
+
+#[test]
 fn wizard_create_extension_template_delegate_step_runs_flow_wizard() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -292,7 +396,7 @@ fn wizard_create_extension_template_delegate_step_runs_flow_wizard() {
     }
 
     let input_script = format!(
-        "3\nfixture://extensions.json\n1\n1\n{}\n\n2\n0\n",
+        "3\nfixture://extensions.json\n1\n1\n{}\n\n\nmessaging-entry\n0\n\n\n\n\n0\n0\n\n2\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
@@ -318,7 +422,9 @@ fn wizard_create_extension_template_delegate_step_runs_flow_wizard() {
 
 #[test]
 fn wizard_update_extension_edit_entries_persists_catalog_answers() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let self_exe = temp.path().join("greentic-pack-self");
     let pack_dir = temp.path().join("update-ext");
@@ -336,7 +442,7 @@ fn wizard_update_extension_edit_entries_persists_catalog_answers() {
     }
 
     let input_script = format!(
-        "4\n{}\nfixture://extensions.json\n1\n10\nmy-custom-entry\n0\n0\n",
+        "4\n{}\nfixture://extensions.json\n1\n10\nmy-custom-entry\n0\n\n\n\n\n0\n0\n\n0\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
@@ -350,8 +456,8 @@ fn wizard_update_extension_edit_entries_persists_catalog_answers() {
     let body = fs::read_to_string(persisted).expect("read persisted entry");
     assert!(body.contains("\"entry_label\": \"my-custom-entry\""));
     let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack.yaml");
-    assert!(pack_yaml.contains("greentic.wizard.custom-scaffold.v1"));
-    assert!(pack_yaml.contains("my-custom-entry"));
+    assert!(pack_yaml.contains("greentic.ext.capabilities.v1"));
+    assert!(pack_yaml.contains("offers: []"));
 
     unsafe {
         std::env::remove_var("GREENTIC_PACK_WIZARD_SELF_EXE");
@@ -360,7 +466,9 @@ fn wizard_update_extension_edit_entries_persists_catalog_answers() {
 
 #[test]
 fn wizard_update_extension_flow_runs_validate_pipeline() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -397,7 +505,9 @@ fn wizard_update_extension_flow_runs_validate_pipeline() {
 
 #[test]
 fn wizard_update_app_flow_missing_delegate_binary_shows_error_and_stays_in_menu() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -440,7 +550,9 @@ fn wizard_update_app_flow_missing_delegate_binary_shows_error_and_stays_in_menu(
 
 #[test]
 fn wizard_update_extension_missing_component_delegate_binary_shows_error() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let self_exe = temp.path().join("greentic-pack-self");
 
@@ -471,7 +583,9 @@ fn wizard_update_extension_missing_component_delegate_binary_shows_error() {
 
 #[test]
 fn wizard_update_app_reprompts_when_pack_dir_is_invalid() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -518,7 +632,9 @@ fn wizard_update_app_reprompts_when_pack_dir_is_invalid() {
 
 #[test]
 fn wizard_create_extension_run_cli_step_interpolates_qa_answers() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let log_path = temp.path().join("calls.log");
     let self_exe = temp.path().join("greentic-pack-self");
@@ -552,7 +668,7 @@ fn wizard_create_extension_run_cli_step_interpolates_qa_answers() {
     }
 
     let input_script = format!(
-        "3\nfixture://extensions.json\n11\n1\n{}\nmy-hook-name\n2\n0\n",
+        "3\nfixture://extensions.json\n11\n1\n{}\nmy-hook-name\n\nruncli-hook-entry\n2\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
@@ -578,7 +694,9 @@ fn wizard_create_extension_run_cli_step_interpolates_qa_answers() {
 
 #[test]
 fn wizard_create_extension_run_cli_step_rejects_unresolved_placeholders() {
-    let _guard = test_env_lock().lock().expect("env lock");
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let temp = TempDir::new().expect("tempdir");
     let self_exe = temp.path().join("greentic-pack-self");
     let pack_dir = temp.path().join("runcli-invalid-ext");
@@ -589,7 +707,7 @@ fn wizard_create_extension_run_cli_step_rejects_unresolved_placeholders() {
     }
 
     let input_script = format!(
-        "3\nfixture://extensions.json\n12\n1\n{}\n0\n0\n",
+        "3\nfixture://extensions.json\n12\n1\n{}\n\ninvalid-entry\n0\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());

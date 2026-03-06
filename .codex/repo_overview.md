@@ -30,7 +30,9 @@
 - None noted.
 
 ## 4. Broken, Failing, or Conflicting Areas
-- None noted.
+- `.codex/repo_overview_task.md` is referenced by `.codex/global_rules.md` but is not present in this checkout.
 
 ## 5. Notes for Future Work
-- None outstanding beyond normal maintenance.
+- `greentic-pack wizard` extension flows now emit replay-complete AnswerDocuments for create/update/add-extension operations, persist deterministic `extensions/<type>.json` files, and merge canonical `extensions.greentic.ext.capabilities.v1` payloads into `pack.yaml` via the shared capability-offer path.
+- The default wizard catalog is now `file://docs/extensions_capability_packs.catalog.v1.json`; the fixture catalog remains available for tests/dev and includes fixture-only `runcli` entries.
+- Cargo now resolves Greentic interface crates from published dependencies rather than the previously broken vendored-path patch overrides.

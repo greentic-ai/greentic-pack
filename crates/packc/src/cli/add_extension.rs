@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
+use greentic_types::pack::extensions::capabilities::{
+    CapabilityHookAppliesToV1, CapabilityOfferV1, CapabilityProviderRefV1, CapabilitySetupV1,
+};
 use greentic_types::provider::{ProviderDecl, ProviderRuntimeRef};
 use serde_yaml_bw::{self, Mapping, Sequence, Value as YamlValue};
 use walkdir::WalkDir;
@@ -110,6 +113,19 @@ pub struct CapabilityArgs {
     pub hook_op_names: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct CapabilityOfferSpec {
+    pub offer_id: String,
+    pub cap_id: String,
+    pub version: String,
+    pub component_ref: String,
+    pub op: String,
+    pub priority: i32,
+    pub requires_setup: bool,
+    pub qa_ref: Option<String>,
+    pub hook_op_names: Vec<String>,
+}
+
 pub fn handle(command: AddExtensionCommand) -> Result<()> {
     match command {
         AddExtensionCommand::Provider(args) => handle_provider(args),
@@ -129,7 +145,7 @@ fn handle_capability(args: CapabilityArgs) -> Result<()> {
     let root = normalize_root(&args.pack_dir)?;
     let pack_yaml = root.join("pack.yaml");
     let (_, contents) = read_pack_yaml(&pack_yaml)?;
-    let updated_yaml = inject_capability_offer(&contents, &args)?;
+    let updated_yaml = inject_capability_offer_spec(&contents, &args.to_spec()?)?;
 
     if args.dry_run {
         println!("--- dry-run: updated pack.yaml ---");
@@ -141,6 +157,30 @@ fn handle_capability(args: CapabilityArgs) -> Result<()> {
         .with_context(|| format!("write {}", pack_yaml.display()))?;
     println!("capabilities extension updated in {}", pack_yaml.display());
     Ok(())
+}
+
+impl CapabilityArgs {
+    fn to_spec(&self) -> Result<CapabilityOfferSpec> {
+        if self.requires_setup && self.qa_ref.is_none() {
+            anyhow::bail!("--qa-ref is required when --requires-setup is set");
+        }
+        if let Some(qa_ref) = self.qa_ref.as_ref()
+            && qa_ref.trim().is_empty()
+        {
+            anyhow::bail!("--qa-ref must not be empty");
+        }
+        Ok(CapabilityOfferSpec {
+            offer_id: self.offer_id.clone(),
+            cap_id: self.cap_id.clone(),
+            version: self.version.clone(),
+            component_ref: self.component_ref.clone(),
+            op: self.op.clone(),
+            priority: self.priority,
+            requires_setup: self.requires_setup,
+            qa_ref: self.qa_ref.clone(),
+            hook_op_names: self.hook_op_names.clone(),
+        })
+    }
 }
 
 fn edit_pack_dir(pack_dir: &Path, args: &ProviderArgs) -> Result<()> {
@@ -340,16 +380,7 @@ fn inject_provider_entry(
     serde_yaml_bw::to_string(&document).context("serialize updated pack.yaml")
 }
 
-fn inject_capability_offer(contents: &str, args: &CapabilityArgs) -> Result<String> {
-    if args.requires_setup && args.qa_ref.is_none() {
-        anyhow::bail!("--qa-ref is required when --requires-setup is set");
-    }
-    if let Some(qa_ref) = args.qa_ref.as_ref()
-        && qa_ref.trim().is_empty()
-    {
-        anyhow::bail!("--qa-ref must not be empty");
-    }
-
+pub(crate) fn ensure_capabilities_extension(contents: &str) -> Result<String> {
     let mut document: YamlValue =
         serde_yaml_bw::from_str(contents).context("parse pack.yaml for extension merge")?;
     let mapping = document
@@ -391,6 +422,39 @@ fn inject_capability_offer(contents: &str, args: &CapabilityArgs) -> Result<Stri
     let offers_entry = inline_map
         .entry(yaml_key("offers"))
         .or_insert_with(|| YamlValue::Sequence(Sequence::default()));
+    if !matches!(offers_entry, YamlValue::Sequence(_)) {
+        *offers_entry = YamlValue::Sequence(Sequence::default());
+    }
+
+    serde_yaml_bw::to_string(&document).context("serialize updated pack.yaml")
+}
+
+pub(crate) fn inject_capability_offer_spec(
+    contents: &str,
+    spec: &CapabilityOfferSpec,
+) -> Result<String> {
+    let mut document: YamlValue = serde_yaml_bw::from_str(
+        &ensure_capabilities_extension(contents).context("prepare capabilities extension")?,
+    )
+    .context("parse pack.yaml for capability offer merge")?;
+    let mapping = document
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("pack.yaml root must be a mapping"))?;
+    let extensions_map = mapping
+        .get_mut(yaml_key("extensions"))
+        .and_then(YamlValue::as_mapping_mut)
+        .ok_or_else(|| anyhow::anyhow!("extensions must be a mapping"))?;
+    let extension_map = extensions_map
+        .get_mut(yaml_key(CAPABILITIES_EXTENSION_KEY))
+        .and_then(YamlValue::as_mapping_mut)
+        .ok_or_else(|| anyhow::anyhow!("capabilities extension slot must be a mapping"))?;
+    let inline_map = extension_map
+        .get_mut(yaml_key("inline"))
+        .and_then(YamlValue::as_mapping_mut)
+        .ok_or_else(|| anyhow::anyhow!("capabilities extension inline must be a mapping"))?;
+    let offers_entry = inline_map
+        .entry(yaml_key("offers"))
+        .or_insert_with(|| YamlValue::Sequence(Sequence::default()));
     let offers = match offers_entry {
         YamlValue::Sequence(seq) => seq,
         _ => {
@@ -399,49 +463,28 @@ fn inject_capability_offer(contents: &str, args: &CapabilityArgs) -> Result<Stri
         }
     };
 
-    let mut offer = Mapping::new();
-    offer.insert(
-        yaml_key("offer_id"),
-        YamlValue::String(args.offer_id.clone(), None),
-    );
-    offer.insert(
-        yaml_key("cap_id"),
-        YamlValue::String(args.cap_id.clone(), None),
-    );
-    offer.insert(
-        yaml_key("version"),
-        YamlValue::String(args.version.clone(), None),
-    );
-    let mut provider = Mapping::new();
-    provider.insert(
-        yaml_key("component_ref"),
-        YamlValue::String(args.component_ref.clone(), None),
-    );
-    provider.insert(yaml_key("op"), YamlValue::String(args.op.clone(), None));
-    offer.insert(yaml_key("provider"), YamlValue::Mapping(provider));
-    offer.insert(
-        yaml_key("priority"),
-        YamlValue::Number(i64::from(args.priority).into(), None),
-    );
-    offer.insert(
-        yaml_key("requires_setup"),
-        YamlValue::Bool(args.requires_setup, None),
-    );
-    if let Some(qa_ref) = args.qa_ref.as_ref() {
-        let mut setup = Mapping::new();
-        setup.insert(yaml_key("qa_ref"), YamlValue::String(qa_ref.clone(), None));
-        offer.insert(yaml_key("setup"), YamlValue::Mapping(setup));
-    }
-    if !args.hook_op_names.is_empty() {
-        let mut applies_to = Mapping::new();
-        let mut op_names = Sequence::default();
-        for name in &args.hook_op_names {
-            op_names.push(YamlValue::String(name.clone(), None));
-        }
-        applies_to.insert(yaml_key("op_names"), YamlValue::Sequence(op_names));
-        offer.insert(yaml_key("applies_to"), YamlValue::Mapping(applies_to));
-    }
-    upsert_capability_offer(offers, YamlValue::Mapping(offer), &args.offer_id);
+    let offer = CapabilityOfferV1 {
+        offer_id: spec.offer_id.clone(),
+        cap_id: spec.cap_id.clone(),
+        version: spec.version.clone(),
+        provider: CapabilityProviderRefV1 {
+            component_ref: spec.component_ref.clone(),
+            op: spec.op.clone(),
+        },
+        scope: None,
+        priority: spec.priority,
+        requires_setup: spec.requires_setup,
+        setup: spec.qa_ref.as_ref().map(|qa_ref| CapabilitySetupV1 {
+            qa_ref: qa_ref.clone(),
+        }),
+        applies_to: (!spec.hook_op_names.is_empty()).then(|| CapabilityHookAppliesToV1 {
+            op_names: spec.hook_op_names.clone(),
+        }),
+    };
+    let offer_value =
+        serde_yaml_bw::to_value(&offer).context("serialize capability offer payload")?;
+    upsert_capability_offer(offers, offer_value, &spec.offer_id);
+    sort_capability_offers(offers);
 
     serde_yaml_bw::to_string(&document).context("serialize updated pack.yaml")
 }
@@ -454,6 +497,28 @@ fn upsert_capability_offer(offers: &mut Vec<YamlValue>, offer: YamlValue, offer_
         }
     }
     offers.push(offer);
+}
+
+fn sort_capability_offers(offers: &mut [YamlValue]) {
+    offers.sort_by(|left, right| {
+        capability_offer_id(left)
+            .cmp(&capability_offer_id(right))
+            .then_with(|| {
+                let left_yaml = serde_yaml_bw::to_string(left).unwrap_or_default();
+                let right_yaml = serde_yaml_bw::to_string(right).unwrap_or_default();
+                left_yaml.cmp(&right_yaml)
+            })
+    });
+}
+
+fn capability_offer_id(entry: &YamlValue) -> String {
+    let key = yaml_key("offer_id");
+    if let YamlValue::Mapping(map) = entry
+        && let Some(YamlValue::String(value, _)) = map.get(&key)
+    {
+        return value.clone();
+    }
+    String::new()
 }
 
 fn entry_matches_capability_offer(entry: &YamlValue, offer_id: &str) -> bool {

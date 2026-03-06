@@ -1,15 +1,25 @@
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
+use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use greentic_distributor_client::{DistClient, DistOptions};
-use greentic_types::WizardStep;
+use greentic_types::{WizardId, WizardMode, WizardTarget};
+use reqwest::StatusCode;
 use serde::Deserialize;
+use serde_json::Value;
 use tokio::runtime::Handle;
 
 use crate::cli::wizard_i18n::WizardI18n;
 use crate::runtime::{NetworkPolicy, RuntimeContext};
+
+const DEFAULT_DOCS_CATALOG_PATH: &str = "docs/extensions_capability_packs.catalog.v1.json";
+pub(crate) const DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL: &str = "https://github.com/greenticai/greentic-pack/blob/master/docs/extensions_capability_packs.catalog.v1.json";
+const EMBEDDED_DEFAULT_CATALOG_JSON: &str =
+    include_str!("../../../../docs/extensions_capability_packs.catalog.v1.json");
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ExtensionCatalog {
@@ -47,7 +57,7 @@ pub(crate) struct ExtensionTemplate {
     #[serde(default)]
     description_key: Option<String>,
     #[serde(default)]
-    pub(crate) plan: Vec<WizardStep>,
+    pub(crate) plan: Vec<TemplatePlanStep>,
     #[serde(default)]
     pub(crate) qa_questions: Vec<CatalogQuestion>,
 }
@@ -128,6 +138,35 @@ pub(crate) struct CatalogQuestion {
     pub(crate) choices: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
+#[allow(dead_code)]
+pub(crate) enum TemplatePlanStep {
+    EnsureDir {
+        paths: Vec<String>,
+    },
+    WriteFiles {
+        files: BTreeMap<String, String>,
+    },
+    WriteBinaryFiles {
+        files: BTreeMap<String, String>,
+    },
+    RunCli {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+    },
+    Delegate {
+        target: WizardTarget,
+        id: WizardId,
+        mode: WizardMode,
+        #[serde(default)]
+        prefilled_answers: BTreeMap<String, Value>,
+        #[serde(default)]
+        output_map: BTreeMap<String, String>,
+    },
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum CatalogQuestionKind {
@@ -151,7 +190,12 @@ pub(crate) fn load_extension_catalog(
     }
 
     if let Some(path) = catalog_ref.strip_prefix("file://") {
-        let bytes = std::fs::read(path).with_context(|| format!("read catalog file {path}"))?;
+        let bytes = load_catalog_file_bytes(path, runtime)?;
+        return parse_catalog_bytes(&bytes);
+    }
+
+    if catalog_ref.starts_with("https://") || catalog_ref.starts_with("http://") {
+        let bytes = load_catalog_url_bytes(catalog_ref, runtime)?;
         return parse_catalog_bytes(&bytes);
     }
 
@@ -163,8 +207,93 @@ pub(crate) fn load_extension_catalog(
     }
 
     Err(anyhow!(
-        "unsupported catalog ref scheme; expected fixture://, file://, or oci://"
+        "unsupported catalog ref scheme; expected fixture://, file://, http(s)://, or oci://"
     ))
+}
+
+fn load_catalog_file_bytes(path: &str, runtime: Option<&RuntimeContext>) -> Result<Vec<u8>> {
+    let _ = runtime;
+
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(bytes),
+        Err(err) if should_fallback_to_embedded_catalog(path) => {
+            let _ = err;
+            Ok(EMBEDDED_DEFAULT_CATALOG_JSON.as_bytes().to_vec())
+        }
+        Err(err) => Err(err).with_context(|| format!("read catalog file {path}")),
+    }
+}
+
+fn should_fallback_to_embedded_catalog(path: &str) -> bool {
+    Path::new(path) == Path::new(DEFAULT_DOCS_CATALOG_PATH)
+}
+
+fn load_catalog_url_bytes(catalog_ref: &str, runtime: Option<&RuntimeContext>) -> Result<Vec<u8>> {
+    let normalized = normalize_catalog_url(catalog_ref);
+    let use_embedded_fallback = is_default_catalog_download_url(catalog_ref);
+
+    if runtime
+        .map(|ctx| ctx.network_policy() == NetworkPolicy::Offline)
+        .unwrap_or(false)
+    {
+        if use_embedded_fallback {
+            return Ok(EMBEDDED_DEFAULT_CATALOG_JSON.as_bytes().to_vec());
+        }
+        return Err(anyhow!(
+            "network operation blocked in offline mode: download extension catalog"
+        ));
+    }
+
+    match fetch_catalog_url_bytes(&normalized) {
+        Ok(bytes) => Ok(bytes),
+        Err(err) if use_embedded_fallback => {
+            let _ = err;
+            Ok(EMBEDDED_DEFAULT_CATALOG_JSON.as_bytes().to_vec())
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn fetch_catalog_url_bytes(url: &str) -> Result<Vec<u8>> {
+    let url = url.to_string();
+    thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_millis(800))
+            .timeout(Duration::from_secs(3))
+            .build()
+            .context("build HTTP client for extension catalog")?;
+        let response = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("request extension catalog {url}"))?;
+        if response.status() != StatusCode::OK {
+            return Err(anyhow!(
+                "request extension catalog {} failed with status {}",
+                url,
+                response.status()
+            ));
+        }
+        let bytes = response
+            .bytes()
+            .with_context(|| format!("read extension catalog response {url}"))?;
+        Ok(bytes.to_vec())
+    })
+    .join()
+    .map_err(|_| anyhow!("catalog download thread panicked"))?
+}
+
+fn normalize_catalog_url(url: &str) -> String {
+    if let Some(rest) = url.strip_prefix("https://github.com/")
+        && let Some((repo, path)) = rest.split_once("/blob/")
+        && let Some((branch, file_path)) = path.split_once('/')
+    {
+        return format!("https://raw.githubusercontent.com/{repo}/{branch}/{file_path}");
+    }
+    url.to_string()
+}
+
+fn is_default_catalog_download_url(url: &str) -> bool {
+    normalize_catalog_url(url) == normalize_catalog_url(DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL)
 }
 
 fn parse_catalog_bytes(bytes: &[u8]) -> Result<ExtensionCatalog> {
@@ -207,10 +336,10 @@ fn default_generic_template() -> ExtensionTemplate {
         description: Some("Baseline scaffold".to_string()),
         description_key: None,
         plan: vec![
-            WizardStep::EnsureDir {
+            TemplatePlanStep::EnsureDir {
                 paths: vec!["flows".to_string(), "components".to_string(), "i18n".to_string()],
             },
-            WizardStep::WriteFiles {
+            TemplatePlanStep::WriteFiles {
                 files: BTreeMap::from([
                     (
                         "README.md".to_string(),
@@ -242,10 +371,10 @@ fn default_custom_template() -> ExtensionTemplate {
         description: Some("Create a minimal custom extension skeleton".to_string()),
         description_key: None,
         plan: vec![
-            WizardStep::EnsureDir {
+            TemplatePlanStep::EnsureDir {
                 paths: vec!["flows".to_string(), "components".to_string(), "i18n".to_string()],
             },
-            WizardStep::WriteFiles {
+            TemplatePlanStep::WriteFiles {
                 files: BTreeMap::from([
                     (
                         "README.md".to_string(),
@@ -325,3 +454,28 @@ where
 }
 
 const FIXTURE_EXTENSIONS_JSON: &str = include_str!("../../tests/fixtures/wizard/extensions.json");
+
+#[cfg(test)]
+mod tests {
+    use super::load_extension_catalog;
+
+    #[test]
+    fn default_docs_catalog_ref_loads_from_embedded_fallback() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let original_cwd = std::env::current_dir().expect("current dir");
+        std::env::set_current_dir(temp.path()).expect("switch to temp cwd");
+        let catalog = load_extension_catalog(
+            "file://docs/extensions_capability_packs.catalog.v1.json",
+            None,
+        )
+        .expect("embedded default catalog should load");
+        std::env::set_current_dir(original_cwd).expect("restore cwd");
+
+        assert!(
+            catalog
+                .extension_types
+                .iter()
+                .any(|extension_type| extension_type.id == "control")
+        );
+    }
+}

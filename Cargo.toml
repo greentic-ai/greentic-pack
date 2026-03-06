@@ -60,6 +60,7 @@ getrandom = "0.4"
 rustls-pki-types = "1"
 x509-parser = "0.18"
 regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 wit-component = "0.245"
 greentic-distributor-client = { version = ">=0.4.31, <0.5", default-features = false, features = ["reqwest", "dist-client"] }
 schemars = "1"
@@ -74,9 +75,3 @@ wit-bindgen = { version = "0.53", default-features = false, features = ["macros"
 indexmap = "2"
 sys-locale = "0.3"
 unic-langid = "0.9"
-
-[patch.crates-io]
-greentic-interfaces = { path = "crates/vendor/greentic-interfaces-0.4.107" }
-greentic-interfaces-guest = { path = "crates/vendor/greentic-interfaces-guest" }
-greentic-interfaces-host = { path = "crates/vendor/greentic-interfaces-host" }
-greentic-interfaces-wasmtime = { path = "crates/vendor/greentic-interfaces-wasmtime" }
