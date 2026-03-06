@@ -1,0 +1,38 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.3",
+  "body": [
+    {
+      "type": "TextBlock",
+      "size": "Large",
+      "weight": "Bolder",
+      "text": "OAuth Connection Required"
+    },
+    {
+      "type": "TextBlock",
+      "wrap": true,
+      "text": "Provider: {{provider}}"
+    },
+    {
+      "type": "TextBlock",
+      "wrap": true,
+      "text": "City request: {{city}}"
+    },
+    {
+      "type": "TextBlock",
+      "wrap": true,
+      "isSubtle": true,
+      "text": "In production this action should redirect user to OAuth consent and return with a fresh token."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "Continue with token",
+      "data": {
+        "action_id": "oauth_continue"
+      }
+    }
+  ]
+}

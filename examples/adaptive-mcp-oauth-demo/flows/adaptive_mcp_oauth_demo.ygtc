@@ -1,0 +1,43 @@
+id: adaptive_mcp_oauth_demo
+title: Adaptive Card + MCP + OAuth Demo (Offline)
+description: Demo flow that renders OAuth and MCP-context cards with a valid local card component.
+type: messaging
+start: show_oauth_card
+
+parameters:
+  oauth_provider: microsoft-graph
+  city: Yerevan
+  mcp_payload: '{"tool":"forecast_weather","status":"mocked","temp_c":18}'
+
+nodes:
+  show_oauth_card:
+    card:
+      input:
+        card_source: asset
+        card_spec:
+          asset_path: oauth_connect_card.json
+          template_params:
+            provider: parameters.oauth_provider
+            city: parameters.city
+        mode: renderAndValidate
+    routing:
+      - to: show_result_card
+
+  show_result_card:
+    card:
+      input:
+        card_source: asset
+        card_spec:
+          asset_path: result_card.json
+          template_params:
+            city: parameters.city
+            provider: parameters.oauth_provider
+            result_json: parameters.mcp_payload
+        mode: renderAndValidate
+    routing:
+      - to: done
+
+  done:
+    emit.response:
+      text: "demo complete: adaptive card + oauth + mcp(context)"
+    routing: out

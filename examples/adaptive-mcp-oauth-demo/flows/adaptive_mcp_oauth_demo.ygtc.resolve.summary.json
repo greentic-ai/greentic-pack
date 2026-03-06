@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "flow": "adaptive_mcp_oauth_demo.ygtc",
+  "nodes": {
+    "show_oauth_card": {
+      "component_id": "ai.greentic.component-adaptive-card",
+      "source": {
+        "kind": "local",
+        "path": "../components/component_adaptive_card.wasm"
+      },
+      "digest": "sha256:6c56b04da82d6a83853dee413efe9d97b1c62ebc238e895011d37d87d4d699cc"
+    },
+    "show_result_card": {
+      "component_id": "ai.greentic.component-adaptive-card",
+      "source": {
+        "kind": "local",
+        "path": "../components/component_adaptive_card.wasm"
+      },
+      "digest": "sha256:6c56b04da82d6a83853dee413efe9d97b1c62ebc238e895011d37d87d4d699cc"
+    },
+    "done": {
+      "component_id": "emit.response",
+      "source": {
+        "kind": "local",
+        "path": "../components/component_adaptive_card.wasm"
+      },
+      "digest": "sha256:6c56b04da82d6a83853dee413efe9d97b1c62ebc238e895011d37d87d4d699cc"
+    }
+  }
+}
