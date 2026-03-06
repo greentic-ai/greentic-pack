@@ -65,6 +65,8 @@ greentic-distributor-client = { version = ">=0.4.31, <0.5", default-features = f
 schemars = "1"
 wasmtime = "42"
 wasmtime-wasi = "42"
+wasmtime-wasi-http = "42"
+wasmtime-wasi-tls = "42"
 assert_cmd = "2"
 indoc = "2"
 predicates = "3"

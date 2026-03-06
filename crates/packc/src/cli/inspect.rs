@@ -11,9 +11,9 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use greentic_pack::validate::{
-    ComponentReferencesExistValidator, ProviderReferencesExistValidator,
-    ReferencedFilesExistValidator, SbomConsistencyValidator, SecretRequirementsValidator,
-    ValidateCtx, run_validators,
+    ComponentReferencesExistValidator, OauthCapabilityRequirementsValidator,
+    ProviderReferencesExistValidator, ReferencedFilesExistValidator, SbomConsistencyValidator,
+    SecretRequirementsValidator, ValidateCtx, run_validators,
 };
 use greentic_pack::{PackLoad, SigningPolicy, open_pack};
 use greentic_types::component_source::ComponentSourceRef;
@@ -785,6 +785,7 @@ async fn run_pack_validation(
         Box::new(ProviderReferencesExistValidator::new(ctx.clone())),
         Box::new(SecretRequirementsValidator),
         Box::new(ComponentReferencesExistValidator),
+        Box::new(OauthCapabilityRequirementsValidator),
     ];
 
     let mut report = if let Some(manifest) = load.gpack_manifest.as_ref() {
