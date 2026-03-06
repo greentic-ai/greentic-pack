@@ -1610,8 +1610,6 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces"
 version = "0.4.107"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48f12dfed1aac9df63e6f89c39bf868ad76cb6c7b9f569a73f57292092b399a"
 dependencies = [
  "anyhow",
  "greentic-types",
@@ -1627,8 +1625,6 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces-guest"
 version = "0.4.107"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3ff7be6464fca2ba0919697ef11e9be00ce0d06a6548813261051803ef88493"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1640,8 +1636,6 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces-host"
 version = "0.4.107"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48ac4236167bb349b8bcbfcd0d5088d9e2a0975d407d0845c05597a6e9f96a1b"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1653,8 +1647,6 @@ dependencies = [
 [[package]]
 name = "greentic-interfaces-wasmtime"
 version = "0.4.107"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89bf67cbbd2698c739c2f9ffd6f9549bdc127ae81a3a694c14e25ff59980ca40"
 dependencies = [
  "anyhow",
  "camino",
