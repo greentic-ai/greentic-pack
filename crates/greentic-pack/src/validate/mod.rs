@@ -564,8 +564,8 @@ fn value_contains_substring(value: &Value, needle: &str) -> bool {
             .iter()
             .any(|item| value_contains_substring(item, needle)),
         Value::Object(map) => map
-            .iter()
-            .any(|(key, item)| key.contains(needle) || value_contains_substring(item, needle)),
+            .values()
+            .any(|item| value_contains_substring(item, needle)),
         _ => false,
     }
 }
@@ -677,6 +677,32 @@ nodes:
         assert!(
             diagnostics.is_empty(),
             "expected no oauth requirement diagnostics, got: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn oauth_key_name_does_not_trigger_capability_requirements() {
+        let flow = compile_ygtc_str(
+            r#"
+id: auth
+type: messaging
+start: step
+nodes:
+  step:
+    echo:
+      oauth.get_access_token: "not an operation"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("compile flow");
+
+        let required = BTreeSet::new();
+        let diagnostics =
+            oauth_capability_requirement_diagnostics_for_flow("auth", &flow, &required);
+        assert!(
+            diagnostics.is_empty(),
+            "expected key-only mapping references to be ignored, got: {diagnostics:?}"
         );
     }
 }
