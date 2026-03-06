@@ -28,7 +28,7 @@ cargo component build --release
 
 ```bash
 cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
-./scripts/build_local_pack.sh <root>/my/tmp/adaptive-mcp-oauth-demo.gtpack
+./scripts/build_local_pack.sh <root>/tmp/adaptive-mcp-oauth-demo.gtpack
 ```
 
 ## 2) Create bundle with wizard (interactive)
@@ -46,9 +46,9 @@ GREENTIC_ROOT=<root> ./scripts/wizard_interactive.sh
 
 Recommended wizard answers:
 
-- Bundle output path: `<root>/my/tmp/adaptive-mcp-oauth-interactive-bundle`
+- Bundle output path: `<root>/tmp/adaptive-mcp-oauth-interactive-bundle`
 - Add application pack: `y`
-- Pack reference: `file://<root>/my/tmp/adaptive-mcp-oauth-demo.gtpack`
+- Pack reference: `file://<root>/tmp/adaptive-mcp-oauth-demo.gtpack`
 - Default pack: `y`
 - Add providers: `n`
 - Add non-well-known provider: `n`
@@ -58,7 +58,7 @@ Recommended wizard answers:
 
 ```bash
 GREENTIC_ENV=dev <root>/greentic-operator/target/debug/greentic-operator demo run \
-  --packs-dir <root>/my/tmp/adaptive-mcp-oauth-interactive-bundle/packs \
+  --packs-dir <root>/tmp/adaptive-mcp-oauth-interactive-bundle/packs \
   --pack adaptive-mcp-oauth-demo.gtpack \
   --flow adaptive_mcp_oauth_demo \
   --tenant demo \

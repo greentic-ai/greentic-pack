@@ -6,7 +6,7 @@ PACK_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ROOT_DIR="${GREENTIC_ROOT:-$(cd -- "$PACK_DIR/../../.." && pwd)}"
 
 OPERATOR_BIN="$ROOT_DIR/greentic-operator/target/debug/greentic-operator"
-PROVIDER_REGISTRY="$ROOT_DIR/my/tmp/providers-empty.json"
+PROVIDER_REGISTRY="$ROOT_DIR/tmp/providers-empty.json"
 
 if [[ ! -x "$OPERATOR_BIN" ]]; then
   echo "greentic-operator binary not found: $OPERATOR_BIN" >&2
