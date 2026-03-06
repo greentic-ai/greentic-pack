@@ -135,6 +135,43 @@ greentic-pack add-extension capability --pack-dir <DIR> \
   --priority 10
 ```
 
+The default extension catalog also includes a generic `Deployer` scaffold. That
+path creates placeholder flows, schemas, examples, and a component bundle, and
+persists generic deployer metadata in both `extensions/deployer.json` and
+`pack.yaml -> extensions.greentic.deployer.v1`.
+
+Direct deployer metadata path:
+
+```bash
+greentic-pack add-extension deployer --pack-dir <DIR> \
+  --contract-id greentic.deployer.v1 \
+  --op generate \
+  --op plan
+```
+
+External extension dependency path:
+
+```bash
+greentic-pack add-extension dependency --pack-dir <DIR> \
+  --id greentic.deployer.v1 \
+  --role deployer \
+  --ref oci://ghcr.io/greenticai/packs/deployer:0.6.0 \
+  --allow-tags
+
+greentic-pack extensions-lock --in <DIR>
+```
+
+This keeps author-edited refs in `pack.extensions.json` and writes pinned lock
+entries to `pack.extensions.lock.json`.
+
+If you change `pack.extensions.json` later, rerun `greentic-pack extensions-lock`
+before linting or building. Those commands now reject drift between the editable
+source file and the generated lock file.
+
+`greentic-pack doctor --in <DIR>` now reports the same drift as pack validation
+diagnostics, so CI and local checks can surface the problem without a separate
+manual diff step.
+
 ## Final validation
 
 For any pack type:

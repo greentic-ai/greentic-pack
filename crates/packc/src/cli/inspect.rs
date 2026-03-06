@@ -32,6 +32,11 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::build;
+use crate::extension_refs::{
+    default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
+    read_extensions_lock_file, validate_extensions_lock_alignment,
+};
+use crate::extensions::DEPLOYER_EXTENSION_KEY;
 use crate::pack_lock_doctor::{PackLockDoctorInput, run_pack_lock_doctor};
 use crate::runtime::RuntimeContext;
 use crate::validator::{
@@ -149,7 +154,8 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
         }
     }
     let validation = if validate_enabled {
-        let mut output = run_pack_validation(&load, &args, runtime).await?;
+        let mut output =
+            run_pack_validation(&load, source_mode_pack_dir(&mode), &args, runtime).await?;
         let mut doctor_diagnostics = Vec::new();
         let mut doctor_errors = false;
         if args.component_doctor {
@@ -604,6 +610,13 @@ fn resolve_mode(args: &InspectArgs) -> Result<InspectMode> {
     ))
 }
 
+fn source_mode_pack_dir(mode: &InspectMode) -> Option<&Path> {
+    match mode {
+        InspectMode::Source(path) => Some(path.as_path()),
+        InspectMode::Archive(_) => None,
+    }
+}
+
 async fn inspect_source_dir(
     dir: &Path,
     runtime: &RuntimeContext,
@@ -635,6 +648,7 @@ async fn inspect_source_dir(
         runtime: runtime.clone(),
         skip_update: false,
         allow_pack_schema: false,
+        validate_extension_refs: false,
     };
 
     build::run(&opts).await?;
@@ -775,6 +789,7 @@ fn has_error_diagnostics(diagnostics: &[Diagnostic]) -> bool {
 
 async fn run_pack_validation(
     load: &PackLoad,
+    source_pack_dir: Option<&Path>,
     args: &InspectArgs,
     runtime: &RuntimeContext,
 ) -> Result<ValidationOutput> {
@@ -819,6 +834,11 @@ async fn run_pack_validation(
 
     let wasm_result = run_wasm_validators(load, &config, runtime).await?;
     report.diagnostics.extend(wasm_result.diagnostics);
+    if let Some(pack_dir) = source_pack_dir {
+        report
+            .diagnostics
+            .extend(collect_extension_dependency_diagnostics(pack_dir));
+    }
 
     let has_errors = has_error_diagnostics(&report.diagnostics) || wasm_result.missing_required;
 
@@ -827,6 +847,145 @@ async fn run_pack_validation(
         has_errors,
         sources: wasm_result.sources,
     })
+}
+
+fn collect_extension_dependency_diagnostics(pack_dir: &Path) -> Vec<Diagnostic> {
+    let source_path = default_extensions_file_path(pack_dir);
+    let lock_path = default_extensions_lock_file_path(pack_dir);
+    let mut diagnostics = Vec::new();
+
+    let source = if source_path.exists() {
+        match read_extensions_file(&source_path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_EXTENSION_DEPENDENCY_SOURCE_INVALID".to_string(),
+                    message: err.to_string(),
+                    path: Some(path_display(pack_dir, &source_path)),
+                    hint: Some("fix pack.extensions.json and rerun doctor".to_string()),
+                    data: Value::Null,
+                });
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let lock = if lock_path.exists() {
+        match read_extensions_lock_file(&lock_path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_INVALID".to_string(),
+                    message: err.to_string(),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>`".to_string()),
+                    data: Value::Null,
+                });
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    match (source.as_ref(), lock.as_ref()) {
+        (Some(_), None) => diagnostics.push(Diagnostic {
+            severity: Severity::Warn,
+            code: "PACK_EXTENSION_DEPENDENCY_LOCK_MISSING".to_string(),
+            message: "pack.extensions.json exists but pack.extensions.lock.json is missing"
+                .to_string(),
+            path: Some(path_display(pack_dir, &source_path)),
+            hint: Some("run `greentic-pack extensions-lock --in <DIR>`".to_string()),
+            data: Value::Null,
+        }),
+        (None, Some(_)) => diagnostics.push(Diagnostic {
+            severity: Severity::Warn,
+            code: "PACK_EXTENSION_DEPENDENCY_SOURCE_MISSING".to_string(),
+            message: "pack.extensions.lock.json exists but pack.extensions.json is missing"
+                .to_string(),
+            path: Some(path_display(pack_dir, &lock_path)),
+            hint: Some(
+                "restore pack.extensions.json or regenerate the lock from the intended source file"
+                    .to_string(),
+            ),
+            data: Value::Null,
+        }),
+        (Some(source), Some(lock)) => {
+            if let Err(err) = validate_extensions_lock_alignment(source, lock) {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_STALE".to_string(),
+                    message: err.to_string(),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>` after editing pack.extensions.json".to_string()),
+                    data: Value::Null,
+                });
+            }
+        }
+        (None, None) => {}
+    }
+
+    if let Some(source) = source.as_ref() {
+        for extension in &source.extensions {
+            if extension.id == DEPLOYER_EXTENSION_KEY && extension.role != "deployer" {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_DEPLOYER_EXTENSION_ROLE_INVALID".to_string(),
+                    message: format!(
+                        "extension `{}` must use role `deployer`, found `{}`",
+                        extension.id, extension.role
+                    ),
+                    path: Some(path_display(pack_dir, &source_path)),
+                    hint: Some("set the dependency role to `deployer`".to_string()),
+                    data: Value::Null,
+                });
+            }
+        }
+    }
+
+    if let Some(lock) = lock.as_ref() {
+        for extension in &lock.extensions {
+            if extension.media_type.is_none() {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Warn,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_MISSING_MEDIA_TYPE".to_string(),
+                    message: format!(
+                        "extension `{}` lock entry is missing media_type metadata",
+                        extension.id
+                    ),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>` with a resolver that reports content type".to_string()),
+                    data: Value::Null,
+                });
+            }
+            if extension.size_bytes.is_none() {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Warn,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_MISSING_SIZE".to_string(),
+                    message: format!(
+                        "extension `{}` lock entry is missing size metadata",
+                        extension.id
+                    ),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>` with a resolver that reports content length".to_string()),
+                    data: Value::Null,
+                });
+            }
+        }
+    }
+
+    diagnostics
+}
+
+fn path_display(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 fn print_validation(report: &ValidationOutput) {

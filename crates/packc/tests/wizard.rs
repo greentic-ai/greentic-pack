@@ -359,6 +359,88 @@ fn wizard_create_control_scaffold_uses_component_ref_for_component_bundle() {
 }
 
 #[test]
+fn wizard_create_deployer_scaffold_writes_generic_bundle_without_capabilities_merge() {
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    let temp = TempDir::new().expect("tempdir");
+    let log_path = temp.path().join("calls.log");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let pack_dir = temp.path().join("deployer-ext");
+
+    write_script(
+        &self_exe,
+        &format!(
+            "#!/usr/bin/env bash\necho \"self:$*\" >> \"{}\"\nexit 0\n",
+            log_path.display()
+        ),
+    );
+
+    unsafe {
+        std::env::set_var("GREENTIC_PACK_WIZARD_SELF_EXE", self_exe.as_os_str());
+    }
+
+    let input_script = format!(
+        "3\nn\n10\n1\n{}\n\n\ndeployer-entry\ngreentic.deployer.example.v1\nmy-deployer\n\n2\n0\n",
+        pack_dir.display()
+    );
+    let mut input = Cursor::new(input_script.into_bytes());
+    let mut output = Vec::new();
+
+    wizard::run_cli_with_io_and_locale(&mut input, &mut output, Some("en-GB"))
+        .expect("wizard deployer scaffold should run");
+
+    assert!(
+        pack_dir
+            .join("assets/schemas/deployer-input.schema.json")
+            .exists()
+    );
+    assert!(
+        pack_dir
+            .join("assets/schemas/deployer-plan.schema.json")
+            .exists()
+    );
+    assert!(pack_dir.join("assets/examples/sample-input.json").exists());
+    assert!(pack_dir.join("flows/generate.ygtc").exists());
+    assert!(pack_dir.join("flows/rollback.ygtc").exists());
+    assert!(
+        pack_dir
+            .join("components/my-deployer/component.manifest.json")
+            .exists()
+    );
+    assert!(
+        pack_dir
+            .join("components/my-deployer/component.wasm")
+            .exists()
+    );
+    assert!(pack_dir.join("extensions/deployer.json").exists());
+
+    let readme = fs::read_to_string(pack_dir.join("README.md")).expect("read README");
+    assert!(readme.contains("Generic deployer scaffold."));
+    assert!(readme.contains("greentic.deployer.example.v1"));
+
+    let apply_flow =
+        fs::read_to_string(pack_dir.join("flows/apply.ygtc")).expect("read apply flow");
+    assert!(apply_flow.contains("type: messaging"));
+    assert!(apply_flow.contains("nodes: {}"));
+    assert!(!apply_flow.contains("type: deployer"));
+
+    let persisted =
+        fs::read_to_string(pack_dir.join("extensions/deployer.json")).expect("read extension");
+    assert!(persisted.contains("\"canonical_extension_key\": \"greentic.deployer.v1\""));
+    assert!(persisted.contains("\"deployer_extension\""));
+    assert!(!persisted.contains("\"capabilities_extension\""));
+
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack.yaml");
+    assert!(pack_yaml.contains("greentic.deployer.v1"));
+    assert!(!pack_yaml.contains("greentic.ext.capabilities.v1"));
+
+    unsafe {
+        std::env::remove_var("GREENTIC_PACK_WIZARD_SELF_EXE");
+    }
+}
+
+#[test]
 fn wizard_create_extension_template_delegate_step_runs_flow_wizard() {
     let _guard = test_env_lock()
         .lock()

@@ -1,18 +1,36 @@
 use anyhow::{Context, Result, bail};
 use greentic_types::pack::extensions::capabilities::CapabilitiesExtensionV1;
 use greentic_types::pack_manifest::{ExtensionInline, ExtensionRef};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::BTreeMap;
 use std::path::Path;
 
 pub const COMPONENTS_EXTENSION_KEY: &str = "greentic.components";
 pub const CAPABILITIES_EXTENSION_KEY: &str = "greentic.ext.capabilities.v1";
+pub const DEPLOYER_EXTENSION_KEY: &str = "greentic.deployer.v1";
 
 #[derive(Debug, Clone)]
 pub struct ComponentsExtension {
     pub refs: Vec<String>,
     pub mode: Option<String>,
     pub allow_tags: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeployerExtension {
+    pub version: u64,
+    pub provides: Vec<DeployerProvide>,
+    #[serde(default)]
+    pub flow_refs: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeployerProvide {
+    pub capability: String,
+    pub contract: String,
+    #[serde(default)]
+    pub ops: Vec<String>,
 }
 
 pub fn validate_capabilities_extension(
@@ -130,6 +148,72 @@ pub fn validate_components_extension(
         mode,
         allow_tags: allow_tags_inline,
     }))
+}
+
+pub fn validate_deployer_extension(
+    extensions: &Option<BTreeMap<String, ExtensionRef>>,
+    pack_root: &Path,
+) -> Result<Option<DeployerExtension>> {
+    let Some(ext) = extensions
+        .as_ref()
+        .and_then(|all| all.get(DEPLOYER_EXTENSION_KEY))
+    else {
+        return Ok(None);
+    };
+
+    let inline = ext.inline.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("extensions[{DEPLOYER_EXTENSION_KEY}] inline is required")
+    })?;
+
+    let value = match inline {
+        ExtensionInline::Other(value) => value,
+        _ => {
+            bail!("extensions[{DEPLOYER_EXTENSION_KEY}] inline must be an object");
+        }
+    };
+
+    let payload: DeployerExtension = serde_json::from_value(value.clone())
+        .map_err(|err| anyhow::anyhow!("invalid deployer extension payload: {err}"))?;
+    if payload.version == 0 {
+        bail!("extensions[{DEPLOYER_EXTENSION_KEY}] version must be >= 1");
+    }
+    if payload.provides.is_empty() {
+        bail!("extensions[{DEPLOYER_EXTENSION_KEY}] provides must not be empty");
+    }
+    for provide in &payload.provides {
+        if provide.capability.trim().is_empty() {
+            bail!("extensions[{DEPLOYER_EXTENSION_KEY}] provide.capability must not be empty");
+        }
+        if provide.contract.trim().is_empty() {
+            bail!("extensions[{DEPLOYER_EXTENSION_KEY}] provide.contract must not be empty");
+        }
+        if provide.ops.is_empty() {
+            bail!(
+                "extensions[{DEPLOYER_EXTENSION_KEY}] provide `{}` must declare at least one op",
+                provide.contract
+            );
+        }
+        for op in &provide.ops {
+            if op.trim().is_empty() {
+                bail!(
+                    "extensions[{DEPLOYER_EXTENSION_KEY}] provide `{}` contains an empty op",
+                    provide.contract
+                );
+            }
+            if let Some(flow_ref) = payload.flow_refs.get(op) {
+                let flow_path = pack_root.join(flow_ref);
+                if !flow_path.exists() {
+                    bail!(
+                        "extensions[{DEPLOYER_EXTENSION_KEY}] op `{}` references missing flow {}",
+                        op,
+                        flow_ref
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(Some(payload))
 }
 
 fn extract_refs(map: &JsonMap<String, JsonValue>, allow_tags: bool) -> Result<Vec<String>> {
@@ -288,6 +372,21 @@ mod tests {
         map
     }
 
+    fn deployer_ext_with_payload(payload: JsonValue) -> BTreeMap<String, ExtensionRef> {
+        let mut map = BTreeMap::new();
+        map.insert(
+            DEPLOYER_EXTENSION_KEY.to_string(),
+            ExtensionRef {
+                kind: DEPLOYER_EXTENSION_KEY.to_string(),
+                version: "1.0.0".to_string(),
+                digest: None,
+                location: None,
+                inline: Some(ExtensionInline::Other(payload)),
+            },
+        );
+        map
+    }
+
     #[test]
     fn capabilities_requires_setup_must_include_setup_block() {
         let extensions = capability_ext_with_payload(json!({
@@ -356,6 +455,54 @@ mod tests {
             err.to_string()
                 .contains("invalid capabilities extension payload"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn deployer_extension_accepts_generic_payload() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(temp.path().join("flows")).expect("flows dir");
+        std::fs::write(temp.path().join("flows/generate.ygtc"), "id: generate\n")
+            .expect("write flow");
+        let extensions = deployer_ext_with_payload(json!({
+            "version": 1,
+            "provides": [{
+                "capability": "greentic.deployer.v1",
+                "contract": "greentic.deployer.v1",
+                "ops": ["generate"]
+            }],
+            "flow_refs": {
+                "generate": "flows/generate.ygtc"
+            }
+        }));
+
+        let payload = validate_deployer_extension(&Some(extensions), temp.path())
+            .expect("payload should validate")
+            .expect("payload should exist");
+        assert_eq!(payload.version, 1);
+        assert_eq!(payload.provides[0].ops, vec!["generate".to_string()]);
+    }
+
+    #[test]
+    fn deployer_extension_rejects_missing_declared_flow() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let extensions = deployer_ext_with_payload(json!({
+            "version": 1,
+            "provides": [{
+                "capability": "greentic.deployer.v1",
+                "contract": "greentic.deployer.v1",
+                "ops": ["generate"]
+            }],
+            "flow_refs": {
+                "generate": "flows/generate.ygtc"
+            }
+        }));
+
+        let err = validate_deployer_extension(&Some(extensions), temp.path())
+            .expect_err("missing flow should fail");
+        assert!(
+            err.to_string()
+                .contains("references missing flow flows/generate.ygtc")
         );
     }
 }

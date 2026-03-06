@@ -2,7 +2,13 @@ use crate::cli::resolve::{self, ResolveArgs};
 use crate::config::{
     AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackConfig,
 };
-use crate::extensions::{validate_capabilities_extension, validate_components_extension};
+use crate::extension_refs::{
+    default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
+    read_extensions_lock_file, validate_extensions_lock_alignment,
+};
+use crate::extensions::{
+    validate_capabilities_extension, validate_components_extension, validate_deployer_extension,
+};
 use crate::flow_resolve::load_flow_resolve_summary;
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 use anyhow::{Context, Result, anyhow};
@@ -80,6 +86,7 @@ pub struct BuildOptions {
     pub runtime: RuntimeContext,
     pub skip_update: bool,
     pub allow_pack_schema: bool,
+    pub validate_extension_refs: bool,
 }
 
 impl BuildOptions {
@@ -134,6 +141,7 @@ impl BuildOptions {
             runtime: runtime.clone(),
             skip_update: args.no_update,
             allow_pack_schema: args.allow_pack_schema,
+            validate_extension_refs: true,
         })
     }
 }
@@ -166,6 +174,22 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         .await?;
     }
 
+    if opts.validate_extension_refs {
+        let extensions_file = default_extensions_file_path(&opts.pack_dir);
+        let source_extensions = if extensions_file.exists() {
+            Some(read_extensions_file(&extensions_file)?)
+        } else {
+            None
+        };
+        let extensions_lock = default_extensions_lock_file_path(&opts.pack_dir);
+        if extensions_lock.exists() {
+            let lock = read_extensions_lock_file(&extensions_lock)?;
+            if let Some(source) = source_extensions.as_ref() {
+                validate_extensions_lock_alignment(source, &lock)?;
+            }
+        }
+    }
+
     let config = crate::config::load_pack_config(&opts.pack_dir)?;
     info!(
         id = %config.pack_id,
@@ -177,6 +201,7 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         "loaded pack.yaml"
     );
     validate_components_extension(&config.extensions, opts.allow_oci_tags)?;
+    validate_deployer_extension(&config.extensions, &opts.pack_dir)?;
     if !opts.lock_path.exists() {
         anyhow::bail!(
             "pack.lock.cbor is required (run `greentic-pack resolve`); missing: {}",
@@ -2983,6 +3008,7 @@ flows:
                 runtime,
                 skip_update: false,
                 allow_pack_schema: true,
+                validate_extension_refs: true,
             };
 
             run(&opts).await.expect("build");
@@ -3105,6 +3131,7 @@ flows:
                 runtime,
                 skip_update: false,
                 allow_pack_schema: true,
+                validate_extension_refs: true,
             };
 
             run(&opts).await.expect("build");

@@ -17,6 +17,7 @@ Provide one reusable catalog shape for:
 - Secrets
 - Control
 - Observer
+- Deployer
 - Capability offers
 - Custom scaffold
 
@@ -139,8 +140,26 @@ before template-specific files are written:
 - `secrets` -> `greentic.ext.capabilities.v1`
 - `control` -> `greentic.ext.capabilities.v1`
 - `observer` -> `greentic.ext.capabilities.v1`
+- `deployer` -> `greentic.deployer.v1`
 - `capability-offer` -> `greentic.ext.capabilities.v1`
 - `custom-scaffold` -> `greentic.ext.capabilities.v1`
+
+## Deployer scope
+
+The current deployer slice is scaffold-first plus generic metadata persistence:
+
+- the default catalog now includes a `deployer` extension type
+- the baseline template writes placeholder flows, schemas, examples, and a
+  component bundle using `{{edit.component_ref}}`
+- wizard persistence records `extensions/deployer.json` with
+  `canonical_extension_key = greentic.deployer.v1`
+- wizard persistence also writes `extensions.greentic.deployer.v1.inline` in
+  `pack.yaml`
+- lint/build validation checks generic deployer metadata and any declared flow
+  refs
+
+Extension dependency lock/pinning work remains separate. This catalog entry is
+about making deployer packs explicit, replayable, and generically validated.
 
 ## Reference catalog
 

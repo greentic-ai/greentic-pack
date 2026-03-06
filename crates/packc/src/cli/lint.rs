@@ -10,6 +10,10 @@ use greentic_pack::validate::oauth_capability_requirement_diagnostics_for_flow;
 use tracing::info;
 
 use crate::config::load_pack_config;
+use crate::extension_refs::{
+    default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
+    read_extensions_lock_file, validate_extensions_lock_alignment,
+};
 
 #[derive(Debug, Parser)]
 pub struct LintArgs {
@@ -26,8 +30,23 @@ pub fn handle(args: LintArgs, json: bool) -> Result<()> {
     let pack_dir = normalize(args.input);
     info!(path = %pack_dir.display(), "linting pack");
 
+    let extensions_file = default_extensions_file_path(&pack_dir);
+    let source_extensions = if extensions_file.exists() {
+        Some(read_extensions_file(&extensions_file)?)
+    } else {
+        None
+    };
+    let extensions_lock = default_extensions_lock_file_path(&pack_dir);
+    if extensions_lock.exists() {
+        let lock = read_extensions_lock_file(&extensions_lock)?;
+        if let Some(source) = source_extensions.as_ref() {
+            validate_extensions_lock_alignment(source, &lock)?;
+        }
+    }
+
     let cfg = load_pack_config(&pack_dir)?;
     crate::extensions::validate_components_extension(&cfg.extensions, args.allow_oci_tags)?;
+    crate::extensions::validate_deployer_extension(&cfg.extensions, &pack_dir)?;
 
     let required_capabilities: BTreeSet<String> = cfg
         .dependencies

@@ -284,6 +284,85 @@ greentic-pack add-extension capability --pack-dir examples/weather-demo \
   --hook-op-name send
 ```
 
+### `add-extension deployer`
+
+Add or amend a generic deployer extension in `extensions.greentic.deployer.v1`.
+
+```
+greentic-pack add-extension deployer [options]
+```
+
+Options:
+- `--pack-dir <DIR>`: update a source directory containing `pack.yaml`.
+- `--dry-run`: show the updated `pack.yaml` without persisting changes.
+- `--contract-id <ID>`: deployer contract identifier.
+- `--op <OP>`: supported deployer operation (repeatable). Defaults to
+  `generate`, `plan`, `apply`, `remove`, `status`, `rollback`.
+- `--flow-ref <OP=PATH>`: optional explicit flow ref mapping written into
+  deployer metadata and used by validation.
+
+Validation notes (`build`/`lint`):
+- deployer metadata must include a non-empty `version`.
+- `provides[].capability`, `provides[].contract`, and at least one op are required.
+- any declared `flow_refs` must point to existing pack-relative files.
+
+Example:
+
+```
+greentic-pack add-extension deployer --pack-dir examples/weather-demo \
+  --contract-id greentic.deployer.v1 \
+  --op generate \
+  --flow-ref generate=flows/generate.ygtc
+```
+
+### `add-extension dependency`
+
+Add or update an external extension dependency ref in `pack.extensions.json`.
+
+```
+greentic-pack add-extension dependency [OPTIONS]
+```
+
+Options:
+- `--pack-dir <DIR>`: update a source directory containing `pack.yaml`.
+- `--dry-run`: show the updated `pack.extensions.json` without persisting changes.
+- `--id <ID>`: logical dependency id.
+- `--role <ROLE>`: logical dependency role such as `deployer`.
+- `--ref <REF>`: source reference such as `oci://...`, `file://...`, `repo://...`, or `store://...`.
+- `--allow-tags`: allow author-edited tag refs in the source file.
+
+Example:
+
+```
+greentic-pack add-extension dependency --pack-dir examples/weather-demo \
+  --id greentic.deployer.v1 \
+  --role deployer \
+  --ref oci://ghcr.io/greenticai/packs/deployer:0.6.0 \
+  --allow-tags
+```
+
+### `extensions-lock`
+
+Resolve `pack.extensions.json` refs and write `pack.extensions.lock.json`.
+
+```
+greentic-pack extensions-lock [OPTIONS] --in <DIR>
+```
+
+Options:
+- `--in <DIR>`: pack root containing `pack.extensions.json`.
+- `--file <FILE>`: override the source file path.
+- `--out <FILE>`: override the lock file path.
+
+Lock notes:
+- this command is separate from `resolve` and does not replace `pack.lock.cbor`
+- `pack.extensions.json` remains human-edited and may allow tag refs
+- `pack.extensions.lock.json` stores resolved digest-pinned refs plus media type and size when available
+- `lint` and `build` validate that the lock file still matches the current
+  `pack.extensions.json` entries
+- `doctor --in <DIR>` surfaces stale or incomplete extension lock state as
+  normal validation diagnostics
+
 ### `sign`
 
 Sign a manifest with an Ed25519 private key.
@@ -372,6 +451,13 @@ Create extension pack flow:
 - seeds `assets/README.md` and `qa/README.md` when absent
 - catalog templates may interpolate `{{edit.*}}` placeholders in file paths and
   contents, and may write binary scaffold artifacts with `write_binary_files`
+- the default catalog includes a `Deployer` type that scaffolds placeholder
+  deployer flows, schemas, examples, and a component bundle under
+  `components/{{edit.component_ref}}/`
+- deployer metadata is persisted under `extensions/deployer.json` and merged
+  into `pack.yaml -> extensions.greentic.deployer.v1`
+- deployer validation checks generic metadata and declared flow refs without
+  introducing target-specific deployer fields
 - applies scaffold plan, then runs finalize (`doctor --in`, `build --in`, optional sign)
 - includes a required `Custom extension` scaffold path
 - on catalog/template/delegate failures: localized error + `0) Back` / `M) Main Menu`
@@ -380,12 +466,16 @@ Update extension pack flow:
 - asks pack dir + catalog ref
 - menu: `Edit extension entries`, `Edit flows`, `Add/edit components`, `Run update & validate`, `Sign`
 - `Run update & validate` executes `doctor --in <DIR>` then `build --in <DIR>` then optional sign
-- `Edit extension entries` writes catalog answers under `extensions/<type>.json` and merges canonical `extensions.greentic.ext.capabilities.v1` data into `pack.yaml`
+- `Edit extension entries` writes catalog answers under `extensions/<type>.json`
+  and merges canonical extension data into `pack.yaml`
+  (`greentic.ext.capabilities.v1` for capability packs,
+  `greentic.deployer.v1` for deployer packs)
 
 Add extension to existing pack flow:
 - asks pack dir + the same catalog prompt flow used by create/update extension
 - chooses extension type and asks edit questions
-- writes catalog answers under `extensions/<type>.json` and merges canonical `extensions.greentic.ext.capabilities.v1` data into `pack.yaml`
+- writes catalog answers under `extensions/<type>.json` and merges canonical
+  extension data into `pack.yaml`
 
 ### `config`
 

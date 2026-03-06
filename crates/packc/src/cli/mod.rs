@@ -10,6 +10,7 @@ use tokio::runtime::Runtime;
 pub mod add_extension;
 pub mod components;
 pub mod config;
+pub mod extensions_lock;
 pub mod gui;
 pub mod input;
 pub mod inspect;
@@ -99,6 +100,8 @@ pub enum Command {
     /// Add data to pack extensions (provider extension path is legacy/schema-core).
     #[command(subcommand)]
     AddExtension(self::add_extension::AddExtensionCommand),
+    /// Resolve extension dependency refs into pack.extensions.lock.json
+    ExtensionsLock(self::extensions_lock::ExtensionsLockArgs),
     /// Interactive pack wizard.
     Wizard(self::wizard::WizardArgs),
     /// Resolve component references and write pack.lock.cbor
@@ -198,6 +201,7 @@ pub fn print_top_level_help() {
     println!("{}", crate::cli_i18n::t("cli.help.command.plan"));
     println!("{}", crate::cli_i18n::t("cli.help.command.providers"));
     println!("{}", crate::cli_i18n::t("cli.help.command.add_extension"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.extensions_lock"));
     println!("{}", crate::cli_i18n::t("cli.help.command.wizard"));
     println!("{}", crate::cli_i18n::t("cli.help.command.resolve"));
     println!("{}", crate::cli_i18n::t("cli.help.command.help"));
@@ -232,6 +236,7 @@ pub fn print_help_for_path(path: &[String]) -> bool {
         [a] if a == "plan" => "cli.help.page.plan",
         [a] if a == "providers" => "cli.help.page.providers",
         [a] if a == "add-extension" => "cli.help.page.add_extension",
+        [a] if a == "extensions-lock" => "cli.help.page.extensions_lock",
         [a] if a == "wizard" => "cli.help.page.wizard",
         [a, b] if a == "wizard" && b == "run" => "cli.help.page.wizard_run",
         [a, b] if a == "wizard" && b == "validate" => "cli.help.page.wizard_validate",
@@ -244,6 +249,10 @@ pub fn print_help_for_path(path: &[String]) -> bool {
         [a, b] if a == "add-extension" && b == "provider" => "cli.help.page.add_extension_provider",
         [a, b] if a == "add-extension" && b == "capability" => {
             "cli.help.page.add_extension_capability"
+        }
+        [a, b] if a == "add-extension" && b == "deployer" => "cli.help.page.add_extension_deployer",
+        [a, b] if a == "add-extension" && b == "dependency" => {
+            "cli.help.page.add_extension_dependency"
         }
         _ => return false,
     };
@@ -303,6 +312,9 @@ pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
         Command::Plan(args) => self::plan::handle(&args)?,
         Command::Providers(cmd) => self::providers::run(cmd)?,
         Command::AddExtension(cmd) => self::add_extension::handle(cmd)?,
+        Command::ExtensionsLock(args) => {
+            self::extensions_lock::handle(args, &runtime, true).await?
+        }
         Command::Wizard(args) => self::wizard::handle(args, &runtime, wizard_locale.as_deref())?,
         Command::Resolve(args) => self::resolve::handle(args, &runtime, true).await?,
     }

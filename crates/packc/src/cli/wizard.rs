@@ -15,6 +15,7 @@ use greentic_qa_lib::{WizardDriver, WizardFrontend, WizardRunConfig};
 use greentic_types::pack::extensions::capabilities::CapabilitiesExtensionV1;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use serde_yaml_bw::{Mapping, Value as YamlValue};
 
 use crate::cli::add_extension::{
     CapabilityOfferSpec, ensure_capabilities_extension, inject_capability_offer_spec,
@@ -25,6 +26,7 @@ use crate::cli::wizard_catalog::{
 };
 use crate::cli::wizard_i18n::{WizardI18n, detect_requested_locale};
 use crate::cli::wizard_ui;
+use crate::extensions::{CAPABILITIES_EXTENSION_KEY, DEPLOYER_EXTENSION_KEY};
 use crate::runtime::RuntimeContext;
 
 const PACK_WIZARD_ID: &str = "greentic-pack.wizard.run";
@@ -1584,7 +1586,7 @@ fn persist_extension_edit_answers(
     let dir = pack_dir.join("extensions");
     fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     let path = dir.join(format!("{}.json", extension_type.id));
-    let payload = json!({
+    let mut payload = json!({
         "extension_type": extension_type.id,
         "canonical_extension_key": extension_type.canonical_extension_key(),
         "operation": operation.operation,
@@ -1592,8 +1594,21 @@ fn persist_extension_edit_answers(
         "template_id": operation.template_id,
         "template_qa_answers": operation.template_qa_answers,
         "edit_answers": operation.edit_answers,
-        "capabilities_extension": build_capabilities_payload(extension_type, &operation.template_qa_answers, &operation.edit_answers)?,
     });
+    if uses_capabilities_extension(extension_type) {
+        payload["capabilities_extension"] = serde_json::to_value(build_capabilities_payload(
+            extension_type,
+            &operation.template_qa_answers,
+            &operation.edit_answers,
+        )?)
+        .context("serialize capabilities extension payload")?;
+    } else if uses_deployer_extension(extension_type) {
+        payload["deployer_extension"] = build_deployer_payload(
+            extension_type,
+            &operation.template_qa_answers,
+            &operation.edit_answers,
+        )?;
+    }
     let bytes =
         serde_json::to_vec_pretty(&payload).context("serialize extension edit answers payload")?;
     fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))?;
@@ -1612,6 +1627,23 @@ fn merge_extension_answers_into_pack_yaml(
     template_qa_answers: &BTreeMap<String, String>,
     edit_answers: &BTreeMap<String, String>,
 ) -> Result<()> {
+    if !uses_capabilities_extension(extension_type) {
+        if uses_deployer_extension(extension_type) {
+            let pack_yaml = pack_dir.join("pack.yaml");
+            if !pack_yaml.exists() {
+                return Ok(());
+            }
+            let contents = fs::read_to_string(&pack_yaml)
+                .with_context(|| format!("read {}", pack_yaml.display()))?;
+            let serialized = inject_deployer_extension_payload(
+                &contents,
+                &build_deployer_payload(extension_type, template_qa_answers, edit_answers)?,
+            )?;
+            fs::write(&pack_yaml, serialized)
+                .with_context(|| format!("write {}", pack_yaml.display()))?;
+        }
+        return Ok(());
+    }
     let pack_yaml = pack_dir.join("pack.yaml");
     if !pack_yaml.exists() {
         return Ok(());
@@ -1638,6 +1670,9 @@ fn validate_capability_offer_component_ref(
     template_qa_answers: &BTreeMap<String, String>,
     edit_answers: &BTreeMap<String, String>,
 ) -> Result<()> {
+    if !uses_capabilities_extension(extension_type) {
+        return Ok(());
+    }
     let Some(spec) =
         capability_offer_spec_from_answers(extension_type, template_qa_answers, edit_answers)?
     else {
@@ -1698,6 +1733,38 @@ fn build_capabilities_payload(
             },
         );
     Ok(CapabilitiesExtensionV1::new(offer.into_iter().collect()))
+}
+
+fn build_deployer_payload(
+    _extension_type: &ExtensionType,
+    _template_qa_answers: &BTreeMap<String, String>,
+    edit_answers: &BTreeMap<String, String>,
+) -> Result<Value> {
+    let contract_id = required_answer(edit_answers, "contract_id")?;
+    let ops = optional_answer(edit_answers, "supported_ops")
+        .unwrap_or_else(|| "generate,plan,apply,remove,status,rollback".to_string())
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if ops.is_empty() {
+        return Err(anyhow!("missing required answer `supported_ops`"));
+    }
+    let flow_refs = ops
+        .iter()
+        .map(|op| (op.clone(), Value::String(format!("flows/{op}.ygtc"))))
+        .collect::<serde_json::Map<_, _>>();
+
+    Ok(json!({
+        "version": 1,
+        "provides": [{
+            "capability": DEPLOYER_EXTENSION_KEY,
+            "contract": contract_id,
+            "ops": ops,
+        }],
+        "flow_refs": flow_refs,
+    }))
 }
 
 fn capability_offer_spec_from_answers(
@@ -1784,6 +1851,50 @@ fn optional_answer(answers: &BTreeMap<String, String>, key: &str) -> Option<Stri
 
 fn default_capability_version(_extension_type: &ExtensionType) -> String {
     "v1".to_string()
+}
+
+fn inject_deployer_extension_payload(contents: &str, payload: &Value) -> Result<String> {
+    let mut document: YamlValue = serde_yaml_bw::from_str(contents)
+        .context("parse pack.yaml for deployer extension merge")?;
+    let mapping = document
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow!("pack.yaml root must be a mapping"))?;
+    let extensions = mapping
+        .entry(yaml_key("extensions"))
+        .or_insert_with(|| YamlValue::Mapping(Mapping::new()));
+    let extensions_map = extensions
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow!("extensions must be a mapping"))?;
+    let extension_slot = extensions_map
+        .entry(yaml_key(DEPLOYER_EXTENSION_KEY))
+        .or_insert_with(|| YamlValue::Mapping(Mapping::new()));
+    let extension_map = extension_slot
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow!("deployer extension slot must be a mapping"))?;
+    extension_map
+        .entry(yaml_key("kind"))
+        .or_insert_with(|| YamlValue::String(DEPLOYER_EXTENSION_KEY.to_string(), None));
+    extension_map
+        .entry(yaml_key("version"))
+        .or_insert_with(|| YamlValue::String("1.0.0".to_string(), None));
+    extension_map.insert(
+        yaml_key("inline"),
+        serde_yaml_bw::to_value(payload).context("serialize deployer extension payload")?,
+    );
+
+    serde_yaml_bw::to_string(&document).context("serialize updated pack.yaml")
+}
+
+fn yaml_key(key: &str) -> YamlValue {
+    YamlValue::String(key.to_string(), None)
+}
+
+fn uses_capabilities_extension(extension_type: &ExtensionType) -> bool {
+    extension_type.canonical_extension_key() == CAPABILITIES_EXTENSION_KEY
+}
+
+fn uses_deployer_extension(extension_type: &ExtensionType) -> bool {
+    extension_type.canonical_extension_key() == DEPLOYER_EXTENSION_KEY
 }
 
 fn validate_extension_operation_record(operation: &ExtensionOperationRecord) -> Result<()> {

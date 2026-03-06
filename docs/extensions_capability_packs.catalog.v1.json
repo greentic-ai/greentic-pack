@@ -379,6 +379,57 @@
       ]
     },
     {
+      "id": "deployer",
+      "canonical_extension_key": "greentic.deployer.v1",
+      "name": "Deployer",
+      "description": "Generic deployer extensions",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "deployer" },
+        { "id": "contract_id", "title_key": "wizard.qa.contract_id", "default": "greentic.deployer.example.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "deployer" },
+        { "id": "supported_ops", "title_key": "wizard.qa.supported_ops", "default": "generate,plan,apply,remove,status,rollback" }
+      ],
+      "templates": [
+        {
+          "id": "deployer-basic",
+          "name": "Deployer basic scaffold",
+          "description": "Scaffold a generic deployer extension pack with placeholder flows and schemas",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Generic deployer extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "deployer.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/schemas", "assets/examples"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nGeneric deployer scaffold.\n\nContract ID: `{{edit.contract_id}}`\nSupported ops: `{{edit.supported_ops}}`\n\nUse this pack as a starting point for a deployer that produces plans and applies infrastructure changes.\n",
+                "assets/README.md": "Add deployer schemas, examples, and implementation assets here.\n",
+                "assets/schemas/deployer-input.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} input\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"target\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/schemas/deployer-plan.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} plan\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"steps\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\"\n      }\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/sample-input.json": "{\n  \"target\": \"example\"\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nPlaceholder deployer component for `{{edit.contract_id}}`.\n\nSupported ops: {{edit.supported_ops}}\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n",
+                "flows/generate.ygtc": "id: generate\ntype: messaging\nnodes: {}\n",
+                "flows/plan.ygtc": "id: plan\ntype: messaging\nnodes: {}\n",
+                "flows/apply.ygtc": "id: apply\ntype: messaging\nnodes: {}\n",
+                "flows/remove.ygtc": "id: remove\ntype: messaging\nnodes: {}\n",
+                "flows/status.ygtc": "id: status\ntype: messaging\nnodes: {}\n",
+                "flows/rollback.ygtc": "id: rollback\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "capability-offer",
       "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Capability Offer",

@@ -7,15 +7,22 @@ use greentic_types::pack::extensions::capabilities::{
     CapabilityHookAppliesToV1, CapabilityOfferV1, CapabilityProviderRefV1, CapabilitySetupV1,
 };
 use greentic_types::provider::{ProviderDecl, ProviderRuntimeRef};
+use serde_json::{Value as JsonValue, json};
 use serde_yaml_bw::{self, Mapping, Sequence, Value as YamlValue};
 use walkdir::WalkDir;
 
 use crate::config::PackConfig;
+use crate::extension_refs::{
+    ExtensionDependency, ExtensionDependencySource, PackExtensionsFile,
+    default_extensions_file_path, infer_reference_kind, read_extensions_file,
+    write_extensions_file,
+};
 
 pub const PROVIDER_RUNTIME_WORLD: &str = "greentic:provider/schema-core@1.0.0";
 const PROVIDER_EXTENSION_KEY: &str = "greentic.provider-extension.v1";
 const PROVIDER_EXTENSION_PATH: [&str; 3] = ["greentic", "provider-extension", "v1"];
 const CAPABILITIES_EXTENSION_KEY: &str = "greentic.ext.capabilities.v1";
+const DEPLOYER_EXTENSION_KEY: &str = "greentic.deployer.v1";
 
 #[derive(Debug, Subcommand)]
 pub enum AddExtensionCommand {
@@ -23,6 +30,10 @@ pub enum AddExtensionCommand {
     Provider(ProviderArgs),
     /// Add or update a capability offer entry.
     Capability(CapabilityArgs),
+    /// Add or update a generic deployer extension entry.
+    Deployer(DeployerArgs),
+    /// Add or update an external extension dependency ref in pack.extensions.json.
+    Dependency(DependencyArgs),
 }
 
 #[derive(Debug, Args)]
@@ -113,6 +124,56 @@ pub struct CapabilityArgs {
     pub hook_op_names: Vec<String>,
 }
 
+#[derive(Debug, Args)]
+pub struct DeployerArgs {
+    /// Path to a pack source directory containing pack.yaml.
+    #[arg(long = "pack-dir", value_name = "DIR")]
+    pub pack_dir: PathBuf,
+
+    /// Print what would change without writing files.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Deployer contract identifier.
+    #[arg(long = "contract-id", value_name = "CONTRACT")]
+    pub contract_id: String,
+
+    /// Supported deployer operation (repeatable).
+    #[arg(long = "op", value_name = "OP")]
+    pub ops: Vec<String>,
+
+    /// Optional explicit flow ref mapping (`op=flows/path.ygtc`), repeatable.
+    #[arg(long = "flow-ref", value_name = "OP=PATH")]
+    pub flow_refs: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DependencyArgs {
+    /// Path to a pack source directory containing pack.yaml.
+    #[arg(long = "pack-dir", value_name = "DIR")]
+    pub pack_dir: PathBuf,
+
+    /// Print what would change without writing files.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Logical dependency id.
+    #[arg(long = "id", value_name = "ID")]
+    pub id: String,
+
+    /// Logical dependency role (for example `deployer`).
+    #[arg(long = "role", value_name = "ROLE")]
+    pub role: String,
+
+    /// Source reference, for example `oci://...` or `file://...`.
+    #[arg(long = "ref", value_name = "REF")]
+    pub reference: String,
+
+    /// Allow tag refs in editable source metadata.
+    #[arg(long = "allow-tags", default_value_t = false)]
+    pub allow_tags: bool,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct CapabilityOfferSpec {
     pub offer_id: String,
@@ -130,6 +191,8 @@ pub fn handle(command: AddExtensionCommand) -> Result<()> {
     match command {
         AddExtensionCommand::Provider(args) => handle_provider(args),
         AddExtensionCommand::Capability(args) => handle_capability(args),
+        AddExtensionCommand::Deployer(args) => handle_deployer(args),
+        AddExtensionCommand::Dependency(args) => handle_dependency(args),
     }
 }
 
@@ -159,6 +222,62 @@ fn handle_capability(args: CapabilityArgs) -> Result<()> {
     Ok(())
 }
 
+fn handle_deployer(args: DeployerArgs) -> Result<()> {
+    let root = normalize_root(&args.pack_dir)?;
+    let pack_yaml = root.join("pack.yaml");
+    let (_, contents) = read_pack_yaml(&pack_yaml)?;
+    let payload = args.to_payload()?;
+    let updated_yaml = inject_deployer_extension_payload(&contents, &payload)?;
+
+    if args.dry_run {
+        println!("--- dry-run: updated pack.yaml ---");
+        println!("{updated_yaml}");
+        return Ok(());
+    }
+
+    fs::write(&pack_yaml, updated_yaml)
+        .with_context(|| format!("write {}", pack_yaml.display()))?;
+    write_deployer_extension_sidecar(&root, &payload)?;
+    println!("deployer extension updated in {}", pack_yaml.display());
+    Ok(())
+}
+
+fn handle_dependency(args: DependencyArgs) -> Result<()> {
+    let root = normalize_root(&args.pack_dir)?;
+    let file_path = default_extensions_file_path(&root);
+    let mut file = if file_path.exists() {
+        read_extensions_file(&file_path)?
+    } else {
+        PackExtensionsFile::new(Vec::new())
+    };
+    let dependency = args.to_dependency()?;
+
+    if let Some(existing) = file
+        .extensions
+        .iter_mut()
+        .find(|item| item.id == dependency.id)
+    {
+        *existing = dependency;
+    } else {
+        file.extensions.push(dependency);
+        file.extensions
+            .sort_by(|left, right| left.id.cmp(&right.id));
+    }
+
+    if args.dry_run {
+        println!("--- dry-run: updated {} ---", file_path.display());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&file).context("serialize pack.extensions.json")?
+        );
+        return Ok(());
+    }
+
+    write_extensions_file(&file_path, &file)?;
+    println!("extension dependency updated in {}", file_path.display());
+    Ok(())
+}
+
 impl CapabilityArgs {
     fn to_spec(&self) -> Result<CapabilityOfferSpec> {
         if self.requires_setup && self.qa_ref.is_none() {
@@ -179,6 +298,92 @@ impl CapabilityArgs {
             requires_setup: self.requires_setup,
             qa_ref: self.qa_ref.clone(),
             hook_op_names: self.hook_op_names.clone(),
+        })
+    }
+}
+
+impl DeployerArgs {
+    fn to_payload(&self) -> Result<JsonValue> {
+        let contract_id = self.contract_id.trim();
+        if contract_id.is_empty() {
+            anyhow::bail!("--contract-id must not be empty");
+        }
+
+        let ops = if self.ops.is_empty() {
+            vec![
+                "generate".to_string(),
+                "plan".to_string(),
+                "apply".to_string(),
+                "remove".to_string(),
+                "status".to_string(),
+                "rollback".to_string(),
+            ]
+        } else {
+            self.ops
+                .iter()
+                .map(|op| op.trim())
+                .filter(|op| !op.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        };
+        if ops.is_empty() {
+            anyhow::bail!("at least one non-empty --op value is required");
+        }
+
+        let mut flow_refs = serde_json::Map::new();
+        if self.flow_refs.is_empty() {
+            for op in &ops {
+                flow_refs.insert(op.clone(), JsonValue::String(format!("flows/{op}.ygtc")));
+            }
+        } else {
+            for mapping in &self.flow_refs {
+                let (op, path) = mapping
+                    .split_once('=')
+                    .ok_or_else(|| anyhow::anyhow!("--flow-ref must be in OP=PATH form"))?;
+                let op = op.trim();
+                let path = path.trim();
+                if op.is_empty() || path.is_empty() {
+                    anyhow::bail!("--flow-ref must not contain empty op or path");
+                }
+                flow_refs.insert(op.to_string(), JsonValue::String(path.to_string()));
+            }
+        }
+
+        Ok(json!({
+            "version": 1,
+            "provides": [{
+                "capability": DEPLOYER_EXTENSION_KEY,
+                "contract": contract_id,
+                "ops": ops,
+            }],
+            "flow_refs": flow_refs,
+        }))
+    }
+}
+
+impl DependencyArgs {
+    fn to_dependency(&self) -> Result<ExtensionDependency> {
+        let id = self.id.trim();
+        let role = self.role.trim();
+        let reference = self.reference.trim();
+        if id.is_empty() {
+            anyhow::bail!("--id must not be empty");
+        }
+        if role.is_empty() {
+            anyhow::bail!("--role must not be empty");
+        }
+        if reference.is_empty() {
+            anyhow::bail!("--ref must not be empty");
+        }
+        let kind = infer_reference_kind(reference)?;
+        Ok(ExtensionDependency {
+            id: id.to_string(),
+            role: role.to_string(),
+            source: ExtensionDependencySource {
+                kind,
+                reference: reference.to_string(),
+                allow_tags: self.allow_tags,
+            },
         })
     }
 }
@@ -487,6 +692,54 @@ pub(crate) fn inject_capability_offer_spec(
     sort_capability_offers(offers);
 
     serde_yaml_bw::to_string(&document).context("serialize updated pack.yaml")
+}
+
+fn inject_deployer_extension_payload(contents: &str, payload: &JsonValue) -> Result<String> {
+    let mut document: YamlValue = serde_yaml_bw::from_str(contents)
+        .context("parse pack.yaml for deployer extension merge")?;
+    let mapping = document
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("pack.yaml root must be a mapping"))?;
+    let extensions = mapping
+        .entry(yaml_key("extensions"))
+        .or_insert_with(|| YamlValue::Mapping(Mapping::new()));
+    let extensions_map = extensions
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("extensions must be a mapping"))?;
+    let extension_slot = extensions_map
+        .entry(yaml_key(DEPLOYER_EXTENSION_KEY))
+        .or_insert_with(|| YamlValue::Mapping(Mapping::new()));
+    let extension_map = extension_slot
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("deployer extension slot must be a mapping"))?;
+    extension_map
+        .entry(yaml_key("kind"))
+        .or_insert_with(|| YamlValue::String(DEPLOYER_EXTENSION_KEY.to_string(), None));
+    extension_map
+        .entry(yaml_key("version"))
+        .or_insert_with(|| YamlValue::String("1.0.0".to_string(), None));
+    extension_map.insert(
+        yaml_key("inline"),
+        serde_yaml_bw::to_value(payload).context("serialize deployer extension payload")?,
+    );
+
+    serde_yaml_bw::to_string(&document).context("serialize updated pack.yaml")
+}
+
+fn write_deployer_extension_sidecar(root: &Path, payload: &JsonValue) -> Result<()> {
+    let extensions_dir = root.join("extensions");
+    fs::create_dir_all(&extensions_dir)
+        .with_context(|| format!("create {}", extensions_dir.display()))?;
+    let path = extensions_dir.join("deployer.json");
+    let bytes = serde_json::to_vec_pretty(&json!({
+        "extension_type": "deployer",
+        "canonical_extension_key": DEPLOYER_EXTENSION_KEY,
+        "source": "add-extension deployer",
+        "deployer_extension": payload,
+    }))
+    .context("serialize deployer extension sidecar")?;
+    fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }
 
 fn upsert_capability_offer(offers: &mut Vec<YamlValue>, offer: YamlValue, offer_id: &str) {

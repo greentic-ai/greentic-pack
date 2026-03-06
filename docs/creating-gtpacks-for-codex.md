@@ -140,8 +140,50 @@ Extension pack scaffold baseline:
 - both `write_files` and `write_binary_files` support variable interpolation in relative paths as well as file contents, so a provider template can generate named code/assets like
   `components/{{edit.component_ref}}/component.manifest.json` and
   `components/{{edit.component_ref}}/component.wasm`
+- the default catalog now also includes a scaffold-first `deployer` type with canonical key
+  `greentic.deployer.v1`
+- the deployer template writes placeholder flows (`generate`, `plan`, `apply`, `remove`, `status`, `rollback`),
+  JSON schemas under `assets/schemas/`, a sample input under `assets/examples/`,
+  and a component bundle under `components/{{edit.component_ref}}/`
+- deployer persistence now writes both `extensions/deployer.json` and
+  `pack.yaml -> extensions.greentic.deployer.v1.inline`
+- deployer validation is generic: it checks `version`, `provides[].capability`,
+  `provides[].contract`, declared ops, and any declared `flow_refs`
 
 For CI or low-level scripted edits, `greentic-pack add-extension capability` remains the canonical direct command.
+
+For generic deployer metadata, the direct CLI path is:
+
+```bash
+greentic-pack add-extension deployer --pack-dir <DIR> \
+  --contract-id greentic.deployer.v1 \
+  --op generate \
+  --op plan
+```
+
+For external extension dependencies, use the editable source file flow:
+
+```bash
+greentic-pack add-extension dependency --pack-dir <DIR> \
+  --id greentic.deployer.v1 \
+  --role deployer \
+  --ref oci://ghcr.io/greenticai/packs/deployer:0.6.0 \
+  --allow-tags
+
+greentic-pack extensions-lock --in <DIR>
+```
+
+This writes:
+- `pack.extensions.json` as the human-edited logical dependency file
+- `pack.extensions.lock.json` as the machine-generated pinned lock file
+
+When both files exist, `greentic-pack lint` and `greentic-pack build` now verify
+that ids, roles, and source refs still match. If you edit `pack.extensions.json`,
+rerun `greentic-pack extensions-lock --in <DIR>`.
+
+`greentic-pack doctor --in <DIR> --json` also reports stale extension lock state
+as validation diagnostics (for example `PACK_EXTENSION_DEPENDENCY_LOCK_STALE`)
+instead of failing before producing structured output.
 
 In the interactive main menu this path is labeled `Add extension to existing pack`
 to distinguish it from `Create extension pack`.

@@ -216,6 +216,7 @@ pub async fn handle(
         runtime: runtime.clone(),
         skip_update: false,
         allow_pack_schema: false,
+        validate_extension_refs: true,
     };
     build::run(&build_opts).await?;
 
