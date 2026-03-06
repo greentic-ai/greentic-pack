@@ -245,7 +245,7 @@ fn wizard_create_extension_custom_scaffold_creates_expected_files() {
     assert!(pack_dir.join("i18n").exists());
 
     let readme = fs::read_to_string(pack_dir.join("README.md")).expect("read README");
-    assert!(readme.contains("Canonical key: greentic.provider-extension.v1"));
+    assert!(readme.contains("Canonical key: greentic.ext.capabilities.v1"));
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("self:doctor --in"));
