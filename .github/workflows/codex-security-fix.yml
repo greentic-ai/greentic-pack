@@ -1,4 +1,4 @@
-name: Codex Security Fix (Test)
+﻿name: Codex Security Fix
 
 on:
   pull_request:
@@ -184,3 +184,4 @@ jobs:
             codex-prompt.txt
             SECURITY_FIX_REPORT.md
           if-no-files-found: ignore
+
