@@ -32,7 +32,7 @@ Each extension type:
 ```json
 {
   "id": "messaging",
-  "canonical_extension_key": "greentic.provider-extension.v1",
+  "canonical_extension_key": "greentic.ext.capabilities.v1",
   "name_key": "wizard.catalog.type.messaging.name",
   "description_key": "wizard.catalog.type.messaging.description",
   "edit_questions": [ ... ],
@@ -42,9 +42,7 @@ Each extension type:
 
 Notes:
 
-- `canonical_extension_key` is optional; fallback rules in the CLI are:
-  - `capability-offer` -> `greentic.ext.capabilities.v1`
-  - everything else -> `greentic.provider-extension.v1`
+- `canonical_extension_key` is optional; CLI fallback is `greentic.ext.capabilities.v1`.
 - `templates` is optional; if empty, wizard injects a default scaffold template.
 - `edit_questions` is optional; if empty, wizard injects default `entry_label`.
 
@@ -90,13 +88,13 @@ Template variables:
 
 ## Canonical extension mapping for capability packs
 
-- `messaging` -> `greentic.provider-extension.v1`
-- `events` -> `greentic.provider-extension.v1`
-- `oauth` -> `greentic.provider-extension.v1`
-- `mcp` -> `greentic.provider-extension.v1`
-- `state` -> `greentic.provider-extension.v1`
-- `telemetry` -> `greentic.provider-extension.v1`
-- `secrets` -> `greentic.provider-extension.v1`
+- `messaging` -> `greentic.ext.capabilities.v1`
+- `events` -> `greentic.ext.capabilities.v1`
+- `oauth` -> `greentic.ext.capabilities.v1`
+- `mcp` -> `greentic.ext.capabilities.v1`
+- `state` -> `greentic.ext.capabilities.v1`
+- `telemetry` -> `greentic.ext.capabilities.v1`
+- `secrets` -> `greentic.ext.capabilities.v1`
 - `capability-offer` -> `greentic.ext.capabilities.v1`
 
 ## Reference catalog

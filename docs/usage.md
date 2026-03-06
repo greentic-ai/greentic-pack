@@ -32,11 +32,13 @@ The install provides the canonical `greentic-pack` CLI on your `PATH`.
 5. **Ship the artifacts** - publish the resulting `.gtpack` and related outputs
    to the desired distribution channel.
 
-For declaring providers inside `pack.yaml`, see
-`docs/extension-provider-packs-howto.md`. The provider extension is optional and
-validated by `greentic-pack lint`; scaffold a starter pack with
-`greentic-pack new` and inspect it with
-`greentic-pack providers list --pack <path>`.
+For extension authoring on the canonical v0.6 path, see
+`docs/extension-provider-packs-howto.md` and
+`docs/pack_extensions_components.md`.
+Use `extensions.greentic.ext.capabilities.v1` (or
+`greentic-pack add-extension capability`) for new capability offers.
+The `providers` and `add-extension provider` commands are migration-only
+compatibility paths (see `docs/vision/legacy.md`).
 For pack localization and QA prompt translation patterns, see
 `docs/internationalise-pack-howto.md`.
 
@@ -385,4 +387,3 @@ Compatibility aliases are documented in `docs/vision/legacy.md`.
 | `schema_hash mismatch` / contract drift | Re-resolve component metadata (`greentic-pack resolve`) and verify component describe payloads match the expected operation/schema pair. |
 | `apply-answers output failed strict schema validation` | Fix answers or component QA logic so returned config matches `describe.config_schema`; errors include field paths and aggregated violations. |
 | Capability denied at runtime | Capability enforcement is owned by runtime/operator layers; ensure granted host profile matches component requirements. |
-

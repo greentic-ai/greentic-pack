@@ -16,7 +16,7 @@ registries, and compose packs into larger systems without rebuilding your app.
 - **Inspectable**: `greentic-pack doctor` surfaces flows, components, sources,
   providers, and SBOM state.
 - **Verifiable**: packs include checksums, SBOMs, and optional signatures.
-- **Extensible**: provider extensions let you add new capabilities without
+- **Extensible**: capability extensions let you add new capabilities without
   reworking the core runtime.
 
 ## Quickstart (try a demo pack)
@@ -48,12 +48,12 @@ greentic-pack new acme.weather --dir ./acme-weather
   user-facing experiences.
 - **Infrastructure packs**: operational configuration, telemetry, and deployment
   defaults for a platform team.
-- **Provider packs**: add new capabilities via provider extensions and
-  component-backed runtimes.
+- **Provider packs**: add new capabilities via
+  `extensions.greentic.ext.capabilities.v1` and component-backed runtimes.
 
 For the full taxonomy and rules, see:
 - `docs/repo-pack-types.md`
-- `docs/provider_extension.md`
+- `docs/pack_extensions_components.md`
 
 Full docs index:
 - `docs/README.md`
