@@ -758,6 +758,17 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
         }
     }
     if plan.run_build {
+        let resolve_ok = run_process(
+            &self_exe,
+            &["resolve", "--in", &plan.pack_dir.display().to_string()],
+            None,
+        )?;
+        if !resolve_ok {
+            return Err(anyhow!(
+                "wizard apply failed while running resolve for {}",
+                plan.pack_dir.display()
+            ));
+        }
         let build_ok = run_process(
             &self_exe,
             &["build", "--in", &plan.pack_dir.display().to_string()],
@@ -2564,6 +2575,16 @@ fn run_update_validate_sequence<R: BufRead, W: Write>(
     )?;
     if !doctor_ok {
         wizard_ui::render_line(output, &i18n.t("wizard.error.finalize_doctor_failed"))?;
+        return Ok(false);
+    }
+
+    let resolve_ok = run_process(
+        self_exe,
+        &["resolve", "--in", &pack_dir_path.display().to_string()],
+        None,
+    )?;
+    if !resolve_ok {
+        wizard_ui::render_line(output, &i18n.t("wizard.error.finalize_build_failed"))?;
         return Ok(false);
     }
 
