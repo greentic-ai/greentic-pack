@@ -430,6 +430,172 @@
       ]
     },
     {
+      "id": "runtime-capability",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Runtime Capability",
+      "description": "Capability runtime and execution packs",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "runtime" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "true" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "runtime-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.runtime.execution.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "runtime" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "run" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/runtime-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "runtime-capability-basic",
+          "name": "Runtime capability scaffold",
+          "description": "Scaffold a capability-first runtime pack with component, schemas, and example payloads",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Runtime capability extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "runtime.capability.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/runtime", "assets/schemas", "assets/examples", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nRuntime capability scaffold.\n\nCapability ID: `{{edit.cap_id}}`\nComponent: `{{edit.component_ref}}`\nOperation: `{{edit.op}}`\n",
+                "assets/README.md": "Add runtime adapters, policies, and deployment-specific assets here.\n",
+                "assets/runtime/README.md": "Runtime-specific hooks, templates, and policy assets go here.\n",
+                "assets/schemas/runtime-input.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} input\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"payload\": {\n      \"type\": \"object\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/schemas/runtime-output.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} output\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"status\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/runtime-input.json": "{\n  \"payload\": {\n    \"example\": true\n  }\n}\n",
+                "qa/runtime-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated runtime capability component scaffold.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows:\n- id: main\n  file: flows/main.ygtc\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contract",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Contract",
+      "description": "Contract definitions, rules, and policy packs",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "contract" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "contract-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.contract.bundle.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "contract-hook" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "validate" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/contract-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "contract-basic",
+          "name": "Contract scaffold",
+          "description": "Scaffold schemas, rules, and examples for a contract-oriented pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Contract extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "contract.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/contracts", "assets/schemas", "assets/examples", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nContract scaffold.\n\nUse this pack to hold schema, rule, and policy placeholders.\n",
+                "assets/README.md": "Add contract and policy assets here.\n",
+                "assets/contracts/README.md": "Store rule bundles, transition definitions, and policy material here.\n",
+                "assets/contracts/transitions.yaml": "version: 1\nstates:\n  - draft\n  - approved\ntransitions:\n  - from: draft\n    to: approved\n    rule: allow-approval\n",
+                "assets/contracts/rules.yaml": "version: 1\nrules:\n  - id: allow-approval\n    description: Placeholder approval rule\n",
+                "assets/schemas/contract.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} contract\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"id\": {\n      \"type\": \"string\"\n    },\n    \"version\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\"id\"],\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/contract.example.json": "{\n  \"id\": \"example-contract\",\n  \"version\": \"v1\"\n}\n",
+                "qa/contract-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nOptional contract hook scaffold.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows:\n- id: main\n  file: flows/main.ygtc\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ops",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Ops",
+      "description": "Ops metadata, schemas, and execution hooks",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "ops" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "true" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "ops-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.ops.execution.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "ops-provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "execute" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/ops-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "before,after" }
+      ],
+      "templates": [
+        {
+          "id": "ops-basic",
+          "name": "Ops scaffold",
+          "description": "Scaffold an ops-oriented pack with schemas, metadata, and component hook",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Ops extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "ops.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/ops", "assets/schemas", "assets/examples", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nOps scaffold.\n\nCapability ID: `{{edit.cap_id}}`\nOperation: `{{edit.op}}`\n",
+                "assets/README.md": "Add ops metadata, examples, and execution assets here.\n",
+                "assets/ops/ops.yaml": "version: 1\nops:\n  - id: {{edit.op}}\n    label: {{qa.display_name}}\n    stage: execute\n",
+                "assets/schemas/ops-input.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} op input\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"request\": {\n      \"type\": \"object\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/schemas/ops-output.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} op output\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/ops-input.json": "{\n  \"request\": {\n    \"sample\": true\n  }\n}\n",
+                "qa/ops-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated ops component scaffold.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows:\n- id: main\n  file: flows/main.ygtc\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "capability-offer",
       "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Capability Offer",

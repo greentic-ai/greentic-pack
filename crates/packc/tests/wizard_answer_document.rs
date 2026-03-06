@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -903,6 +904,224 @@ fn wizard_apply_control_extension_answers_is_deterministic() {
 }
 
 #[test]
+fn wizard_apply_runtime_capability_answers_scaffolds_replayable_pack() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("runtime-pack");
+    let answers_path = temp.path().join("runtime_answers.json");
+    fs::write(
+        &answers_path,
+        format!(
+            r#"{{
+  "wizard_id":"greentic-pack.wizard.run",
+  "schema_id":"greentic-pack.wizard.answers",
+  "schema_version":"1.0.0",
+  "locale":"en-GB",
+  "answers":{{
+    "pack_dir":"{}",
+    "extension_operation":"create_extension_pack",
+    "extension_catalog_ref":"{}",
+    "extension_type_id":"runtime-capability",
+    "extension_template_id":"runtime-capability-basic",
+    "extension_template_qa_answers":{{
+      "display_name":"Runtime capability extension",
+      "pack_id":"runtime.capability.extension"
+    }},
+    "extension_edit_answers":{{
+      "entry_label":"runtime",
+      "create_offer":"true",
+      "offer_id":"runtime-offer",
+      "cap_id":"greentic.cap.runtime.execution.v1",
+      "component_ref":"runtime",
+      "op":"run",
+      "version":"v1",
+      "priority":"0",
+      "requires_setup":"false",
+      "qa_ref":"qa/runtime-setup.json",
+      "hook_op_names":""
+    }},
+    "run_doctor":true,
+    "run_build":true,
+    "sign":false
+  }},
+  "locks":{{}}
+}}"#,
+            pack_dir.display(),
+            default_catalog_ref()
+        ),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run apply");
+    assert!(output.status.success(), "runtime apply should succeed");
+
+    assert!(pack_dir.join("assets/runtime/README.md").exists());
+    assert!(pack_dir.join("assets/examples/runtime-input.json").exists());
+    assert!(pack_dir.join("components/runtime/component.wasm").exists());
+    assert!(pack_dir.join("extensions/runtime-capability.json").exists());
+
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    assert!(pack_yaml.contains("greentic.ext.capabilities.v1"));
+    assert!(pack_yaml.contains("runtime-offer"));
+    assert!(pack_yaml.contains("id: runtime"));
+}
+
+#[test]
+fn wizard_apply_contract_answers_scaffolds_contract_assets() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("contract-pack");
+    let answers_path = temp.path().join("contract_answers.json");
+    fs::write(
+        &answers_path,
+        format!(
+            r#"{{
+  "wizard_id":"greentic-pack.wizard.run",
+  "schema_id":"greentic-pack.wizard.answers",
+  "schema_version":"1.0.0",
+  "locale":"en-GB",
+  "answers":{{
+    "pack_dir":"{}",
+    "extension_operation":"create_extension_pack",
+    "extension_catalog_ref":"{}",
+    "extension_type_id":"contract",
+    "extension_template_id":"contract-basic",
+    "extension_template_qa_answers":{{
+      "display_name":"Contract extension",
+      "pack_id":"contract.extension"
+    }},
+    "extension_edit_answers":{{
+      "entry_label":"contract",
+      "create_offer":"false",
+      "offer_id":"contract-offer",
+      "cap_id":"greentic.cap.contract.bundle.v1",
+      "component_ref":"contract-hook",
+      "op":"validate",
+      "version":"v1",
+      "priority":"0",
+      "requires_setup":"false",
+      "qa_ref":"qa/contract-setup.json",
+      "hook_op_names":""
+    }},
+    "run_doctor":true,
+    "run_build":true,
+    "sign":false
+  }},
+  "locks":{{}}
+}}"#,
+            pack_dir.display(),
+            default_catalog_ref()
+        ),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run apply");
+    assert!(output.status.success(), "contract apply should succeed");
+
+    assert!(pack_dir.join("assets/contracts/transitions.yaml").exists());
+    assert!(pack_dir.join("assets/contracts/rules.yaml").exists());
+    assert!(
+        pack_dir
+            .join("assets/examples/contract.example.json")
+            .exists()
+    );
+    assert!(
+        pack_dir
+            .join("components/contract-hook/component.wasm")
+            .exists()
+    );
+    assert!(pack_dir.join("extensions/contract.json").exists());
+
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    assert!(pack_yaml.contains("offers: []"));
+    assert!(pack_yaml.contains("id: contract-hook"));
+}
+
+#[test]
+fn wizard_apply_ops_answers_scaffolds_ops_bundle() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("ops-pack");
+    let answers_path = temp.path().join("ops_answers.json");
+    fs::write(
+        &answers_path,
+        format!(
+            r#"{{
+  "wizard_id":"greentic-pack.wizard.run",
+  "schema_id":"greentic-pack.wizard.answers",
+  "schema_version":"1.0.0",
+  "locale":"en-GB",
+  "answers":{{
+    "pack_dir":"{}",
+    "extension_operation":"create_extension_pack",
+    "extension_catalog_ref":"{}",
+    "extension_type_id":"ops",
+    "extension_template_id":"ops-basic",
+    "extension_template_qa_answers":{{
+      "display_name":"Ops extension",
+      "pack_id":"ops.extension"
+    }},
+    "extension_edit_answers":{{
+      "entry_label":"ops",
+      "create_offer":"true",
+      "offer_id":"ops-offer",
+      "cap_id":"greentic.cap.ops.execution.v1",
+      "component_ref":"ops-provider",
+      "op":"execute",
+      "version":"v1",
+      "priority":"0",
+      "requires_setup":"false",
+      "qa_ref":"qa/ops-setup.json",
+      "hook_op_names":"before,after"
+    }},
+    "run_doctor":true,
+    "run_build":true,
+    "sign":false
+  }},
+  "locks":{{}}
+}}"#,
+            pack_dir.display(),
+            default_catalog_ref()
+        ),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run apply");
+    assert!(output.status.success(), "ops apply should succeed");
+
+    assert!(pack_dir.join("assets/ops/ops.yaml").exists());
+    assert!(pack_dir.join("assets/examples/ops-input.json").exists());
+    assert!(
+        pack_dir
+            .join("components/ops-provider/component.wasm")
+            .exists()
+    );
+    assert!(pack_dir.join("extensions/ops.json").exists());
+
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    assert!(pack_yaml.contains("ops-offer"));
+    assert!(pack_yaml.contains("id: ops-provider"));
+}
+
+#[test]
 fn wizard_dry_run_flow_child_exit_returns_gracefully_to_pack_menu() {
     let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
@@ -1139,6 +1358,22 @@ fn write_script(path: &std::path::Path, body: &str) {
     let mut perms = fs::metadata(path).expect("metadata").permissions();
     perms.set_mode(0o755);
     fs::set_permissions(path, perms).expect("chmod");
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+}
+
+fn default_catalog_ref() -> String {
+    format!(
+        "file://{}",
+        workspace_root()
+            .join("docs")
+            .join("extensions_capability_packs.catalog.v1.json")
+            .display()
+    )
 }
 
 fn env_lock() -> &'static Mutex<()> {

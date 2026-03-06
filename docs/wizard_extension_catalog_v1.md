@@ -141,6 +141,9 @@ before template-specific files are written:
 - `control` -> `greentic.ext.capabilities.v1`
 - `observer` -> `greentic.ext.capabilities.v1`
 - `deployer` -> `greentic.deployer.v1`
+- `runtime-capability` -> `greentic.ext.capabilities.v1`
+- `contract` -> `greentic.ext.capabilities.v1`
+- `ops` -> `greentic.ext.capabilities.v1`
 - `capability-offer` -> `greentic.ext.capabilities.v1`
 - `custom-scaffold` -> `greentic.ext.capabilities.v1`
 
@@ -160,6 +163,24 @@ The current deployer slice is scaffold-first plus generic metadata persistence:
 
 Extension dependency lock/pinning work remains separate. This catalog entry is
 about making deployer packs explicit, replayable, and generically validated.
+
+## Additional generic scaffold patterns
+
+The default catalog also now includes three generic capability-first template
+families intended for higher-level solution scaffolding without product-specific
+Rust logic:
+
+- `runtime-capability`
+  - component-backed runtime capability scaffold
+  - writes runtime schemas, example payloads, a component bundle, and can
+    create a capability offer through the normal extension path
+- `contract`
+  - schema/rules/policy-oriented scaffold
+  - writes contract assets, examples, and an optional hook component scaffold
+- `ops`
+  - ops metadata and execution-oriented scaffold
+  - writes ops metadata, schemas, examples, a component bundle, and can create
+    a capability offer through the normal extension path
 
 ## Reference catalog
 

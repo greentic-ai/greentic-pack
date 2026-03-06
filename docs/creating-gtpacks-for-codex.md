@@ -149,6 +149,16 @@ Extension pack scaffold baseline:
   `pack.yaml -> extensions.greentic.deployer.v1.inline`
 - deployer validation is generic: it checks `version`, `provides[].capability`,
   `provides[].contract`, declared ops, and any declared `flow_refs`
+- the default catalog also includes three additional capability-first scaffold families:
+  - `Runtime Capability` via `runtime-capability-basic`
+  - `Contract` via `contract-basic`
+  - `Ops` via `ops-basic`
+- `Runtime Capability` scaffolds a component-backed runtime pack with schemas,
+  example payloads, and optional capability offer wiring
+- `Contract` scaffolds contract/rules/policy assets plus an optional hook component
+- `Ops` scaffolds ops metadata, schemas, examples, and a component-backed execute hook
+- all three reuse the normal extension replay fields and merge through
+  `pack.yaml -> extensions.greentic.ext.capabilities.v1`
 
 For CI or low-level scripted edits, `greentic-pack add-extension capability` remains the canonical direct command.
 

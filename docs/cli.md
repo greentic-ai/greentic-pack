@@ -458,6 +458,12 @@ Create extension pack flow:
   into `pack.yaml -> extensions.greentic.deployer.v1`
 - deployer validation checks generic metadata and declared flow refs without
   introducing target-specific deployer fields
+- the default catalog also includes:
+  - `Runtime Capability` for component-backed capability runtime packs
+  - `Contract` for schema/rules/policy-oriented packs
+  - `Ops` for ops metadata and execution-hook packs
+- these additional scaffold families remain capability-first and merge through
+  `pack.yaml -> extensions.greentic.ext.capabilities.v1`
 - applies scaffold plan, then runs finalize (`doctor --in`, `build --in`, optional sign)
 - includes a required `Custom extension` scaffold path
 - on catalog/template/delegate failures: localized error + `0) Back` / `M) Main Menu`

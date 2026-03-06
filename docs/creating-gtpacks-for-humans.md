@@ -140,6 +140,17 @@ path creates placeholder flows, schemas, examples, and a component bundle, and
 persists generic deployer metadata in both `extensions/deployer.json` and
 `pack.yaml -> extensions.greentic.deployer.v1`.
 
+The default catalog also now includes three more generic capability-first
+scaffolds:
+
+- `Runtime Capability`: component-backed runtime pack with schemas, examples,
+  and optional capability offer wiring
+- `Contract`: contract/rules/policy asset scaffold plus an optional hook component
+- `Ops`: ops metadata, schemas, examples, and a component-backed execute hook
+
+All three use the same extension wizard and deterministic replay model as the
+existing extension types.
+
 Direct deployer metadata path:
 
 ```bash
