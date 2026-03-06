@@ -12,6 +12,8 @@ Use this index as the entrypoint for pack authoring on the canonical v0.6 path.
 
 - `docs/pack_extensions_components.md` - `extensions.greentic.components` OCI references.
 - `docs/extension-provider-packs-howto.md` - capability-first extension authoring (`extensions.greentic.ext.capabilities.v1`).
+- `docs/creating-gtpacks-for-humans.md` - wizard-first playbook for humans (application/extension/add-extension flows).
+- `docs/creating-gtpacks-for-codex.md` - deterministic AnswerDocument/replay playbook for Codex.
 - `docs/repo-pack-types.md` - repo-oriented pack kinds and bindings.
 - `docs/publishing.md` - release and publishing workflow.
 - `docs/internationalise-pack-howto.md` - i18n how-to for pack metadata and QA prompts.
