@@ -18,6 +18,7 @@ include = [
     "src/**",
     "tests/fixtures/wizard/extensions.json",
     "assets/*.wasm",
+    "assets/*.json",
     "i18n/**/*.json",
 ]
 

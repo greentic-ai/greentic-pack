@@ -19,7 +19,7 @@ use crate::runtime::{NetworkPolicy, RuntimeContext};
 const DEFAULT_DOCS_CATALOG_PATH: &str = "docs/extensions_capability_packs.catalog.v1.json";
 pub(crate) const DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL: &str = "https://github.com/greenticai/greentic-pack/blob/master/docs/extensions_capability_packs.catalog.v1.json";
 const EMBEDDED_DEFAULT_CATALOG_JSON: &str =
-    include_str!("../../../../docs/extensions_capability_packs.catalog.v1.json");
+    include_str!("../../assets/extensions_capability_packs.catalog.v1.json");
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ExtensionCatalog {
