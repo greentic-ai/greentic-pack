@@ -6,7 +6,7 @@ This example is prepared for reproducible local runs in terminal via `greentic-p
 
 - A valid offline `.gtpack` build (no private registry fetch required).
 - Interactive wizard path for creating a demo bundle.
-- Demo flow with Adaptive Cards and MCP/OAuth context in payload.
+- Demo flow with Adaptive Cards, real MCP adapter call, and OAuth context payload.
 
 ## Prerequisites
 
@@ -17,6 +17,8 @@ This example is prepared for reproducible local runs in terminal via `greentic-p
 - Built binaries:
   - `greentic-pack`
   - `greentic-operator`
+- Installed tooling:
+  - `wasm-tools`
 - Built adaptive-card component:
 
 ```bash
@@ -24,7 +26,31 @@ cd <root>/component-adaptive-card
 cargo component build --release
 ```
 
-## 1) Build demo pack (via `greentic-pack wizard apply`)
+## 1) End-to-end wizard run (recommended)
+
+```bash
+cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
+./scripts/e2e_wizard_run.sh
+```
+
+What this does:
+
+- prepares local adaptive-card + composed `mcp.exec` assets,
+- builds the `.gtpack` via `greentic-pack wizard validate/apply`,
+- generates normalized AnswerDocument (non-legacy format),
+- runs `greentic-operator wizard --mode create` validate + execute in offline mode,
+- runs `greentic-operator demo run` for flow `adaptive_mcp_oauth_demo`.
+
+By default it writes to:
+
+- pack: `<root>/tmp/adaptive-mcp-oauth-demo.gtpack`
+- bundle: `<root>/tmp/adaptive-mcp-oauth-bundle-e2e`
+- answers: `<root>/tmp/adaptive-mcp-oauth-e2e.answers*.json`
+
+Override paths with env vars: `PACK_OUT`, `BUNDLE_OUT`, `RAW_ANSWERS`, `NORM_ANSWERS`, `PROVIDER_REGISTRY`, `GREENTIC_ROOT`.
+Set `WIPE_BUNDLE_OUT=0` to keep an existing bundle (default is `1`, overwrite path by deleting old bundle dir first).
+
+## 2) Build demo pack only (via `greentic-pack wizard apply`)
 
 ```bash
 cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
@@ -34,6 +60,7 @@ cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
 This script:
 
 - prepares local adaptive-card component assets,
+- composes a real `mcp.exec` component (`wasm-tools compose` + router fixture),
 - generates a temporary `AnswerDocument`,
 - runs `greentic-pack wizard validate`,
 - runs `greentic-pack wizard apply` (which builds the pack),
@@ -46,7 +73,7 @@ cd <root>/greentic-pack
 cargo run -p greentic-pack -- wizard
 ```
 
-## 2) Create bundle with wizard (interactive)
+## 3) Create bundle with wizard (interactive)
 
 ```bash
 cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
@@ -69,7 +96,7 @@ Recommended wizard answers:
 - Add non-well-known provider: `n`
 - Execution mode: `execute`
 
-## 3) Smoke run
+## 4) Smoke run
 
 ```bash
 GREENTIC_ENV=dev <root>/greentic-operator/target/debug/greentic-operator demo run \

@@ -29,8 +29,14 @@ cat > "$ANSWERS_TMP" <<JSON
 }
 JSON
 
-cargo run -p greentic-pack -- wizard validate --answers "$ANSWERS_TMP"
-cargo run -p greentic-pack -- wizard apply --answers "$ANSWERS_TMP"
+PACK_BIN="$ROOT_DIR/greentic-pack/target/debug/greentic-pack"
+if [[ -x "$PACK_BIN" ]]; then
+  "$PACK_BIN" wizard validate --answers "$ANSWERS_TMP"
+  "$PACK_BIN" wizard apply --answers "$ANSWERS_TMP"
+else
+  cargo run -p greentic-pack -- wizard validate --answers "$ANSWERS_TMP"
+  cargo run -p greentic-pack -- wizard apply --answers "$ANSWERS_TMP"
+fi
 
 BUILT_PACK="$(find "$PACK_DIR/dist" -maxdepth 1 -type f -name '*.gtpack' | head -n 1)"
 if [[ -z "$BUILT_PACK" ]]; then

@@ -10,6 +10,14 @@
       },
       "digest": "sha256:6c56b04da82d6a83853dee413efe9d97b1c62ebc238e895011d37d87d4d699cc"
     },
+    "call_mcp": {
+      "component_id": "mcp.exec",
+      "source": {
+        "kind": "local",
+        "path": "../components/mcp.exec/component.wasm"
+      },
+      "digest": "sha256:953eb4c16e44cd36173ae4080b04e22fa57d69d85c714c0516f458076cf54e2f"
+    },
     "show_result_card": {
       "component_id": "ai.greentic.component-adaptive-card",
       "source": {
