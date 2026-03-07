@@ -12,7 +12,7 @@ NORM_ANSWERS="${NORM_ANSWERS:-$ROOT_DIR/tmp/adaptive-mcp-oauth-e2e.answers.norma
 PROVIDER_REGISTRY="${PROVIDER_REGISTRY:-$ROOT_DIR/tmp/providers-empty.json}"
 WIPE_BUNDLE_OUT="${WIPE_BUNDLE_OUT:-1}"
 
-OPERATOR_BIN="$ROOT_DIR/greentic-operator/target/debug/greentic-operator"
+OPERATOR_BIN="${OPERATOR_BIN:-${GREENTIC_OPERATOR_BIN:-$ROOT_DIR/greentic-operator/target/debug/greentic-operator}}"
 
 if [[ ! -x "$OPERATOR_BIN" ]]; then
   echo "greentic-operator binary not found: $OPERATOR_BIN" >&2

@@ -1,0 +1,9 @@
+{
+  "original_reference": "ghcr.io/greenticai/components/component-adaptive-card:latest",
+  "resolved_digest": "sha256:753a9b92fd721f0393fdb074eb57bdd92581bee509fe556f343b7da302c8b237",
+  "media_type": "application/wasm",
+  "fetched_at_unix_seconds": 1772897734,
+  "size_bytes": 5407805,
+  "manifest_digest": "sha256:753a9b92fd721f0393fdb074eb57bdd92581bee509fe556f343b7da302c8b237",
+  "manifest_wasm_name": "component_adaptive_card.wasm"
+}

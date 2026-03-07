@@ -18,7 +18,7 @@ This example is prepared for reproducible local runs in terminal via `greentic-p
   - `greentic-pack`
   - `greentic-operator`
 - Installed tooling:
-  - `wasm-tools`
+  - `wac` (the script will try `cargo install wac-cli` if missing)
 - Built adaptive-card component:
 
 ```bash
@@ -60,7 +60,7 @@ cd <root>/greentic-pack/examples/adaptive-mcp-oauth-demo
 This script:
 
 - prepares local adaptive-card component assets,
-- composes a real `mcp.exec` component (`wasm-tools compose` + router fixture),
+- composes a real `mcp.exec` component (`wac plug` + router fixture),
 - generates a temporary `AnswerDocument`,
 - runs `greentic-pack wizard validate`,
 - runs `greentic-pack wizard apply` (which builds the pack),
