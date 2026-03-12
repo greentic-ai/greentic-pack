@@ -7,6 +7,7 @@ use greentic_pack::{
     ComponentManifestIndexState, ManifestFileVerificationReport, SigningPolicy, VerifyReport,
     builder::PackManifest, open_pack,
 };
+use greentic_pack::static_routes::{StaticRouteV1, parse_static_routes_extension};
 use greentic_types::SecretRequirement;
 use serde::Deserialize;
 use serde_json::json;
@@ -30,6 +31,7 @@ impl From<PolicyArg> for SigningPolicy {
 pub fn run(path: &Path, policy: PolicyArg, json: bool, verify_manifest_files: bool) -> Result<()> {
     let load = open_pack(path, policy.into()).map_err(|err| anyhow!(err.message))?;
     let gui = load_gui_summary(path).ok();
+    let static_routes = load_static_routes(&load).ok();
     let secrets = load_secret_requirements(&load).ok();
     let index_state = load.component_manifest_index_v1();
     let manifest_verify = if verify_manifest_files {
@@ -64,6 +66,7 @@ pub fn run(path: &Path, policy: PolicyArg, json: bool, verify_manifest_files: bo
             &index_state,
             manifest_verify.as_ref(),
             gui,
+            static_routes,
             secrets,
         )?;
     } else {
@@ -74,6 +77,7 @@ pub fn run(path: &Path, policy: PolicyArg, json: bool, verify_manifest_files: bo
             &index_state,
             manifest_verify.as_ref(),
             gui.as_ref(),
+            static_routes.as_deref(),
             secrets.as_deref(),
         );
     }
@@ -87,6 +91,7 @@ fn print_human(
     index_state: &ComponentManifestIndexState,
     manifest_verify: Option<&ManifestFileVerificationReport>,
     gui: Option<&GuiSummary>,
+    static_routes: Option<&[StaticRouteV1]>,
     secrets: Option<&[SecretRequirement]>,
 ) {
     println!(
@@ -179,6 +184,53 @@ fn print_human(
             }
         }
     }
+    if let Some(static_routes) = static_routes {
+        println!("Static routes:");
+        if static_routes.is_empty() {
+            println!("  none");
+        } else {
+            for route in static_routes {
+                println!(
+                    "  - {} -> {} [{}]",
+                    route.id, route.public_path, route.source_root
+                );
+                println!(
+                    "    scope: tenant={} team={}",
+                    route.scope.tenant, route.scope.team
+                );
+                println!(
+                    "    index_file: {}",
+                    route.index_file.as_deref().unwrap_or("none")
+                );
+                println!(
+                    "    spa_fallback: {}",
+                    route.spa_fallback.as_deref().unwrap_or("none")
+                );
+                println!(
+                    "    cache: {}",
+                    route
+                        .cache
+                        .as_ref()
+                        .map(|cache| match cache.max_age_seconds {
+                            Some(max_age) => format!("{} ({max_age}s)", cache.strategy),
+                            None => cache.strategy.clone(),
+                        })
+                        .unwrap_or_else(|| "none".to_string())
+                );
+                if route.exports.is_empty() {
+                    println!("    exports: none");
+                } else {
+                    let exports = route
+                        .exports
+                        .iter()
+                        .map(|(key, value)| format!("{key}={value}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    println!("    exports: {exports}");
+                }
+            }
+        }
+    }
     if let Some(gui) = gui {
         println!("GUI:");
         println!("  kind: {}", gui.kind);
@@ -229,6 +281,7 @@ fn print_json(
     index_state: &ComponentManifestIndexState,
     manifest_verify: Option<&ManifestFileVerificationReport>,
     gui: Option<GuiSummary>,
+    static_routes: Option<Vec<StaticRouteV1>>,
     secrets: Option<Vec<SecretRequirement>>,
 ) -> Result<()> {
     let payload = json!({
@@ -266,6 +319,7 @@ fn print_json(
             })).collect::<Vec<_>>(),
         })),
         "gui": gui,
+        "static_routes": static_routes,
         "secret_requirements": secrets,
     });
     println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -451,4 +505,13 @@ fn load_gui_summary(path: &Path) -> Result<GuiSummary> {
             total_bytes: bytes,
         },
     })
+}
+
+fn load_static_routes(load: &PackLoad) -> Result<Vec<StaticRouteV1>> {
+    Ok(load
+        .gpack_manifest
+        .as_ref()
+        .and_then(|manifest| parse_static_routes_extension(&manifest.extensions).ok().flatten())
+        .map(|payload| payload.routes)
+        .unwrap_or_default())
 }

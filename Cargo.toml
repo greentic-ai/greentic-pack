@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.91"
-version = "0.4.109"
+version = "0.4.110"
 license = "MIT"
 
 [workspace.dependencies]
@@ -75,9 +75,3 @@ wit-bindgen = { version = "0.53", default-features = false, features = ["macros"
 indexmap = "2"
 sys-locale = "0.3"
 unic-langid = "0.9"
-
-[patch.crates-io]
-greentic-interfaces = { path = "crates/vendor/greentic-interfaces-0.4.107" }
-greentic-interfaces-guest = { path = "crates/vendor/greentic-interfaces-guest-0.4.107" }
-greentic-interfaces-host = { path = "crates/vendor/greentic-interfaces-host-0.4.107" }
-greentic-interfaces-wasmtime = { path = "crates/vendor/greentic-interfaces-wasmtime-0.4.107" }

@@ -10,10 +10,11 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
+use greentic_pack::static_routes::{StaticRouteV1, parse_static_routes_extension};
 use greentic_pack::validate::{
     ComponentReferencesExistValidator, OauthCapabilityRequirementsValidator,
     ProviderReferencesExistValidator, ReferencedFilesExistValidator, SbomConsistencyValidator,
-    SecretRequirementsValidator, ValidateCtx, run_validators,
+    SecretRequirementsValidator, StaticRoutesValidator, ValidateCtx, run_validators,
 };
 use greentic_pack::{PackLoad, SigningPolicy, open_pack};
 use greentic_types::component_source::ComponentSourceRef;
@@ -200,6 +201,7 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
                     "warnings": load.report.warnings,
                 },
                 "sbom": load.sbom,
+                "static_routes": load_static_routes(&load),
             });
             if let Some(report) = validation.as_ref() {
                 payload["validation"] = serde_json::to_value(report)?;
@@ -761,6 +763,53 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
         println!("Providers: none");
     }
 
+    let static_routes = load_static_routes(load);
+    if static_routes.is_empty() {
+        println!("Static routes: none");
+    } else {
+        println!("Static routes:");
+        for route in &static_routes {
+            println!(
+                "  - {} -> {} [{}]",
+                route.id, route.public_path, route.source_root
+            );
+            println!(
+                "    scope: tenant={} team={}",
+                route.scope.tenant, route.scope.team
+            );
+            println!(
+                "    index_file: {}",
+                route.index_file.as_deref().unwrap_or("none")
+            );
+            println!(
+                "    spa_fallback: {}",
+                route.spa_fallback.as_deref().unwrap_or("none")
+            );
+            println!(
+                "    cache: {}",
+                route
+                    .cache
+                    .as_ref()
+                    .map(|cache| match cache.max_age_seconds {
+                        Some(max_age) => format!("{} ({max_age}s)", cache.strategy),
+                        None => cache.strategy.clone(),
+                    })
+                    .unwrap_or_else(|| "none".to_string())
+            );
+            if route.exports.is_empty() {
+                println!("    exports: none");
+            } else {
+                let exports = route
+                    .exports
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!("    exports: {exports}");
+            }
+        }
+    }
+
     if !report.warnings.is_empty() {
         println!("Warnings:");
         for warning in &report.warnings {
@@ -771,6 +820,18 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
     if let Some(report) = validation {
         print_validation(report);
     }
+}
+
+fn load_static_routes(load: &PackLoad) -> Vec<StaticRouteV1> {
+    load.gpack_manifest
+        .as_ref()
+        .and_then(|manifest| {
+            parse_static_routes_extension(&manifest.extensions)
+                .ok()
+                .flatten()
+        })
+        .map(|payload| payload.routes)
+        .unwrap_or_default()
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -799,6 +860,7 @@ async fn run_pack_validation(
         Box::new(SbomConsistencyValidator::new(ctx.clone())),
         Box::new(ProviderReferencesExistValidator::new(ctx.clone())),
         Box::new(SecretRequirementsValidator),
+        Box::new(StaticRoutesValidator::new(ctx.clone())),
         Box::new(ComponentReferencesExistValidator),
         Box::new(OauthCapabilityRequirementsValidator),
     ];

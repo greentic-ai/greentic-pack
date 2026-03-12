@@ -47,6 +47,7 @@ pub fn handle(args: LintArgs, json: bool) -> Result<()> {
     let cfg = load_pack_config(&pack_dir)?;
     crate::extensions::validate_components_extension(&cfg.extensions, args.allow_oci_tags)?;
     crate::extensions::validate_deployer_extension(&cfg.extensions, &pack_dir)?;
+    crate::extensions::validate_static_routes_extension(&cfg.extensions, &pack_dir)?;
 
     let required_capabilities: BTreeSet<String> = cfg
         .dependencies

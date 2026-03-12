@@ -20,6 +20,7 @@ use greentic_types::validate::{
 use serde_json::Value;
 
 use crate::PackLoad;
+use crate::static_routes::{parse_static_routes_extension, validate_static_routes_payload};
 
 #[derive(Clone, Debug, Default)]
 pub struct ValidateCtx {
@@ -309,6 +310,70 @@ impl PackValidator for SecretRequirementsValidator {
                 });
             }
         }
+        diagnostics
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StaticRoutesValidator {
+    ctx: ValidateCtx,
+}
+
+impl StaticRoutesValidator {
+    pub fn new(ctx: ValidateCtx) -> Self {
+        Self { ctx }
+    }
+}
+
+impl PackValidator for StaticRoutesValidator {
+    fn id(&self) -> &'static str {
+        "pack.static-routes-invalid"
+    }
+
+    fn applies(&self, manifest: &PackManifest) -> bool {
+        parse_static_routes_extension(&manifest.extensions)
+            .map(|payload| payload.is_some())
+            .unwrap_or(false)
+    }
+
+    fn validate(&self, manifest: &PackManifest) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        let payload = match parse_static_routes_extension(&manifest.extensions) {
+            Ok(Some(payload)) => payload,
+            Ok(None) => return diagnostics,
+            Err(err) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_STATIC_ROUTES_INVALID".to_string(),
+                    message: err.to_string(),
+                    path: Some("extensions.greentic.static-routes.v1".to_string()),
+                    hint: Some("Fix the static routes extension payload and rebuild.".to_string()),
+                    data: Value::Null,
+                });
+                return diagnostics;
+            }
+        };
+
+        if let Err(err) = validate_static_routes_payload(&payload, |logical| {
+            if self.ctx.pack_paths.contains(logical) {
+                return true;
+            }
+            let prefix = format!("{logical}/");
+            self.ctx
+                .pack_paths
+                .iter()
+                .any(|path| path.starts_with(&prefix))
+        }) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                code: "PACK_STATIC_ROUTES_INVALID".to_string(),
+                message: err.to_string(),
+                path: Some("extensions.greentic.static-routes.v1".to_string()),
+                hint: Some("Fix the static routes extension metadata and rebuild.".to_string()),
+                data: Value::Null,
+            });
+        }
+
         diagnostics
     }
 }

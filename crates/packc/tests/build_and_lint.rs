@@ -107,6 +107,33 @@ fn write_weather_lock(pack_dir: &Path) {
     write_pack_lock(&lock_path, &lock).expect("write pack.lock.cbor");
 }
 
+fn add_invalid_static_routes_extension(pack_dir: &Path) {
+    let assets_dir = pack_dir.join("assets").join("webchat-gui");
+    std::fs::create_dir_all(&assets_dir).expect("create assets dir");
+    std::fs::write(assets_dir.join("index.html"), "<html/>").expect("write index");
+
+    let pack_yaml_path = pack_dir.join("pack.yaml");
+    let mut pack_yaml = std::fs::read_to_string(&pack_yaml_path).expect("read pack.yaml");
+    pack_yaml.push_str(
+        r#"
+extensions:
+  greentic.static-routes.v1:
+    kind: greentic.static-routes.v1
+    version: 1.0.0
+    inline:
+      version: 1
+      routes:
+        - id: webchat-gui
+          public_path: /v1/web/webchat/{team}
+          source_root: assets/webchat-gui
+          scope:
+            tenant: false
+            team: true
+"#,
+    );
+    std::fs::write(pack_yaml_path, pack_yaml).expect("write pack.yaml");
+}
+
 #[test]
 fn build_weather_demo_dry_run() {
     let pack_dir = workspace_root().join("examples/weather-demo");
@@ -163,5 +190,50 @@ fn new_pack_scaffold() {
     assert!(
         !pack_dir.join("components").join("stub.wasm").exists(),
         "stub component should not be scaffolded"
+    );
+}
+
+#[test]
+fn lint_rejects_invalid_static_routes_extension() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let src = workspace_root()
+        .join("crates")
+        .join("packc")
+        .join("tests")
+        .join("fixtures")
+        .join("packs")
+        .join("valid-minimal");
+    let pack_dir = temp.path().join("valid-minimal");
+    std::fs::create_dir_all(&pack_dir).expect("create pack dir");
+    for entry in walkdir::WalkDir::new(&src)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = pack_dir.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target).expect("create target dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).expect("create target parent");
+            }
+            std::fs::copy(entry.path(), &target).expect("copy fixture entry");
+        }
+    }
+    add_invalid_static_routes_extension(&pack_dir);
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
+        .args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"])
+        .output()
+        .expect("run lint");
+    assert!(!output.status.success(), "lint should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("scope.team=true"),
+        "unexpected stderr: {stderr}"
     );
 }

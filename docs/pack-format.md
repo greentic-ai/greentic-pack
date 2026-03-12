@@ -32,6 +32,11 @@ included as-is. The contents of an existing `assets/` directory are bundled
 verbatim and take precedence: if a root file would conflict with `assets/<name>`,
 the archive keeps the `assets` version and emits a warning instead of overwriting.
 
+Static route mounts are declared separately from asset packaging. Packs that
+need tenant-facing hosted assets should keep the payload under `assets/...` and
+declare the mount metadata through the `greentic.static-routes.v1` extension in
+the pack manifest.
+
 Only regular files are allowed—directories, symlinks, and special entries are
 rejected by the reader before any manifest parsing occurs.
 
@@ -136,6 +141,60 @@ requested `SigningPolicy`:
 The function returns the decoded `PackManifest` together with a
 `VerifyReport { signature_ok, sbom_ok, warnings }` so callers can surface
 warnings while still treating the pack as verified.
+
+## Static Routes Extension
+
+Use `extensions.greentic.static-routes.v1` when a pack needs runtime to mount
+packaged files as public static surfaces.
+
+The extension does not change how files are bundled. Assets remain ordinary
+files under `assets/...`; the extension only declares mount metadata.
+
+### Shape
+
+```yaml
+extensions:
+  greentic.static-routes.v1:
+    kind: greentic.static-routes.v1
+    version: 1.0.0
+    inline:
+      version: 1
+      routes:
+        - id: webchat-gui
+          public_path: /v1/web/webchat/{tenant}
+          source_root: assets/webchat-gui
+          scope:
+            tenant: true
+            team: false
+          index_file: index.html
+          spa_fallback: index.html
+          cache:
+            strategy: public-max-age
+            max_age_seconds: 3600
+          exports:
+            base_url: webchat_gui_base_url
+            entry_url: webchat_gui_entry_url
+```
+
+### V1 rules
+
+- `public_path` must start with `/v1/web/`.
+- `public_path` supports only literal path segments plus `{tenant}` and `{team}`.
+- Wildcards, regex-like segments, arbitrary placeholders, query strings, and fragments are rejected.
+- `source_root` must be a directory-backed logical path under `assets/`.
+- `index_file` and `spa_fallback`, when present, are relative to `source_root`.
+- Exported URL names must be unique across the whole pack.
+- `scope.team=true` is invalid unless `scope.tenant=true`.
+
+### Cache policy
+
+Supported `cache.strategy` values in v1:
+
+- `none`
+- `public-max-age`
+
+When `strategy: public-max-age`, `max_age_seconds` is required. For `none`,
+`max_age_seconds` must be omitted.
 
 ## Deterministic Builds
 
