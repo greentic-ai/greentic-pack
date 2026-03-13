@@ -31,8 +31,24 @@ pub struct PackConfig {
     pub flows: Vec<FlowConfig>,
     #[serde(default)]
     pub assets: Vec<AssetConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_extensions"
+    )]
     pub extensions: Option<BTreeMap<String, ExtensionRef>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct RawExtensionRef {
+    pub kind: String,
+    pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline: Option<JsonValue>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -129,6 +145,51 @@ impl FlowKindLabel {
             FlowKindLabel::Http => FlowKind::Http,
         }
     }
+}
+
+fn deserialize_extensions<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<BTreeMap<String, ExtensionRef>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Option::<BTreeMap<String, RawExtensionRef>>::deserialize(deserializer)?;
+    raw.map(convert_extensions)
+        .transpose()
+        .map_err(serde::de::Error::custom)
+}
+
+fn convert_extensions(
+    raw: BTreeMap<String, RawExtensionRef>,
+) -> Result<BTreeMap<String, ExtensionRef>> {
+    raw.into_iter()
+        .map(|(key, value)| Ok((key, convert_extension_ref(value)?)))
+        .collect()
+}
+
+fn convert_extension_ref(raw: RawExtensionRef) -> Result<ExtensionRef> {
+    let inline = raw
+        .inline
+        .map(|value| convert_extension_inline(&raw.kind, value))
+        .transpose()?;
+    Ok(ExtensionRef {
+        kind: raw.kind,
+        version: raw.version,
+        digest: raw.digest,
+        location: raw.location,
+        inline,
+    })
+}
+
+fn convert_extension_inline(kind: &str, value: JsonValue) -> Result<ExtensionInline> {
+    if kind == PROVIDER_EXTENSION_ID || kind == LEGACY_PROVIDER_EXTENSION_KIND {
+        let provider = serde_json::from_value::<ProviderExtensionInline>(value.clone())
+            .with_context(|| {
+                format!("extensions[{kind}].inline is not a valid provider extension")
+            })?;
+        return Ok(ExtensionInline::Provider(provider));
+    }
+    Ok(ExtensionInline::Other(value))
 }
 
 pub fn load_pack_config(root: &Path) -> Result<PackConfig> {
@@ -386,5 +447,52 @@ mod tests {
             },
         );
         validate_extensions(Some(&extensions), false).expect("unknown extensions should pass");
+    }
+
+    #[test]
+    fn pack_config_preserves_unknown_inline_extension_payload() {
+        let cfg: PackConfig = serde_yaml_bw::from_str(
+            r#"pack_id: dev.local.static-routes
+version: 0.1.0
+kind: application
+publisher: Test
+extensions:
+  greentic.static-routes.v1:
+    kind: greentic.static-routes.v1
+    version: 0.4.37
+    inline:
+      version: 1
+      routes:
+        - id: webchat-gui
+          public_path: /v1/web/webchat/{tenant}
+          source_root: assets/webchat-gui
+          scope:
+            tenant: true
+            team: false
+          index_file: index.html
+          spa_fallback: index.html
+"#,
+        )
+        .expect("deserialize pack config");
+
+        let ext = cfg
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("greentic.static-routes.v1"))
+            .expect("static routes extension present");
+        assert_eq!(ext.version, "0.4.37");
+
+        let inline = match ext.inline.as_ref() {
+            Some(ExtensionInline::Other(value)) => value,
+            other => panic!("unexpected inline payload: {other:?}"),
+        };
+        assert_eq!(inline.get("version"), Some(&json!(1)));
+        assert_eq!(
+            inline
+                .get("routes")
+                .and_then(JsonValue::as_array)
+                .map(Vec::len),
+            Some(1)
+        );
     }
 }
