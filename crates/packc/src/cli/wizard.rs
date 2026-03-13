@@ -3156,39 +3156,7 @@ fn write_json_value(path: &Path, value: &Value) -> bool {
 }
 
 fn flow_delegate_args(pack_dir: &Path) -> Vec<String> {
-    let flow_path =
-        primary_flow_path_for_delegate(pack_dir).unwrap_or_else(|| "flows/main.ygtc".to_string());
-    vec![
-        "wizard".to_string(),
-        "edit".to_string(),
-        "--flow".to_string(),
-        flow_path,
-    ]
-}
-
-fn primary_flow_path_for_delegate(pack_dir: &Path) -> Option<String> {
-    let main = pack_dir.join("flows").join("main.ygtc");
-    if main.exists() {
-        return Some("flows/main.ygtc".to_string());
-    }
-    let flows_dir = pack_dir.join("flows");
-    if !flows_dir.is_dir() {
-        return None;
-    }
-    let mut entries = fs::read_dir(flows_dir)
-        .ok()?
-        .filter_map(|entry| entry.ok().map(|value| value.path()))
-        .filter(|path| {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("ygtc"))
-                .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    entries.sort();
-    let first = entries.first()?;
-    let name = first.file_name()?.to_str()?;
-    Some(format!("flows/{name}"))
+    vec!["wizard".to_string(), pack_dir.display().to_string()]
 }
 
 fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
