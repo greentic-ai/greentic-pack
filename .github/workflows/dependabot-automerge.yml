@@ -34,17 +34,35 @@ jobs:
               core.warning(`Could not approve PR: ${error.message}`);
             }
 
-            try {
-              await github.graphql(`
-                mutation EnableAutoMerge($pullRequestId: ID!) {
-                  enablePullRequestAutoMerge(input: {
-                    pullRequestId: $pullRequestId,
-                    mergeMethod: SQUASH
-                  }) {
-                    pullRequest { number autoMergeRequest { enabledAt } }
-                  }
+            const mutation = `
+              mutation EnableAutoMerge($pullRequestId: ID!) {
+                enablePullRequestAutoMerge(input: {
+                  pullRequestId: $pullRequestId,
+                  mergeMethod: SQUASH
+                }) {
+                  pullRequest { number autoMergeRequest { enabledAt } }
                 }
-              `, { pullRequestId: pr.node_id });
-            } catch (error) {
-              core.warning(`Could not enable auto-merge: ${error.message}`);
+              }
+            `;
+
+            const maxAttempts = 8;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              try {
+                await github.graphql(mutation, { pullRequestId: pr.node_id });
+                core.info(`Enabled auto-merge on attempt ${attempt}.`);
+                break;
+              } catch (error) {
+                const message = error.message || String(error);
+                const isUnstable = message.includes("unstable status");
+                const isLastAttempt = attempt === maxAttempts;
+
+                if (!isUnstable || isLastAttempt) {
+                  core.warning(`Could not enable auto-merge: ${message}`);
+                  break;
+                }
+
+                core.warning(`PR not stable yet (attempt ${attempt}/${maxAttempts}); retrying in 15 seconds.`);
+                await new Promise((resolve) => setTimeout(resolve, 15000));
+              }
             }
