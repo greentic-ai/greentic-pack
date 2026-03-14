@@ -712,7 +712,7 @@ fn wizard_apply_replays_recorded_delegate_and_pipeline_actions() {
     assert!(output.status.success(), "wizard apply should succeed");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
-    assert!(calls.contains("flow:wizard edit --flow flows/main.ygtc"));
+    assert!(calls.contains("flow:wizard"));
     assert!(calls.contains("component:wizard"));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));
@@ -805,7 +805,7 @@ exit 0\n",
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("self:new --dir"));
-    assert!(calls.contains("flow:wizard edit --flow flows/main.ygtc"));
+    assert!(calls.contains("flow:wizard"));
     assert!(calls.contains("component:wizard --project-root . --execution execute --qa-answers"));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));

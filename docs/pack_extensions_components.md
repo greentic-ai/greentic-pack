@@ -77,3 +77,53 @@ Notes:
 
 - `greentic-pack build` validates against `pack.yaml` + `pack.lock`, so lock-backed `provider.component_ref` ids are accepted there.
 - `greentic-pack lint` validates source shape and still expects ids declared in `pack.yaml`.
+
+## Static Routes Extension (v1)
+
+Use `extensions.greentic.static-routes.v1` to declare public static mounts for
+assets already packaged under `assets/...`.
+
+### Shape
+
+```yaml
+extensions:
+  greentic.static-routes.v1:
+    kind: greentic.static-routes.v1
+    version: 1.0.0
+    inline:
+      version: 1
+      routes:
+        - id: webchat-gui
+          public_path: /v1/web/webchat/{tenant}
+          source_root: assets/webchat-gui
+          scope:
+            tenant: true
+            team: false
+          index_file: index.html
+          spa_fallback: index.html
+          cache:
+            strategy: public-max-age
+            max_age_seconds: 3600
+          exports:
+            base_url: webchat_gui_base_url
+            entry_url: webchat_gui_entry_url
+```
+
+### Validation rules
+
+- `inline.version` must be `1`.
+- `routes` must not be empty.
+- Route ids must be unique within the pack.
+- `public_path` must start with `/v1/web/`.
+- `public_path` may contain only literal segments plus `{tenant}` / `{team}`.
+- `source_root` must start with `assets/` and resolve to an existing directory-backed path in the pack.
+- `index_file` / `spa_fallback`, when present, must exist under `source_root`.
+- `scope.team=true` is rejected when `scope.tenant=false`.
+- Exported URL names must be unique across the whole pack.
+- `cache.strategy` must be `none` or `public-max-age`.
+- `max_age_seconds` is only valid for `public-max-age` and required there.
+
+Notes:
+
+- The extension declares mount metadata only; it does not package files on its own.
+- Runtime-facing static surfaces live under the reserved `/v1/web/...` namespace in v1.

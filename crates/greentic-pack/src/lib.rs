@@ -10,6 +10,7 @@ pub mod plan;
 pub mod reader;
 pub mod repo;
 pub mod resolver;
+pub mod static_routes;
 pub mod validate;
 
 pub use kind::PackKind;
