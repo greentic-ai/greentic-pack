@@ -1587,9 +1587,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-i18n-lib"
-version = "0.4.7"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c9c74eb545e2b075087c9d2df3a262df805264ec5e8b0189eb9a0f019103126"
+checksum = "69eec2f81df6cb23ffd046168e9a0bfe2488efbf20dd4d58c9713e1034ac1690"
 dependencies = [
  "blake3",
  "data-encoding",
