@@ -80,6 +80,10 @@ impl StateStoreHost for DescribeHostState {
 }
 
 pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Result<()> {
+    // Some WASI helper registrars may re-export overlapping interface names
+    // (for example `wasi:io/*`) across preview2, TLS, and HTTP worlds.
+    linker.allow_shadowing(true);
+
     add_to_linker_sync(linker)
         .map_err(|err| anyhow::anyhow!("register wasi preview2 describe host stubs: {err}"))?;
 

@@ -175,6 +175,7 @@ async fn populate_component_contract(
         component_version: component.component_version.clone(),
     })?;
     let bytes = resolved.bytes;
+    component.resolved_digest = format!("sha256:{:x}", Sha256::digest(&bytes));
     let use_describe_cache =
         std::env::var("GREENTIC_PACK_USE_DESCRIBE_CACHE").is_ok() || cfg!(test);
     let describe = match describe_component(engine, &bytes) {
@@ -184,6 +185,7 @@ async fn populate_component_contract(
             {
                 describe
             } else if is_state_store_tenant_ctx_abi_mismatch(&err)
+                || is_known_host_linker_gap(&err)
                 || is_missing_descriptor_instance(&err)
             {
                 // Temporary compat fallback: keep resolve/build working for components
@@ -382,6 +384,16 @@ fn is_state_store_tenant_ctx_abi_mismatch(err: &anyhow::Error) -> bool {
     let text = format!("{:#}", err);
     text.contains("greentic:state/state-store@1.0.0")
         && text.contains("expected record of 19 fields, found 18 fields")
+}
+
+// FIXME: Needs patching to correctly link.
+fn is_known_host_linker_gap(err: &anyhow::Error) -> bool {
+    let text = format!("{:#}", err);
+    let missing_impl = text.contains("matching implementation was not found in the linker");
+    missing_impl
+        && (text.contains("greentic:state/state-store@1.0.0")
+            || text.contains("greentic:http/http-client@1.1.0")
+            || text.contains("greentic:http/http-client@1.0.0"))
 }
 
 fn is_missing_descriptor_instance(err: &anyhow::Error) -> bool {
