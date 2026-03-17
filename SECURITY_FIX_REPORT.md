@@ -1,34 +1,34 @@
 # Security Fix Report
 
 Date: 2026-03-17 (UTC)
-Reviewer Role: CI Security Reviewer
+Repository: `/home/runner/work/greentic-pack/greentic-pack`
+Branch: `fix/allow-shadowing-since-http-tls-shadow-similar`
 
-## Inputs Reviewed
-- Dependabot alerts: `[]`
-- Code scanning alerts: `[]`
-- New PR dependency vulnerabilities: `[]`
+## 1) Security alerts analysis
+Input alerts:
+- Dependabot: `[]`
+- Code scanning: `[]`
 
-## Verification Performed
-- Validated `security-alerts.json` contains no Dependabot or code scanning findings.
-- Validated `pr-vulnerable-changes.json` contains no introduced vulnerable dependency changes.
-- Reviewed repository dependency manifests/lockfiles (Rust `Cargo.toml`/`Cargo.lock`) for potential PR-introduced dependency risk surface.
-- Verified Git workspace dependency files have no pending modifications in this CI run.
+Result:
+- No active security alerts were provided.
+- No remediation was required for alert-driven findings.
 
-## Repository Checks Performed
-- Enumerated dependency manifests and lockfiles (Rust/Cargo files found).
-- Checked working tree state (`git status --short`): no uncommitted changes.
-- Checked recent commit diff for dependency-file updates:
-  - `git diff --name-only HEAD~1..HEAD`
-  - Result: no dependency manifest/lockfile changes detected.
+## 2) PR dependency vulnerability check
+Input PR dependency vulnerabilities:
+- `[]`
 
-## Tooling Notes
-- Attempted local Rust advisory scan (`cargo audit`), but execution is blocked in this CI sandbox due `rustup` temp-file permission errors under `/home/runner/.rustup/tmp`.
-- Given the empty alert inputs and no dependency-file changes in the latest commit diff, no actionable vulnerability was identified.
+Repository checks performed:
+- Enumerated dependency manifests/lockfiles in repo.
+- Checked current git diff for dependency file changes.
 
-## Remediation Actions
-- No code or dependency changes were necessary.
-- No vulnerabilities to remediate from provided alert sources.
+Result:
+- No dependency vulnerabilities were provided for this PR.
+- No dependency manifest/lockfile changes were detected in the current diff.
 
-## Outcome
-- Security review completed.
-- `SECURITY_FIX_REPORT.md` created.
+## 3) Fixes applied
+- No security fixes were necessary.
+- No source or dependency files were modified for remediation.
+
+## 4) Residual risk / notes
+- This report is based on the supplied CI alert payloads and current working diff.
+- If new alerts are generated later in the pipeline, rerun this review with updated findings.
