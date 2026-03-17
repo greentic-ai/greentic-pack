@@ -386,13 +386,11 @@ fn is_state_store_tenant_ctx_abi_mismatch(err: &anyhow::Error) -> bool {
         && text.contains("expected record of 19 fields, found 18 fields")
 }
 
-// FIXME: Needs patching to correctly link.
 fn is_known_host_linker_gap(err: &anyhow::Error) -> bool {
     let text = format!("{:#}", err);
     let missing_impl = text.contains("matching implementation was not found in the linker");
     missing_impl
-        && (text.contains("greentic:state/state-store@1.0.0")
-            || text.contains("greentic:http/http-client@1.1.0")
+        && (text.contains("greentic:http/http-client@1.1.0")
             || text.contains("greentic:http/http-client@1.0.0"))
 }
 
