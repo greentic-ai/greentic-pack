@@ -1,4 +1,8 @@
 use anyhow::{Context, Result, bail};
+use greentic_pack::static_routes::{
+    STATIC_ROUTES_EXTENSION_KEY, StaticRoutesExtensionV1, parse_static_routes_extension,
+    validate_static_routes_payload,
+};
 use greentic_types::pack::extensions::capabilities::CapabilitiesExtensionV1;
 use greentic_types::pack_manifest::{ExtensionInline, ExtensionRef};
 use serde::{Deserialize, Serialize};
@@ -212,6 +216,26 @@ pub fn validate_deployer_extension(
             }
         }
     }
+
+    Ok(Some(payload))
+}
+
+pub fn validate_static_routes_extension(
+    extensions: &Option<BTreeMap<String, ExtensionRef>>,
+    pack_root: &Path,
+) -> Result<Option<StaticRoutesExtensionV1>> {
+    let Some(payload) = parse_static_routes_extension(extensions)? else {
+        return Ok(None);
+    };
+
+    validate_static_routes_payload(&payload, |logical| {
+        let path = pack_root.join(logical);
+        if path.is_file() || path.is_dir() {
+            return true;
+        }
+        std::fs::read_dir(&path).is_ok()
+    })
+    .map_err(|err| anyhow::anyhow!("extensions[{STATIC_ROUTES_EXTENSION_KEY}] invalid: {err}"))?;
 
     Ok(Some(payload))
 }
@@ -504,5 +528,71 @@ mod tests {
             err.to_string()
                 .contains("references missing flow flows/generate.ygtc")
         );
+    }
+
+    fn static_routes_ext_with_payload(payload: JsonValue) -> BTreeMap<String, ExtensionRef> {
+        let mut map = BTreeMap::new();
+        map.insert(
+            STATIC_ROUTES_EXTENSION_KEY.to_string(),
+            ExtensionRef {
+                kind: STATIC_ROUTES_EXTENSION_KEY.to_string(),
+                version: "1.0.0".to_string(),
+                digest: None,
+                location: None,
+                inline: Some(ExtensionInline::Other(payload)),
+            },
+        );
+        map
+    }
+
+    #[test]
+    fn static_routes_extension_validates() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let assets_dir = temp.path().join("assets").join("webchat-gui");
+        std::fs::create_dir_all(&assets_dir).expect("assets dir");
+        std::fs::write(assets_dir.join("index.html"), "<html/>").expect("write index");
+
+        let extensions = static_routes_ext_with_payload(json!({
+            "version": 1,
+            "routes": [{
+                "id": "webchat-gui",
+                "public_path": "/v1/web/webchat/{tenant}",
+                "source_root": "assets/webchat-gui",
+                "scope": { "tenant": true, "team": false },
+                "index_file": "index.html",
+                "spa_fallback": "index.html",
+                "cache": {
+                    "strategy": "public-max-age",
+                    "max_age_seconds": 3600
+                },
+                "exports": {
+                    "base_url": "webchat_gui_base_url",
+                    "entry_url": "webchat_gui_entry_url"
+                }
+            }]
+        }));
+
+        validate_static_routes_extension(&Some(extensions), temp.path())
+            .expect("static routes extension should validate");
+    }
+
+    #[test]
+    fn static_routes_extension_rejects_invalid_scope() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let assets_dir = temp.path().join("assets").join("webchat-gui");
+        std::fs::create_dir_all(&assets_dir).expect("assets dir");
+
+        let extensions = static_routes_ext_with_payload(json!({
+            "version": 1,
+            "routes": [{
+                "id": "webchat-gui",
+                "public_path": "/v1/web/webchat/{team}",
+                "source_root": "assets/webchat-gui",
+                "scope": { "tenant": false, "team": true }
+            }]
+        }));
+
+        let err = validate_static_routes_extension(&Some(extensions), temp.path()).unwrap_err();
+        assert!(err.to_string().contains("scope.team=true"));
     }
 }

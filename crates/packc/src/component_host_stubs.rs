@@ -1,9 +1,6 @@
 #![forbid(unsafe_code)]
 
 use anyhow::Result;
-use greentic_interfaces_wasmtime::host_helpers::v1::state_store::{
-    self as state_store_v1, StateStoreError, StateStoreHost,
-};
 use wasmtime::component::Linker;
 use wasmtime_wasi::p2::add_to_linker_sync;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
@@ -52,33 +49,6 @@ impl WasiHttpView for DescribeHostState {
     }
 }
 
-impl StateStoreHost for DescribeHostState {
-    fn read(
-        &mut self,
-        _key: state_store_v1::StateKey,
-        _ctx: Option<state_store_v1::TenantCtx>,
-    ) -> std::result::Result<Vec<u8>, StateStoreError> {
-        Ok(Vec::new())
-    }
-
-    fn write(
-        &mut self,
-        _key: state_store_v1::StateKey,
-        _bytes: Vec<u8>,
-        _ctx: Option<state_store_v1::TenantCtx>,
-    ) -> std::result::Result<state_store_v1::OpAck, StateStoreError> {
-        Ok(state_store_v1::OpAck::Ok)
-    }
-
-    fn delete(
-        &mut self,
-        _key: state_store_v1::StateKey,
-        _ctx: Option<state_store_v1::TenantCtx>,
-    ) -> std::result::Result<state_store_v1::OpAck, StateStoreError> {
-        Ok(state_store_v1::OpAck::Ok)
-    }
-}
-
 pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Result<()> {
     // Some WASI helper registrars may re-export overlapping interface names
     // (for example `wasi:io/*`) across preview2, TLS, and HTTP worlds.
@@ -97,7 +67,26 @@ pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Resu
     wasmtime_wasi_http::add_only_http_to_linker_sync(linker)
         .map_err(|err| anyhow::anyhow!("register wasi http describe host stubs: {err}"))?;
 
-    state_store_v1::add_state_store_to_linker(linker, |host: &mut DescribeHostState| host)
-        .map_err(|err| anyhow::anyhow!("register state-store@1.0.0 describe host stub: {err}"))?;
+    // NOTE: greentic host interfaces (state-store, secrets-store, http-client,
+    // interfaces-types, etc.) are NOT registered here. They are handled by
+    // `stub_remaining_imports` which uses `define_unknown_imports_as_traps` to
+    // provide trap stubs for any component imports not already in the linker.
+    // This avoids having to maintain an exhaustive list of every greentic
+    // interface version a component might import.
     Ok(())
+}
+
+/// Stub any component imports not already registered in the linker as traps.
+///
+/// This must be called AFTER `add_describe_host_imports` so that real WASI
+/// implementations take priority. All remaining imports (greentic host
+/// interfaces like secrets-store, http-client, etc.) become traps — safe
+/// because the describe-only code path never invokes them.
+pub fn stub_remaining_imports(
+    linker: &mut Linker<DescribeHostState>,
+    component: &wasmtime::component::Component,
+) -> Result<()> {
+    linker
+        .define_unknown_imports_as_traps(component)
+        .map_err(|err| anyhow::anyhow!("stub remaining component imports: {err}"))
 }

@@ -8,6 +8,7 @@ use crate::extension_refs::{
 };
 use crate::extensions::{
     validate_capabilities_extension, validate_components_extension, validate_deployer_extension,
+    validate_static_routes_extension,
 };
 use crate::flow_resolve::load_flow_resolve_summary;
 use crate::runtime::{NetworkPolicy, RuntimeContext};
@@ -202,6 +203,7 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
     );
     validate_components_extension(&config.extensions, opts.allow_oci_tags)?;
     validate_deployer_extension(&config.extensions, &opts.pack_dir)?;
+    validate_static_routes_extension(&config.extensions, &opts.pack_dir)?;
     if !opts.lock_path.exists() {
         anyhow::bail!(
             "pack.lock.cbor is required (run `greentic-pack resolve`); missing: {}",

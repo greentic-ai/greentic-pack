@@ -22,7 +22,9 @@ use tokio::runtime::Handle;
 use wasmtime::Engine;
 use wasmtime::component::{Component as WasmtimeComponent, Linker};
 
-use crate::component_host_stubs::{DescribeHostState, add_describe_host_imports};
+use crate::component_host_stubs::{
+    DescribeHostState, add_describe_host_imports, stub_remaining_imports,
+};
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 
 pub struct PackLockDoctorInput<'a> {
@@ -660,6 +662,9 @@ fn describe_component_untyped(engine: &Engine, bytes: &[u8]) -> Result<Component
     let mut store = wasmtime::Store::new(engine, DescribeHostState::default());
     let mut linker = Linker::new(engine);
     add_describe_host_imports(&mut linker)?;
+    // Stub any remaining imports (secrets-store, http-client, interfaces-types,
+    // etc.) that the component needs but describe() never calls at runtime.
+    stub_remaining_imports(&mut linker, &component)?;
     let instance = linker
         .instantiate(&mut store, &component)
         .map_err(|err| anyhow!("instantiate component root world: {err}"))?;
