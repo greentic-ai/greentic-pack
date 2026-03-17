@@ -582,10 +582,21 @@ fn resolve_component_wasm(
 
     let handle = Handle::try_current().context("component resolution requires a Tokio runtime")?;
     let resolved = if offline {
-        block_on(&handle, dist.ensure_cached(&locked.resolved_digest))
+        dist.open_cached(&locked.resolved_digest)
             .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
     } else {
-        block_on(&handle, dist.resolve_ref(reference))
+        let source = dist
+            .parse_source(reference)
+            .map_err(|err| anyhow!("resolve {}: {}", reference, err))?;
+        let descriptor = block_on(
+            &handle,
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy),
+        )
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?;
+        block_on(
+            &handle,
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
+        )
             .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
     };
     let path = resolved

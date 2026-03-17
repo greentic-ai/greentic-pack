@@ -290,11 +290,27 @@ impl ComponentResolver for PackResolver {
 
         let handle =
             Handle::try_current().context("component resolution requires a Tokio runtime")?;
-        let resolved = if self.runtime.network_policy() == crate::runtime::NetworkPolicy::Offline {
-            block_on(&handle, self.dist.ensure_cached(&req.expected_digest))
+        let offline = self.runtime.network_policy() == crate::runtime::NetworkPolicy::Offline;
+        let resolved = if offline {
+            self.dist
+                .open_cached(&req.expected_digest)
                 .map_err(|err| anyhow!("offline cache miss for {}: {}", req.reference, err))?
         } else {
-            block_on(&handle, self.dist.resolve_ref(&req.reference))
+            let source = self
+                .dist
+                .parse_source(&req.reference)
+                .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?;
+            let descriptor = block_on(
+                &handle,
+                self.dist
+                    .resolve(source, greentic_distributor_client::ResolvePolicy),
+            )
+            .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?;
+            block_on(
+                &handle,
+                self.dist
+                    .fetch(&descriptor, greentic_distributor_client::CachePolicy),
+            )
                 .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?
         };
         let path = resolved

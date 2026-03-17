@@ -924,12 +924,35 @@ fn resolve_component_bytes(
     }
 
     let handle = Handle::try_current().context("component resolution requires a Tokio runtime")?;
-    let resolved = if runtime.network_policy() == NetworkPolicy::Offline {
-        block_on(&handle, dist.ensure_cached(reference))
+    let source = dist
+        .parse_source(reference)
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?;
+    let offline = runtime.network_policy() == NetworkPolicy::Offline;
+    let descriptor = if offline {
+        block_on(
+            &handle,
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy),
+        )
             .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
     } else {
-        block_on(&handle, dist.resolve_ref(reference))
+        block_on(
+            &handle,
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy),
+        )
             .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
+    };
+    let resolved = if offline {
+        block_on(
+            &handle,
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
+        )
+        .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
+    } else {
+        block_on(
+            &handle,
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
+        )
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
     };
     let path = resolved
         .cache_path

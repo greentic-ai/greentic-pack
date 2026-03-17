@@ -155,7 +155,12 @@ fn end_to_end_component_pack_workflow() {
     // Doctor the component
     let output = greentic_component_cmd()
         .current_dir(&component_dir)
-        .args(["doctor", "component.manifest.json"])
+        .args([
+            "doctor",
+            "target/wasm32-wasip2/release/demo_component.wasm",
+            "--manifest",
+            "component.manifest.json",
+        ])
         .output()
         .expect("spawn greentic-component doctor");
     if !output.status.success() {

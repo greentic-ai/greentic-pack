@@ -62,8 +62,19 @@ pub async fn handle(
             allow_insecure_local_http: false,
             ..DistOptions::default()
         });
-        let resolved = block_on(&handle, dist.resolve_ref(&extension.source.reference))
+        let source = dist
+            .parse_source(&extension.source.reference)
+            .with_context(|| format!("parse extension ref {}", extension.source.reference))?;
+        let descriptor = block_on(
+            &handle,
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy),
+        )
             .with_context(|| format!("resolve extension ref {}", extension.source.reference))?;
+        let resolved = block_on(
+            &handle,
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
+        )
+        .with_context(|| format!("fetch extension ref {}", extension.source.reference))?;
         let digest = if resolved.resolved_digest.is_empty() {
             resolved.digest.clone()
         } else {

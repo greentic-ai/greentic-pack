@@ -426,12 +426,24 @@ fn load_catalog_from_oci(catalog_ref: &str, runtime: &RuntimeContext) -> Result<
             ..DistOptions::default()
         });
 
-        let resolved = if offline {
-            dist.ensure_cached(catalog_ref)
+        let source = dist
+            .parse_source(catalog_ref)
+            .with_context(|| format!("failed to parse catalog ref {}", catalog_ref))?;
+        let descriptor = if offline {
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy)
                 .await
                 .context("catalog ref not cached in offline mode")?
         } else {
-            dist.resolve_ref(catalog_ref)
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy)
+                .await
+                .context("failed to fetch catalog ref")?
+        };
+        let resolved = if offline {
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                .await
+                .context("catalog ref not cached in offline mode")?
+        } else {
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
                 .await
                 .context("failed to fetch catalog ref")?
         };

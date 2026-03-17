@@ -635,12 +635,25 @@ async fn load_validator_components_from_oci(
         ..DistOptions::default()
     });
 
-    let resolved = if runtime.network_policy() == NetworkPolicy::Offline {
-        dist.ensure_cached(&validator_ref.reference)
+    let offline = runtime.network_policy() == NetworkPolicy::Offline;
+    let source = dist
+        .parse_source(&validator_ref.reference)
+        .context("failed to parse validator ref")?;
+    let descriptor = if offline {
+        dist.resolve(source, greentic_distributor_client::ResolvePolicy)
             .await
             .context("validator ref not cached")?
     } else {
-        dist.resolve_ref(&validator_ref.reference)
+        dist.resolve(source, greentic_distributor_client::ResolvePolicy)
+            .await
+            .context("failed to fetch validator ref")?
+    };
+    let resolved = if offline {
+        dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
+            .await
+            .context("validator ref not cached")?
+    } else {
+        dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
             .await
             .context("failed to fetch validator ref")?
     };
