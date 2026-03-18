@@ -1551,19 +1551,24 @@ async fn collect_lock_component_artifacts(
 
         let resolved = if is_tag {
             let item = if runtime.network_policy() == NetworkPolicy::Offline {
-                dist.ensure_cached(&comp.resolved_digest)
-                    .await
-                    .map_err(|err| {
-                        anyhow!(
-                            "tag ref {} must be bundled but cache is missing ({})",
-                            reference,
-                            err
-                        )
-                    })?
+                dist.open_cached(&comp.resolved_digest).map_err(|err| {
+                    anyhow!(
+                        "tag ref {} must be bundled but cache is missing ({})",
+                        reference,
+                        err
+                    )
+                })?
             } else {
-                dist.resolve_ref(reference)
+                let source = dist
+                    .parse_source(reference)
+                    .map_err(|err| anyhow!("failed to parse {}: {}", reference, err))?;
+                let descriptor = dist
+                    .resolve(source, greentic_distributor_client::ResolvePolicy)
                     .await
-                    .map_err(|err| anyhow!("failed to resolve {}: {}", reference, err))?
+                    .map_err(|err| anyhow!("failed to resolve {}: {}", reference, err))?;
+                dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                    .await
+                    .map_err(|err| anyhow!("failed to fetch {}: {}", reference, err))?
             };
             let cache_path = item.cache_path.clone().ok_or_else(|| {
                 anyhow!("tag ref {} resolved but cache path is missing", reference)
@@ -1571,8 +1576,7 @@ async fn collect_lock_component_artifacts(
             ResolvedLockItem { cache_path }
         } else {
             let mut resolved = dist
-                .ensure_cached(&comp.resolved_digest)
-                .await
+                .open_cached(&comp.resolved_digest)
                 .ok()
                 .and_then(|item| item.cache_path.clone().map(|path| (item, path)));
             if resolved.is_none()
@@ -1580,10 +1584,17 @@ async fn collect_lock_component_artifacts(
                 && !allow_missing
                 && reference.starts_with("oci://")
             {
-                let item = dist
-                    .resolve_ref(reference)
+                let source = dist
+                    .parse_source(reference)
+                    .map_err(|err| anyhow!("failed to parse {}: {}", reference, err))?;
+                let descriptor = dist
+                    .resolve(source, greentic_distributor_client::ResolvePolicy)
                     .await
                     .map_err(|err| anyhow!("failed to resolve {}: {}", reference, err))?;
+                let item = dist
+                    .fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                    .await
+                    .map_err(|err| anyhow!("failed to fetch {}: {}", reference, err))?;
                 if let Some(path) = item.cache_path.clone() {
                     resolved = Some((item, path));
                 }
@@ -2928,12 +2939,28 @@ nodes:
 
             let cache_dir = temp.path().join("cache");
             let cached_bytes = b"cached-component";
-            let digest = format!("sha256:{:x}", Sha256::digest(cached_bytes));
-            let cache_path = cache_dir
-                .join(digest.trim_start_matches("sha256:"))
-                .join("component.wasm");
-            fs::create_dir_all(cache_path.parent().expect("cache parent")).expect("cache dir");
-            fs::write(&cache_path, cached_bytes).expect("write cached");
+            let seed_path = temp.path().join("cached-component.wasm");
+            fs::write(&seed_path, cached_bytes).expect("write seed");
+            let dist = DistClient::new(DistOptions {
+                cache_dir: cache_dir.clone(),
+                allow_tags: true,
+                offline: false,
+                allow_insecure_local_http: false,
+                ..DistOptions::default()
+            });
+            let source = dist
+                .parse_source(&format!("file://{}", seed_path.display()))
+                .expect("parse source");
+            let descriptor = dist
+                .resolve(source, greentic_distributor_client::ResolvePolicy)
+                .await
+                .expect("resolve source");
+            let cached = dist
+                .fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                .await
+                .expect("seed cache");
+            let digest = cached.descriptor.digest.clone();
+            let cache_path = cached.cache_path.expect("cache path");
             write_describe_sidecar(&cache_path, "dummy.component");
 
             let summary = serde_json::json!({

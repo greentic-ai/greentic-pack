@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use greentic_distributor_client::{DistClient, DistOptions};
 use greentic_types::cbor::canonical;
 use greentic_types::decode_pack_manifest;
 use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
@@ -190,42 +191,120 @@ assets: []
 }
 
 fn cache_component(cache_dir: &Path, digest: &str, include_manifest: bool) {
-    let dir = cache_dir.join(digest.trim_start_matches("sha256:"));
-    fs::create_dir_all(&dir).expect("cache dir");
-    let wasm_path = dir.join("component.wasm");
-    fs::write(&wasm_path, b"cached-component").expect("write wasm");
-    write_describe_sidecar(&wasm_path, COMPONENT_ID);
+    let wasm_bytes = b"cached-component";
+    let seed_path = cache_dir.join("seed-component.wasm");
+    fs::create_dir_all(cache_dir).expect("cache root");
+    fs::write(&seed_path, wasm_bytes).expect("write seed wasm");
+
+    let dist = DistClient::new(DistOptions {
+        cache_dir: cache_dir.to_path_buf(),
+        allow_tags: true,
+        offline: false,
+        allow_insecure_local_http: false,
+        ..DistOptions::default()
+    });
+    let source = dist
+        .parse_source(&format!("file://{}", seed_path.display()))
+        .expect("parse source");
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let descriptor = rt
+        .block_on(dist.resolve(source, greentic_distributor_client::ResolvePolicy))
+        .expect("resolve source");
+    let cached = rt
+        .block_on(dist.fetch(&descriptor, greentic_distributor_client::CachePolicy))
+        .expect("seed cache");
+    let actual_digest = cached.descriptor.digest.clone();
+    let actual_wasm_path = cached.cache_path.expect("cache path");
+    write_describe_sidecar(&actual_wasm_path, COMPONENT_ID);
     if include_manifest {
-        let manifest = serde_json::json!({
-            "id": COMPONENT_ID,
-            "version": COMPONENT_VERSION,
-            "supports": ["messaging"],
-            "world": COMPONENT_WORLD,
-            "profiles": {
-                "default": "stateless",
-                "supported": ["stateless"]
-            },
-            "capabilities": {
-                "wasi": {
-                    "random": false,
-                    "clocks": false
-                },
-                "host": {}
-            },
-            "operations": [
-                {
-                    "name": "handle_message",
-                    "input_schema": {},
-                    "output_schema": {}
-                }
-            ]
-        });
-        fs::write(
-            dir.join("component.manifest.json"),
-            serde_json::to_vec_pretty(&manifest).expect("manifest json"),
-        )
-        .expect("write component.manifest.json");
+        write_component_manifest(
+            actual_wasm_path
+                .parent()
+                .expect("cache parent dir")
+                .join("component.manifest.json")
+                .as_path(),
+        );
     }
+
+    if digest != actual_digest {
+        let alias_dir = cache_dir.join(digest.trim_start_matches("sha256:"));
+        fs::create_dir_all(&alias_dir).expect("alias cache dir");
+        let alias_wasm_path = alias_dir.join("component.wasm");
+        fs::write(&alias_wasm_path, wasm_bytes).expect("write alias wasm");
+        write_describe_sidecar(&alias_wasm_path, COMPONENT_ID);
+        if include_manifest {
+            write_component_manifest(alias_dir.join("component.manifest.json").as_path());
+        }
+
+        let actual_entry_path = component_cache_entry_path(cache_dir, &actual_digest);
+        let actual_entry_bytes = fs::read(&actual_entry_path).expect("read actual cache entry");
+        let mut alias_entry: Value =
+            serde_json::from_slice(&actual_entry_bytes).expect("parse actual cache entry");
+        alias_entry["cache_key"] = Value::String(digest.to_string());
+        alias_entry["digest"] = Value::String(digest.to_string());
+        alias_entry["local_path"] = Value::String(alias_wasm_path.display().to_string());
+        alias_entry["raw_ref"] = Value::String(format!("file://{}", alias_wasm_path.display()));
+        alias_entry["canonical_ref"] =
+            Value::String(format!("file://{}@{}", alias_wasm_path.display(), digest));
+        alias_entry["source_snapshot"]["raw_ref"] =
+            Value::String(format!("file://{}", alias_wasm_path.display()));
+        alias_entry["source_snapshot"]["canonical_ref"] =
+            Value::String(format!("file://{}@{}", alias_wasm_path.display(), digest));
+
+        let alias_entry_path = component_cache_entry_path(cache_dir, digest);
+        if let Some(parent) = alias_entry_path.parent() {
+            fs::create_dir_all(parent).expect("alias entry parent");
+        }
+        fs::write(
+            alias_entry_path,
+            serde_json::to_vec_pretty(&alias_entry).expect("alias entry json"),
+        )
+        .expect("write alias cache entry");
+    }
+}
+
+fn component_cache_entry_path(cache_dir: &Path, digest: &str) -> PathBuf {
+    let normalized = digest.trim_start_matches("sha256:");
+    let prefix_len = normalized.len().min(2);
+    let (prefix, rest) = normalized.split_at(prefix_len);
+    cache_dir
+        .join("artifacts")
+        .join("sha256")
+        .join(prefix)
+        .join(rest)
+        .join("entry.json")
+}
+
+fn write_component_manifest(path: &Path) {
+    let manifest = serde_json::json!({
+        "id": COMPONENT_ID,
+        "version": COMPONENT_VERSION,
+        "supports": ["messaging"],
+        "world": COMPONENT_WORLD,
+        "profiles": {
+            "default": "stateless",
+            "supported": ["stateless"]
+        },
+        "capabilities": {
+            "wasi": {
+                "random": false,
+                "clocks": false
+            },
+            "host": {}
+        },
+        "operations": [
+            {
+                "name": "handle_message",
+                "input_schema": {},
+                "output_schema": {}
+            }
+        ]
+    });
+    fs::write(
+        path,
+        serde_json::to_vec_pretty(&manifest).expect("manifest json"),
+    )
+    .expect("write component.manifest.json");
 }
 
 fn write_describe_sidecar(wasm_path: &Path, component_id: &str) {

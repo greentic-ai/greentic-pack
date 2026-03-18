@@ -157,9 +157,9 @@ fn end_to_end_component_pack_workflow() {
         .current_dir(&component_dir)
         .args([
             "doctor",
+            "target/wasm32-wasip2/release/demo_component.wasm",
             "--manifest",
             "component.manifest.json",
-            release_artifact.to_str().unwrap(),
         ])
         .output()
         .expect("spawn greentic-component doctor");
