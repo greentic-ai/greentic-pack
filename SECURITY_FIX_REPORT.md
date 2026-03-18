@@ -1,34 +1,36 @@
-# Security Fix Report
+# SECURITY FIX REPORT
 
-Date: 2026-03-17 (UTC)
+Date: 2026-03-18 (UTC)
 Repository: `/home/runner/work/greentic-pack/greentic-pack`
 Branch: `fix/allow-shadowing-since-http-tls-shadow-similar`
 
-## 1) Security alerts analysis
-Input alerts:
+## 1) Security Alerts Analysis
+Provided alert payload:
 - Dependabot: `[]`
 - Code scanning: `[]`
 
-Result:
-- No active security alerts were provided.
-- No remediation was required for alert-driven findings.
+Assessment:
+- No active Dependabot alerts.
+- No active code-scanning alerts.
+- No alert-driven remediation required.
 
-## 2) PR dependency vulnerability check
-Input PR dependency vulnerabilities:
+## 2) PR Dependency Vulnerability Check
+Provided PR dependency vulnerability payload:
 - `[]`
 
-Repository checks performed:
-- Enumerated dependency manifests/lockfiles in repo.
-- Checked current git diff for dependency file changes.
+Checks performed:
+- Enumerated dependency manifests/lockfiles in repository (Rust `Cargo.toml`/`Cargo.lock` files).
+- Compared dependency files against `origin/master...HEAD`.
+- Attempted local audit command (`cargo audit`), but it could not run in this CI sandbox due rustup temp-file write restrictions in read-only paths.
 
 Result:
-- No dependency vulnerabilities were provided for this PR.
-- No dependency manifest/lockfile changes were detected in the current diff.
+- No newly reported PR dependency vulnerabilities.
+- Dependency file changes exist versus `origin/master`, but no vulnerability findings were supplied for those changes.
 
-## 3) Fixes applied
-- No security fixes were necessary.
-- No source or dependency files were modified for remediation.
+## 3) Fixes Applied
+- No code or dependency changes were required.
+- No security patches were applied because no actionable vulnerabilities were present in the provided findings.
 
-## 4) Residual risk / notes
-- This report is based on the supplied CI alert payloads and current working diff.
-- If new alerts are generated later in the pipeline, rerun this review with updated findings.
+## 4) Notes
+- Existing local modification detected in working tree: `pr-comment.md` (left untouched).
+- If updated alerts are generated later in CI, rerun this review and remediate only the newly actionable findings.
