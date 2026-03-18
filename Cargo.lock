@@ -1580,9 +1580,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-flow"
-version = "0.4.53"
+version = "0.4.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4543f926d6cff09334a4a84a9248affa8ef9a91e82e8b70734ceae35d8f8b54"
+checksum = "dd938ede9c37d45294bf511634a8e224efc0c9b8054c11ecf287a571c4e4c9da"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1602,6 +1602,7 @@ dependencies = [
  "pathdiff",
  "qa-spec",
  "regex",
+ "reqwest 0.12.28",
  "semver",
  "serde",
  "serde_json",
@@ -2531,9 +2532,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.44.1"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98b64a413c93a1b413dfbaf973b78d271648b9cae50b10302ad88af78991672"
+checksum = "6f29616f6e19415398eb186964fb7cbbeef572c79bede3622a8277667924bbe3"
 dependencies = [
  "ahash",
  "bytecount",
@@ -3579,9 +3580,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.44.1"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22952642836711d7a730d23a4dfb0d732e75a85e4c4f5704266d9c8fac278ff1"
+checksum = "b8a618c14f8ba29d8193bb55e2bf13e4fb2b1115313ecb7ae94b43100c7ac7d5"
 dependencies = [
  "ahash",
  "fluent-uri",
