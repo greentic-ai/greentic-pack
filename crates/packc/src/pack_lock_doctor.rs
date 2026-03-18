@@ -599,7 +599,7 @@ fn resolve_component_wasm(
             &handle,
             dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
         )
-            .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
     };
     let path = resolved
         .cache_path

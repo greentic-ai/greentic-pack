@@ -933,13 +933,13 @@ fn resolve_component_bytes(
             &handle,
             dist.resolve(source, greentic_distributor_client::ResolvePolicy),
         )
-            .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
+        .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
     } else {
         block_on(
             &handle,
             dist.resolve(source, greentic_distributor_client::ResolvePolicy),
         )
-            .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
     };
     let resolved = if offline {
         block_on(

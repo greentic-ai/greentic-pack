@@ -69,7 +69,7 @@ pub async fn handle(
             &handle,
             dist.resolve(source, greentic_distributor_client::ResolvePolicy),
         )
-            .with_context(|| format!("resolve extension ref {}", extension.source.reference))?;
+        .with_context(|| format!("resolve extension ref {}", extension.source.reference))?;
         let resolved = block_on(
             &handle,
             dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),

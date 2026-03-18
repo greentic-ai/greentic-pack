@@ -313,7 +313,7 @@ impl ComponentResolver for PackResolver {
                 self.dist
                     .fetch(&descriptor, greentic_distributor_client::CachePolicy),
             )
-                .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?
+            .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?
         };
         let path = resolved
             .cache_path
