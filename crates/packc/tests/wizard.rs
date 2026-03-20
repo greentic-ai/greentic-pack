@@ -162,10 +162,80 @@ fn wizard_update_flow_auto_runs_validate_after_delegate_success() {
         .expect("wizard cli flow should run");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
-    assert!(calls.contains("flow:wizard"));
+    assert!(calls.contains("flow:wizard ."));
     assert!(calls.contains("self:doctor --in ."));
     assert!(calls.contains("self:build --in ."));
 
+    unsafe {
+        if let Some(value) = old_path {
+            std::env::set_var("PATH", value);
+        } else {
+            std::env::remove_var("PATH");
+        }
+        std::env::remove_var("GREENTIC_PACK_WIZARD_SELF_EXE");
+    }
+}
+
+#[test]
+fn wizard_update_flow_prefers_path_delegate_over_sibling_binary() {
+    let _guard = test_env_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    let temp = TempDir::new().expect("tempdir");
+    let log_path = temp.path().join("calls.log");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let path_delegate = temp.path().join("greentic-flow");
+    let current_exe = std::env::current_exe().expect("current exe");
+    let sibling_delegate = current_exe
+        .parent()
+        .expect("current exe dir")
+        .join("greentic-flow");
+
+    fs::write(&log_path, "").expect("seed call log");
+    write_script(
+        &self_exe,
+        &format!(
+            "#!/usr/bin/env bash\necho \"self:$*\" >> \"{}\"\nexit 0\n",
+            log_path.display()
+        ),
+    );
+    write_script(
+        &path_delegate,
+        &format!(
+            "#!/usr/bin/env bash\necho \"path-flow:$*\" >> \"{}\"\nexit 0\n",
+            log_path.display()
+        ),
+    );
+    write_script(
+        &sibling_delegate,
+        &format!(
+            "#!/usr/bin/env bash\necho \"sibling-flow:$*\" >> \"{}\"\nexit 0\n",
+            log_path.display()
+        ),
+    );
+
+    let old_path = std::env::var("PATH").ok();
+    let new_path = match &old_path {
+        Some(value) => format!("{}:{value}", temp.path().display()),
+        None => temp.path().display().to_string(),
+    };
+
+    unsafe {
+        std::env::set_var("PATH", new_path);
+        std::env::set_var("GREENTIC_PACK_WIZARD_SELF_EXE", self_exe.as_os_str());
+    }
+
+    let mut input = Cursor::new(b"2\n.\n1\n2\nM\n0\n".to_vec());
+    let mut output = Vec::new();
+
+    wizard::run_cli_with_io_and_locale(&mut input, &mut output, Some("en-GB"))
+        .expect("wizard should use PATH flow delegate");
+
+    let calls = fs::read_to_string(&log_path).expect("read call log");
+    assert!(calls.contains("path-flow:wizard ."));
+    assert!(!calls.contains("sibling-flow:"));
+
+    let _ = fs::remove_file(&sibling_delegate);
     unsafe {
         if let Some(value) = old_path {
             std::env::set_var("PATH", value);
@@ -219,7 +289,7 @@ fn wizard_update_flow_delegate_failure_does_not_auto_run_validate() {
         .expect("wizard cli flow should run");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
-    assert!(calls.contains("flow:wizard"));
+    assert!(calls.contains("flow:wizard ."));
     assert!(!calls.contains("self:doctor --in ."));
     assert!(!calls.contains("self:build --in ."));
 
@@ -493,7 +563,7 @@ fn wizard_create_extension_template_delegate_step_runs_flow_wizard() {
         .expect("wizard create extension delegate should run");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
-    assert!(calls.contains("flow:wizard"));
+    assert!(calls.contains("flow:wizard ."));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));
 

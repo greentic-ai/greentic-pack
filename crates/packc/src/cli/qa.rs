@@ -714,6 +714,16 @@ fn prompt_question(
                     continue;
                 }
             },
+            QuestionKind::InlineJson { .. } => {
+                match serde_json::from_str::<serde_json::Value>(input) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        println!("{}", crate::cli_i18n::t("cli.qa.prompt.invalid_json"));
+                        continue;
+                    }
+                }
+            }
+            QuestionKind::AssetRef { .. } => serde_json::Value::String(input.to_string()),
         };
 
         return Ok(Some(parsed));

@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.91"
-version = "0.4.113"
+version = "0.4.114"
 license = "MIT"
 
 [workspace.dependencies]
@@ -41,7 +41,7 @@ pkcs8 = { version = "0.10", features = ["pem"] }
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
-greentic-types = { version = "0.4"}
+greentic-types = { version = "0.4" }
 greentic-flow = { version = "0.4" }
 greentic-interfaces-host = { version = "0.4" }
 greentic-interfaces-wasmtime = { version = "0.4" }
@@ -60,18 +60,18 @@ getrandom = "0.4"
 rustls-pki-types = "1"
 x509-parser = "0.18"
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 wit-component = "0.245"
 greentic-distributor-client = { version = ">=0.4.31, <0.5", default-features = false, features = ["reqwest", "dist-client"] }
 schemars = "1"
-wasmtime = "42"
-wasmtime-wasi = "42"
-wasmtime-wasi-http = "42"
-wasmtime-wasi-tls = "42"
+wasmtime = "43"
+wasmtime-wasi = "43"
+wasmtime-wasi-http = "43"
+wasmtime-wasi-tls = "43"
 assert_cmd = "2"
 indoc = "2"
 predicates = "3"
-wit-bindgen = { version = "0.53", default-features = false, features = ["macros", "realloc"] }
+wit-bindgen = { version = "0.54", default-features = false, features = ["macros", "realloc"] }
 indexmap = "2"
 sys-locale = "0.3"
 unic-langid = "0.9"

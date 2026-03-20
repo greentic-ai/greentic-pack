@@ -4,7 +4,8 @@ use anyhow::Result;
 use wasmtime::component::Linker;
 use wasmtime_wasi::p2::add_to_linker_sync;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
-use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
+use wasmtime_wasi_http::WasiHttpCtx;
+use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpView, add_only_http_to_linker_sync};
 use wasmtime_wasi_tls::{
     LinkOptions as WasiTlsLinkOptions, WasiTls, WasiTlsCtx, WasiTlsCtxBuilder,
 };
@@ -40,12 +41,12 @@ impl WasiView for DescribeHostState {
 }
 
 impl WasiHttpView for DescribeHostState {
-    fn ctx(&mut self) -> &mut WasiHttpCtx {
-        &mut self.wasi_http
-    }
-
-    fn table(&mut self) -> &mut ResourceTable {
-        &mut self.table
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
+            ctx: &mut self.wasi_http,
+            table: &mut self.table,
+            hooks: Default::default(),
+        }
     }
 }
 
@@ -64,7 +65,7 @@ pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Resu
     })
     .map_err(|err| anyhow::anyhow!("register wasi tls describe host stubs: {err}"))?;
 
-    wasmtime_wasi_http::add_only_http_to_linker_sync(linker)
+    add_only_http_to_linker_sync(linker)
         .map_err(|err| anyhow::anyhow!("register wasi http describe host stubs: {err}"))?;
 
     // NOTE: greentic host interfaces (state-store, secrets-store, http-client,

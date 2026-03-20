@@ -3097,15 +3097,6 @@ fn run_process(binary: &Path, args: &[&str], cwd: Option<&Path>) -> Result<bool>
 }
 
 fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
-    if let Some(current_exe) = std::env::current_exe().ok()
-        && let Some(exe_dir) = current_exe.parent()
-    {
-        let local_bin = exe_dir.join(binary);
-        if local_bin.exists() {
-            return run_process(&local_bin, args, Some(cwd)).unwrap_or(false);
-        }
-    }
-
     if let Some(override_bin) = delegate_override_binary(binary)
         && override_bin.exists()
     {
@@ -3117,6 +3108,19 @@ fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
         && dev_bin.exists()
     {
         return run_process(&dev_bin, args, Some(cwd)).unwrap_or(false);
+    }
+
+    if let Some(path_bin) = resolve_from_path(binary) {
+        return run_process(&path_bin, args, Some(cwd)).unwrap_or(false);
+    }
+
+    if let Some(current_exe) = std::env::current_exe().ok()
+        && let Some(exe_dir) = current_exe.parent()
+    {
+        let local_bin = exe_dir.join(binary);
+        if local_bin.exists() {
+            return run_process(&local_bin, args, Some(cwd)).unwrap_or(false);
+        }
     }
 
     Command::new(binary)
@@ -3155,8 +3159,8 @@ fn write_json_value(path: &Path, value: &Value) -> bool {
         .is_some()
 }
 
-fn flow_delegate_args(pack_dir: &Path) -> Vec<String> {
-    vec!["wizard".to_string(), pack_dir.display().to_string()]
+fn flow_delegate_args(_pack_dir: &Path) -> Vec<String> {
+    vec!["wizard".to_string(), ".".to_string()]
 }
 
 fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
