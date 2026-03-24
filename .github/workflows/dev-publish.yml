@@ -1,4 +1,4 @@
-name: Dev Publish (latest-dev)
+﻿name: Dev Publish (latest-dev)
 
 on:
   push:
@@ -213,6 +213,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload latest-dev ${{ steps.package.outputs.artifact }} --clobber
+
 
 
 
