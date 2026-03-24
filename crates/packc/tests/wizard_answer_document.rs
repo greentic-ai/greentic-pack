@@ -1128,7 +1128,7 @@ fn wizard_run_dry_run_then_apply_deployer_destroy_answers_succeeds() {
     let answers_path = temp.path().join("pack-wizard-sample.json");
     let pack_dir = temp.path().join("deploy-test");
     let input = format!(
-        "3\nn\n10\n1\n{}\n\n\ndeployer\ngreentic.deployer.example.v1\ndeployer\ngenerate,plan,apply,destroy,status,rollback\n2\n0\n",
+        "3\nn\n11\n1\n{}\n\n\ndeployer\ngreentic.deployer.example.v1\ndeployer\ngenerate,plan,apply,destroy,status,rollback\n2\n0\n",
         pack_dir.display()
     );
 

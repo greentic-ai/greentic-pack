@@ -288,6 +288,56 @@
       ]
     },
     {
+      "id": "admin",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Admin",
+      "description": "Admin API extensions and runtime admin helpers",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "admin" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "admin-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.admin.api.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "admin" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "invoke" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/admin-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "admin-basic",
+          "name": "Admin basic scaffold",
+          "description": "Scaffold a capability-first admin extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Admin extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "admin.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add admin API helper assets here.\n",
+                "qa/admin-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated provider scaffold for {{extension_type_name}}.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows: []\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "control",
       "canonical_extension_key": "greentic.ext.capabilities.v1",
       "name": "Control",
@@ -352,7 +402,7 @@
         { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
         { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
         { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
-        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/observer-setup.json" },
         { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "before,after" }
       ],
       "templates": [
@@ -365,13 +415,22 @@
             { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "observer.extension" }
           ],
           "plan": [
-            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets", "qa"] },
             {
               "type": "write_files",
               "files": {
                 "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
                 "assets/README.md": "Add observer hook assets here.\n",
-                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+                "qa/observer-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated provider scaffold for {{extension_type_name}}.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows: []\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
               }
             }
           ]

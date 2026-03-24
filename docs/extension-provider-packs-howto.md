@@ -8,6 +8,10 @@ This guide covers the canonical v0.6 extension path for new packs:
 - use `greentic-pack add-extension capability` for deterministic edits
 - validate with `lint`, `resolve`, `build`, and `doctor`
 
+This same path is the correct way to ship extra runtime admin APIs through
+admin/control/observer packs. Do not introduce a separate ad-hoc extension
+mechanism for admin-pack features.
+
 The provider-extension/schema-core track is legacy-only. If you maintain old
 deployments, see `docs/provider_extension.md` and `docs/vision/legacy.md`.
 
