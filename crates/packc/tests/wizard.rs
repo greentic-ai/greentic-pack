@@ -1,9 +1,21 @@
 use std::io::Cursor;
-use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+use std::{fs, os::unix::fs::PermissionsExt, path::Path, path::PathBuf};
 use std::{sync::Mutex, sync::OnceLock};
 
 use packc::cli::wizard;
 use tempfile::TempDir;
+
+fn packc_manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn pack_repo_root() -> PathBuf {
+    packc_manifest_dir()
+        .parent()
+        .and_then(Path::parent)
+        .expect("pack repo root")
+        .to_path_buf()
+}
 
 #[test]
 fn wizard_boots_and_exits_with_zero() {
@@ -431,11 +443,11 @@ fn wizard_create_control_scaffold_uses_component_ref_for_component_bundle() {
 #[test]
 fn extension_catalog_embedded_assets_match_docs_catalog() {
     let docs = fs::read_to_string(
-        "/home/vgrishkyan/greentic/greentic-pack/docs/extensions_capability_packs.catalog.v1.json",
+        pack_repo_root().join("docs/extensions_capability_packs.catalog.v1.json"),
     )
     .expect("read docs catalog");
     let embedded = fs::read_to_string(
-        "/home/vgrishkyan/greentic/greentic-pack/crates/packc/assets/extensions_capability_packs.catalog.v1.json",
+        packc_manifest_dir().join("assets/extensions_capability_packs.catalog.v1.json"),
     )
     .expect("read embedded catalog");
     assert_eq!(embedded, docs);
@@ -444,7 +456,7 @@ fn extension_catalog_embedded_assets_match_docs_catalog() {
 #[test]
 fn extension_catalog_admin_and_observer_scaffolds_are_capability_first() {
     let catalog = fs::read_to_string(
-        "/home/vgrishkyan/greentic/greentic-pack/crates/packc/assets/extensions_capability_packs.catalog.v1.json",
+        packc_manifest_dir().join("assets/extensions_capability_packs.catalog.v1.json"),
     )
     .expect("read catalog");
 
