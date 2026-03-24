@@ -8,6 +8,7 @@ entries for capability-first extension packs.
 
 Provide one reusable catalog shape for:
 
+- Admin
 - Messaging
 - Events
 - OAuth
@@ -138,6 +139,7 @@ before template-specific files are written:
 - `state` -> `greentic.ext.capabilities.v1`
 - `telemetry` -> `greentic.ext.capabilities.v1`
 - `secrets` -> `greentic.ext.capabilities.v1`
+- `admin` -> `greentic.ext.capabilities.v1`
 - `control` -> `greentic.ext.capabilities.v1`
 - `observer` -> `greentic.ext.capabilities.v1`
 - `deployer` -> `greentic.deployer.v1`

@@ -388,7 +388,7 @@ fn wizard_create_control_scaffold_uses_component_ref_for_component_bundle() {
     }
 
     let input_script = format!(
-        "3\nn\n8\n1\n{}\n\n\n\n1\n\n\n\n\n\n2\n0\n\n2\n0\n",
+        "3\nn\n9\n1\n{}\n\n\n\n1\n\n\n\n\n\n2\n0\n\n2\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
@@ -429,6 +429,37 @@ fn wizard_create_control_scaffold_uses_component_ref_for_component_bundle() {
 }
 
 #[test]
+fn extension_catalog_embedded_assets_match_docs_catalog() {
+    let docs = fs::read_to_string(
+        "/home/vgrishkyan/greentic/greentic-pack/docs/extensions_capability_packs.catalog.v1.json",
+    )
+    .expect("read docs catalog");
+    let embedded = fs::read_to_string(
+        "/home/vgrishkyan/greentic/greentic-pack/crates/packc/assets/extensions_capability_packs.catalog.v1.json",
+    )
+    .expect("read embedded catalog");
+    assert_eq!(embedded, docs);
+}
+
+#[test]
+fn extension_catalog_admin_and_observer_scaffolds_are_capability_first() {
+    let catalog = fs::read_to_string(
+        "/home/vgrishkyan/greentic/greentic-pack/crates/packc/assets/extensions_capability_packs.catalog.v1.json",
+    )
+    .expect("read catalog");
+
+    assert!(catalog.contains("\"id\": \"admin-basic\""));
+    assert!(catalog.contains("\"id\": \"observer-provider-v1\""));
+    assert!(catalog.contains("qa/admin-setup.json"));
+    assert!(catalog.contains("qa/observer-setup.json"));
+    assert!(catalog.contains("components/{{edit.component_ref}}/component.manifest.json"));
+    assert!(catalog.contains("components/{{edit.component_ref}}/component.wasm"));
+    assert!(catalog.contains("Canonical key: {{canonical_extension_key}}"));
+    assert!(catalog.contains("greentic.ext.capabilities.v1"));
+    assert!(catalog.contains("\"default\": \"qa/observer-setup.json\""));
+}
+
+#[test]
 fn wizard_create_deployer_scaffold_writes_generic_bundle_without_capabilities_merge() {
     let _guard = test_env_lock()
         .lock()
@@ -451,7 +482,7 @@ fn wizard_create_deployer_scaffold_writes_generic_bundle_without_capabilities_me
     }
 
     let input_script = format!(
-        "3\nn\n10\n1\n{}\n\n\ndeployer-entry\ngreentic.deployer.example.v1\nmy-deployer\n\n2\n0\n",
+        "3\nn\n11\n1\n{}\n\n\ndeployer-entry\ngreentic.deployer.example.v1\nmy-deployer\n\n2\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());
