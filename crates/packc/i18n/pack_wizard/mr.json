@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ड्राय रन: पॅक स्कॅफोल्ड तयार करणे वगळत आहे.",
   "wizard.dry_run.skipping_sign": "ड्राय रन: स्वाक्षरी करणे वगळत आहे.",
   "wizard.dry_run.skipping_template_apply": "ड्राय रन: विस्तार टेम्पलेट फाइल निर्मिती वगळत आहे.",
+  "wizard.error.answer_document_failed": "विझार्ड उत्तरांमध्ये त्रुटी",
   "wizard.error.catalog_load_failed": "विस्तार कॅटलॉग लोड करण्यात अयशस्वी.",
   "wizard.error.create_app_failed": "अनुप्रयोग पॅक तयार करण्यात अयशस्वी.",
   "wizard.error.delegate_component_failed": "greentic-component विजार्ड चालवण्यात अयशस्वी.",

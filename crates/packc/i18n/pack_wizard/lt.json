@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Bandomasis paleidimas: praleidžiamas paketo karkaso kūrimas.",
   "wizard.dry_run.skipping_sign": "Bandomasis paleidimas: praleidžiamas pasirašymas.",
   "wizard.dry_run.skipping_template_apply": "Bandomasis paleidimas: praleidžiamas plėtinio šablono failų generavimas.",
+  "wizard.error.answer_document_failed": "Vedlio atsakymų klaida",
   "wizard.error.catalog_load_failed": "Nepavyko įkelti plėtinių katalogo",
   "wizard.error.create_app_failed": "Nepavyko sukurti programos paketo.",
   "wizard.error.delegate_component_failed": "Nepavyko paleisti „greentic-component“ vedlio.",

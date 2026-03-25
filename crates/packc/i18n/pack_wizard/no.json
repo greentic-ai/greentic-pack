@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Tørrkjøring: hopper over oppretting av pakkestillas.",
   "wizard.dry_run.skipping_sign": "Tørrkjøring: hopper over signering.",
   "wizard.dry_run.skipping_template_apply": "Tørrkjøring: hopper over generering av fil for utvidelsesmal.",
+  "wizard.error.answer_document_failed": "Feil i veivisersvar",
   "wizard.error.catalog_load_failed": "Kunne ikke laste utvidelseskatalogen",
   "wizard.error.create_app_failed": "Kunne ikke opprette applikasjonspakke.",
   "wizard.error.delegate_component_failed": "Kunne ikke kjøre veiviseren greentic-component.",

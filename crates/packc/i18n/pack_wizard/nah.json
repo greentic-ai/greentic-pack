@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Yāuh san tlachiyalistli: mocāhua pack scaffold chihchīhualiztli.",
   "wizard.dry_run.skipping_sign": "Yāuh san tlachiyalistli: mocāhua firmar.",
   "wizard.dry_run.skipping_template_apply": "Yāuh san tlachiyalistli: mocāhua extension template archivo generación.",
+  "wizard.error.answer_document_failed": "Tepalehuiani tlanankiliztli kualli ahmo",
   "wizard.error.catalog_load_failed": "Amo omochiuh mocarga in catálogo de extensiones",
   "wizard.error.create_app_failed": "Amo omochiuh in creación de paquete de aplicación.",
   "wizard.error.delegate_component_failed": "Amo omochiuh in ejecución de asistente greentic-component.",

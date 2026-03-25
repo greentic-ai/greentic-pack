@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Chạy thử: bỏ qua việc tạo khung gói.",
   "wizard.dry_run.skipping_sign": "Chạy thử: bỏ qua việc ký.",
   "wizard.dry_run.skipping_template_apply": "Chạy thử: bỏ qua việc tạo tệp mẫu tiện ích mở rộng.",
+  "wizard.error.answer_document_failed": "Lỗi câu trả lời của trình hướng dẫn",
   "wizard.error.catalog_load_failed": "Không thể tải danh mục tiện ích mở rộng",
   "wizard.error.create_app_failed": "Không thể tạo gói ứng dụng.",
   "wizard.error.delegate_component_failed": "Không thể chạy trình hướng dẫn greentic-component.",

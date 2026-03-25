@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Testlauf: Erstellung des Paket-Grundgerüsts wird übersprungen.",
   "wizard.dry_run.skipping_sign": "Testlauf: Signierung wird übersprungen.",
   "wizard.dry_run.skipping_template_apply": "Testlauf: Generierung der Dateivorlage für die Erweiterung wird übersprungen.",
+  "wizard.error.answer_document_failed": "Fehler bei den Assistentenantworten",
   "wizard.error.catalog_load_failed": "Erweiterungskatalog konnte nicht geladen werden",
   "wizard.error.create_app_failed": "Anwendungspaket konnte nicht erstellt werden.",
   "wizard.error.delegate_component_failed": "greentic-component-Assistent konnte nicht ausgeführt werden.",

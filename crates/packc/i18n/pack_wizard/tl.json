@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Dry run: nilalaktawan ang paggawa ng scaffold ng pack.",
   "wizard.dry_run.skipping_sign": "Dry run: nilalaktawan ang paglagda.",
   "wizard.dry_run.skipping_template_apply": "Dry run: nilalaktawan ang pagbuo ng file ng template ng extension.",
+  "wizard.error.answer_document_failed": "Error sa mga sagot ng wizard",
   "wizard.error.catalog_load_failed": "Nabigong i-load ang katalogo ng extension",
   "wizard.error.create_app_failed": "Nabigong gumawa ng application pack.",
   "wizard.error.delegate_component_failed": "Nabigong patakbuhin ang greentic-component wizard.",

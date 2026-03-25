@@ -11,20 +11,24 @@ I18N_BATCH_SIZE="${I18N_BATCH_SIZE:-500}"
 I18N_MAX_RETRIES="${I18N_MAX_RETRIES:-2}"
 TRANSLATOR_BIN="${TRANSLATOR_BIN:-greentic-i18n-translator}"
 BINSTALL_BIN="${BINSTALL_BIN:-cargo-binstall}"
-LOCAL_CACHE_DIR="$ROOT_DIR/.i18n/cache"
+LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR:-$ROOT_DIR/.i18n/cache}"
 
-default_cache_dir() {
-  local legacy_cache="$HOME/Library/Caches/greentic/i18n-translator"
-
-  if [[ -d "$legacy_cache" ]] && find "$legacy_cache" -type f -print -quit 2>/dev/null | grep -q .; then
-    printf '%s\n' "$legacy_cache"
-    return 0
-  fi
-
-  printf '%s\n' "$LOCAL_CACHE_DIR"
+default_global_cache_dir() {
+  case "$(uname -s)" in
+    Darwin)
+      printf '%s\n' "$HOME/Library/Caches/greentic/i18n-translator"
+      ;;
+    Linux)
+      printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/greentic/i18n-translator"
+      ;;
+    *)
+      printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/greentic/i18n-translator"
+      ;;
+  esac
 }
 
-CACHE_DIR="${CACHE_DIR:-$(default_cache_dir)}"
+GLOBAL_CACHE_DIR="${GLOBAL_CACHE_DIR:-$(default_global_cache_dir)}"
+CACHE_DIR="${CACHE_DIR:-$GLOBAL_CACHE_DIR}"
 
 TARGET_LANGS=(
   ar ar-AE ar-DZ ar-EG ar-IQ ar-MA ar-SA ar-SD ar-SY ar-TN
@@ -65,8 +69,8 @@ ensure_translator() {
   fi
 }
 
-merge_local_cache_into_active_cache() {
-  if [[ "$CACHE_DIR" == "$LOCAL_CACHE_DIR" ]]; then
+merge_local_cache_into_global() {
+  if [[ "$CACHE_DIR" != "$GLOBAL_CACHE_DIR" ]]; then
     return 0
   fi
 
@@ -74,24 +78,17 @@ merge_local_cache_into_active_cache() {
     return 0
   fi
 
-  if ! find "$LOCAL_CACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
-    return 0
-  fi
+  mkdir -p "$GLOBAL_CACHE_DIR"
 
-  mkdir -p "$CACHE_DIR"
-
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a "$LOCAL_CACHE_DIR"/ "$CACHE_DIR"/
-  else
-    find "$LOCAL_CACHE_DIR" -type f -print0 | while IFS= read -r -d '' file; do
-      local rel
-      rel="${file#$LOCAL_CACHE_DIR/}"
-      local target
-      target="$CACHE_DIR/$rel"
-      mkdir -p "$(dirname "$target")"
-      cp -n "$file" "$target"
-    done
-  fi
+  find "$LOCAL_CACHE_DIR" -type f -name '*.json' -print0 | while IFS= read -r -d '' file; do
+    local rel
+    rel="${file#$LOCAL_CACHE_DIR/}"
+    local dest="$GLOBAL_CACHE_DIR/$rel"
+    mkdir -p "$(dirname "$dest")"
+    if [[ ! -f "$dest" ]]; then
+      cp "$file" "$dest"
+    fi
+  done
 }
 
 # translator `--langs all` resolves from files next to EN_PATH; seed missing targets
@@ -235,6 +232,6 @@ run_catalog() {
 }
 
 ensure_translator
-merge_local_cache_into_active_cache
+merge_local_cache_into_global
 run_catalog "$CORE_EN_PATH" "${TARGET_LANGS[@]}"
 run_catalog "$WIZARD_EN_PATH" "${WIZARD_TARGET_LOCALES[@]}"

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Pārbaudes palaišana: izlaiž pakotnes karkasa izveidi.",
   "wizard.dry_run.skipping_sign": "Pārbaudes palaišana: izlaiž parakstīšanu.",
   "wizard.dry_run.skipping_template_apply": "Pārbaudes palaišana: izlaiž paplašinājuma veidnes failu ģenerēšanu.",
+  "wizard.error.answer_document_failed": "Vedņa atbilžu kļūda",
   "wizard.error.catalog_load_failed": "Neizdevās ielādēt paplašinājumu katalogu",
   "wizard.error.create_app_failed": "Neizdevās izveidot lietojumprogrammas pakotni.",
   "wizard.error.delegate_component_failed": "Neizdevās palaist greentic-component vedni.",

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ડ્રાય રન: પેક સ્કેફોલ્ડ બનાવવાનું છોડાઈ રહ્યું છે.",
   "wizard.dry_run.skipping_sign": "ડ્રાય રન: સહી કરવાનું છોડાઈ રહ્યું છે.",
   "wizard.dry_run.skipping_template_apply": "ડ્રાય રન: એક્સ્ટેન્શન ટેમ્પલેટ ફાઇલ જનરેશન છોડાઈ રહ્યું છે.",
+  "wizard.error.answer_document_failed": "વિઝાર્ડ જવાબોમાં ભૂલ",
   "wizard.error.catalog_load_failed": "એક્સ્ટેન્શન કેટલોગ લોડ કરવામાં નિષ્ફળ",
   "wizard.error.create_app_failed": "એપ્લિકેશન પેક બનાવવામાં નિષ્ફળ.",
   "wizard.error.delegate_component_failed": "greentic-component વિઝાર્ડ ચલાવવામાં નિષ્ફળ.",

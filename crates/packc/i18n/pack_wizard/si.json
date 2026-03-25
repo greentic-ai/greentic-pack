@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "වියළි ධාවනය: පැක් scaffold සෑදීම මඟ හරියි.",
   "wizard.dry_run.skipping_sign": "වියළි ධාවනය: අත්සන් කිරීම මඟ හරියි.",
   "wizard.dry_run.skipping_template_apply": "වියළි ධාවනය: extension template ගොනු ජනනය මඟ හරියි.",
+  "wizard.error.answer_document_failed": "විසාර්ඩ් පිළිතුරු දෝෂය",
   "wizard.error.catalog_load_failed": "දිගු කැටලොගය පූරණය කිරීමට අසමත් විය",
   "wizard.error.create_app_failed": "යෙදුම් පැකේජය සෑදීමට අසමත් විය.",
   "wizard.error.delegate_component_failed": "greentic-component විශාරදය ධාවනය කිරීමට අසමත් විය.",

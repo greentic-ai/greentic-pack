@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Kuivaharjoitus: ohitetaan paketin rungon luonti.",
   "wizard.dry_run.skipping_sign": "Kuivaharjoitus: ohitetaan allekirjoitus.",
   "wizard.dry_run.skipping_template_apply": "Kuivaharjoitus: ohitetaan laajennuspohjan tiedostojen generointi.",
+  "wizard.error.answer_document_failed": "Ohjatun toiminnon vastausten virhe",
   "wizard.error.catalog_load_failed": "Laajennusluettelon lataus epäonnistui",
   "wizard.error.create_app_failed": "Sovelluspaketin luonti epäonnistui.",
   "wizard.error.delegate_component_failed": "greentic-component-ohjatun toiminnon suoritus epäonnistui.",

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Simulación: omitiendo la creación del andamiaje del paquete.",
   "wizard.dry_run.skipping_sign": "Simulación: omitiendo la firma.",
   "wizard.dry_run.skipping_template_apply": "Simulación: omitiendo la generación de archivos de plantilla de la extensión.",
+  "wizard.error.answer_document_failed": "Error en las respuestas del asistente",
   "wizard.error.catalog_load_failed": "No se pudo cargar el catálogo de extensiones",
   "wizard.error.create_app_failed": "No se pudo crear el paquete de aplicación.",
   "wizard.error.delegate_component_failed": "No se pudo ejecutar el asistente de greentic-component.",
