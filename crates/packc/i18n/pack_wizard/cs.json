@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Zkušební běh: přeskočeno vytvoření kostry balíčku.",
   "wizard.dry_run.skipping_sign": "Zkušební běh: přeskočeno podepisování.",
   "wizard.dry_run.skipping_template_apply": "Zkušební běh: přeskočeno generování souborů šablony rozšíření.",
+  "wizard.error.answer_document_failed": "Chyba odpovědí průvodce",
   "wizard.error.catalog_load_failed": "Nepodařilo se načíst katalog rozšíření",
   "wizard.error.create_app_failed": "Nepodařilo se vytvořit balíček aplikace.",
   "wizard.error.delegate_component_failed": "Nepodařilo se spustit průvodce greentic-component.",

@@ -137,12 +137,12 @@ fn wizard_add_extension_invalid_integer_answer_stays_in_flow() {
     fs::create_dir_all(&pack_dir).expect("create pack dir");
     fs::write(
         pack_dir.join("pack.yaml"),
-        "pack_id: demo\nversion: 0.1.0\nkind: application\npublisher: Greentic\n\ncomponents:\n  - id: provider\n    ref: file://components/provider.wasm\nflows: []\ndependencies: []\nassets: []\n",
+        "pack_id: demo\nversion: 0.1.0\nkind: application\npublisher: Greentic\n\ncomponents:\n  - id: provider\n    version: 0.1.0\n    world: greentic:component/component@0.5.0\n    supports: []\n    profiles:\n      default: stateless\n      supported:\n        - stateless\n    capabilities:\n      wasi:\n        random: false\n        clocks: false\n      host: {}\n    wasm: components/provider.wasm\n    operations: []\nflows: []\ndependencies: []\nassets: []\n",
     )
     .expect("write pack yaml");
 
     let input_script = format!(
-        "5\n{}\nfixture://extensions.json\n1\n\n1\n\n\n\n\nabc\n7\n2\n\n0\n",
+        "5\n{}\nfixture://extensions.json\n1\n\n1\n\n\n\n\n\nabc\n7\n2\n\n0\n",
         pack_dir.display()
     );
     let mut input = Cursor::new(input_script.into_bytes());

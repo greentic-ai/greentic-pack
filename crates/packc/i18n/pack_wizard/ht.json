@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Egzekisyon tès: ap sote kreyasyon estrikti pake a.",
   "wizard.dry_run.skipping_sign": "Egzekisyon tès: ap sote siyati a.",
   "wizard.dry_run.skipping_template_apply": "Egzekisyon tès: ap sote jenerasyon fichye modèl ekstansyon yo.",
+  "wizard.error.answer_document_failed": "Erè repons asistan an",
   "wizard.error.catalog_load_failed": "Pa t kapab chaje katalòg ekstansyon an",
   "wizard.error.create_app_failed": "Pa t kapab kreye pake aplikasyon an.",
   "wizard.error.delegate_component_failed": "Pa t kapab lanse asistan greentic-component la.",

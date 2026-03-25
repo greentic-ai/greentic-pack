@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "การรันแบบจำลอง: ข้ามการสร้างโครงแพ็ก",
   "wizard.dry_run.skipping_sign": "การรันแบบจำลอง: ข้ามการลงนาม",
   "wizard.dry_run.skipping_template_apply": "การรันแบบจำลอง: ข้ามการสร้างไฟล์เทมเพลตส่วนขยาย",
+  "wizard.error.answer_document_failed": "ข้อผิดพลาดของคำตอบตัวช่วยสร้าง",
   "wizard.error.catalog_load_failed": "โหลดแค็ตตาล็อกส่วนขยายไม่สำเร็จ",
   "wizard.error.create_app_failed": "สร้างแพ็กแอปพลิเคชันไม่สำเร็จ",
   "wizard.error.delegate_component_failed": "เรียกใช้วิซาร์ด greentic-component ไม่สำเร็จ",

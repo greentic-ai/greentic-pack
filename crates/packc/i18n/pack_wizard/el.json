@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Δοκιμαστική εκτέλεση: παράλειψη δημιουργίας σκαλωσιάς πακέτου.",
   "wizard.dry_run.skipping_sign": "Δοκιμαστική εκτέλεση: παράλειψη υπογραφής.",
   "wizard.dry_run.skipping_template_apply": "Δοκιμαστική εκτέλεση: παράλειψη δημιουργίας αρχείων προτύπου επέκτασης.",
+  "wizard.error.answer_document_failed": "Σφάλμα απαντήσεων οδηγού",
   "wizard.error.catalog_load_failed": "Αποτυχία φόρτωσης καταλόγου επεκτάσεων",
   "wizard.error.create_app_failed": "Αποτυχία δημιουργίας πακέτου εφαρμογής.",
   "wizard.error.delegate_component_failed": "Αποτυχία εκτέλεσης του οδηγού greentic-component.",

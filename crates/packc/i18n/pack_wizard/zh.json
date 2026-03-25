@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "试运行：跳过扩展包脚手架创建。",
   "wizard.dry_run.skipping_sign": "试运行：跳过签名。",
   "wizard.dry_run.skipping_template_apply": "试运行：跳过扩展模板文件生成。",
+  "wizard.error.answer_document_failed": "向导回答错误",
   "wizard.error.catalog_load_failed": "加载扩展目录失败",
   "wizard.error.create_app_failed": "创建应用包失败。",
   "wizard.error.delegate_component_failed": "运行 greentic-component 向导失败。",

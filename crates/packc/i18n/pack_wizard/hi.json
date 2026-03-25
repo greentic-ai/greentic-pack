@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ड्राई रन: पैक स्कैफ़ोल्ड निर्माण छोड़ा जा रहा है।",
   "wizard.dry_run.skipping_sign": "ड्राई रन: साइनिंग छोड़ी जा रही है।",
   "wizard.dry_run.skipping_template_apply": "ड्राई रन: एक्सटेंशन टेम्पलेट फ़ाइल निर्माण छोड़ा जा रहा है।",
+  "wizard.error.answer_document_failed": "विज़ार्ड उत्तर त्रुटि",
   "wizard.error.catalog_load_failed": "एक्सटेंशन कैटलॉग लोड करने में विफल",
   "wizard.error.create_app_failed": "एप्लिकेशन पैक बनाने में विफल.",
   "wizard.error.delegate_component_failed": "greentic-component विज़ार्ड चलाने में विफल.",

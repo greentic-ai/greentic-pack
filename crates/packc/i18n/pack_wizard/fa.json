@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "اجرای آزمایشی: از ایجاد اسکفولد بسته صرف‌نظر می‌شود.",
   "wizard.dry_run.skipping_sign": "اجرای آزمایشی: از امضا کردن صرف‌نظر می‌شود.",
   "wizard.dry_run.skipping_template_apply": "اجرای آزمایشی: از تولید فایل‌های قالب افزونه صرف‌نظر می‌شود.",
+  "wizard.error.answer_document_failed": "خطای پاسخ‌های راهنما",
   "wizard.error.catalog_load_failed": "بارگیری فهرست افزونه انجام نشد",
   "wizard.error.create_app_failed": "ایجاد بستهٔ برنامه انجام نشد.",
   "wizard.error.delegate_component_failed": "اجرای جادوگر greentic-component انجام نشد.",

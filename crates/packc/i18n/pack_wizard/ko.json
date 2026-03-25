@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "드라이 런: 팩 스캐폴드 생성을 건너뜁니다.",
   "wizard.dry_run.skipping_sign": "드라이 런: 서명을 건너뜁니다.",
   "wizard.dry_run.skipping_template_apply": "드라이 런: 확장 템플릿 파일 생성을 건너뜁니다.",
+  "wizard.error.answer_document_failed": "마법사 응답 오류",
   "wizard.error.catalog_load_failed": "확장 카탈로그를 불러오지 못했습니다",
   "wizard.error.create_app_failed": "애플리케이션 팩을 생성하지 못했습니다.",
   "wizard.error.delegate_component_failed": "greentic-component 마법사를 실행하지 못했습니다.",

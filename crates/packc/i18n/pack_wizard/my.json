@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "အစမ်းလုပ်ဆောင်မှု: pack scaffold ဖန်တီးမှုကို ကျော်နေသည်။",
   "wizard.dry_run.skipping_sign": "အစမ်းလုပ်ဆောင်မှု: လက်မှတ်ထိုးခြင်းကို ကျော်နေသည်။",
   "wizard.dry_run.skipping_template_apply": "အစမ်းလုပ်ဆောင်မှု: extension template ဖိုင်များ ဖန်တီးခြင်းကို ကျော်နေသည်။",
+  "wizard.error.answer_document_failed": "အကူအညီပေးစနစ် အဖြေများ အမှား",
   "wizard.error.catalog_load_failed": "တိုးချဲ့ကတ်တလောက်ကို ဖွင့်မရပါ",
   "wizard.error.create_app_failed": "အက်ပလီကေးရှင်းပက်ခ်ကို ဖန်တီးမရပါ။",
   "wizard.error.delegate_component_failed": "greentic-component wizard ကို လုပ်ဆောင်မရပါ။",

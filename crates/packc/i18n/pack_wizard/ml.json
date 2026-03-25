@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ഡ്രൈ റൺ: pack scaffold സൃഷ്ടിക്കൽ ഒഴിവാക്കുന്നു.",
   "wizard.dry_run.skipping_sign": "ഡ്രൈ റൺ: signing ഒഴിവാക്കുന്നു.",
   "wizard.dry_run.skipping_template_apply": "ഡ്രൈ റൺ: extension template ഫയൽ സൃഷ്ടിക്കൽ ഒഴിവാക്കുന്നു.",
+  "wizard.error.answer_document_failed": "വിജാർഡ് ഉത്തരങ്ങളിലെ പിശക്",
   "wizard.error.catalog_load_failed": "എക്സ്റ്റൻഷൻ കാറ്റലോഗ് ലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല",
   "wizard.error.create_app_failed": "അപ്ലിക്കേഷൻ പാക്ക് സൃഷ്ടിക്കാൻ കഴിഞ്ഞില്ല.",
   "wizard.error.delegate_component_failed": "greentic-component വിസാർഡ് പ്രവർത്തിപ്പിക്കാൻ കഴിഞ്ഞില്ല.",

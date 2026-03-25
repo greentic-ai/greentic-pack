@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Yant'a apnaqawi: paquete scaffold luraña jaytaski.",
   "wizard.dry_run.skipping_sign": "Yant'a apnaqawi: firma luraña jaytaski.",
   "wizard.dry_run.skipping_template_apply": "Yant'a apnaqawi: extensión plantilla qillqata uñstayaña jaytaski.",
+  "wizard.error.answer_document_failed": "Asistenten jaysäwinakapan pantjasiwi",
   "wizard.error.catalog_load_failed": "Extensión catálogo qhantayaña janiw atiskiti",
   "wizard.error.create_app_failed": "Aplicación paquete luraña janiw atiskiti.",
   "wizard.error.delegate_component_failed": "greentic-component wizard apnaqaña janiw atiskiti.",

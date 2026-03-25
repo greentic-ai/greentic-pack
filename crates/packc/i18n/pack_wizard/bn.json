@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ড্রাই রান: প্যাক স্ক্যাফোল্ড তৈরি এড়িয়ে যাচ্ছে।",
   "wizard.dry_run.skipping_sign": "ড্রাই রান: সাইন করা এড়িয়ে যাচ্ছে।",
   "wizard.dry_run.skipping_template_apply": "ড্রাই রান: এক্সটেনশন টেমপ্লেট ফাইল তৈরি এড়িয়ে যাচ্ছে।",
+  "wizard.error.answer_document_failed": "উইজার্ড উত্তরের ত্রুটি",
   "wizard.error.catalog_load_failed": "এক্সটেনশন ক্যাটালগ লোড করতে ব্যর্থ হয়েছে",
   "wizard.error.create_app_failed": "অ্যাপ্লিকেশন প্যাক তৈরি করতে ব্যর্থ হয়েছে।",
   "wizard.error.delegate_component_failed": "greentic-component উইজার্ড চালাতে ব্যর্থ হয়েছে।",

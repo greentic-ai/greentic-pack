@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ਡ੍ਰਾਈ ਰਨ: ਪੈਕ ਸਕੈਫੋਲਡ ਬਣਾਉਣਾ ਛੱਡਿਆ ਜਾ ਰਿਹਾ ਹੈ।",
   "wizard.dry_run.skipping_sign": "ਡ੍ਰਾਈ ਰਨ: ਸਾਇਨ ਕਰਨਾ ਛੱਡਿਆ ਜਾ ਰਿਹਾ ਹੈ।",
   "wizard.dry_run.skipping_template_apply": "ਡ੍ਰਾਈ ਰਨ: ਐਕਸਟੈਂਸ਼ਨ ਟੈਂਪਲੇਟ ਫਾਈਲ ਬਣਾਉਣਾ ਛੱਡਿਆ ਜਾ ਰਿਹਾ ਹੈ।",
+  "wizard.error.answer_document_failed": "ਵਿਜ਼ਾਰਡ ਜਵਾਬ ਗਲਤੀ",
   "wizard.error.catalog_load_failed": "ਐਕਸਟੈਂਸ਼ਨ ਕੈਟਾਲੋਗ ਲੋਡ ਕਰਨ ਵਿੱਚ ਅਸਫਲ",
   "wizard.error.create_app_failed": "ਐਪਲੀਕੇਸ਼ਨ ਪੈਕ ਬਣਾਉਣ ਵਿੱਚ ਅਸਫਲ।",
   "wizard.error.delegate_component_failed": "greentic-component ਵਿਜ਼ਾਰਡ ਚਲਾਉਣ ਵਿੱਚ ਅਸਫਲ।",

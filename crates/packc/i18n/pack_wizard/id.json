@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Dry run: melewati pembuatan scaffold paket.",
   "wizard.dry_run.skipping_sign": "Dry run: melewati penandatanganan.",
   "wizard.dry_run.skipping_template_apply": "Dry run: melewati pembuatan file templat ekstensi.",
+  "wizard.error.answer_document_failed": "Kesalahan jawaban panduan",
   "wizard.error.catalog_load_failed": "Gagal memuat katalog ekstensi",
   "wizard.error.create_app_failed": "Gagal membuat paket aplikasi.",
   "wizard.error.delegate_component_failed": "Gagal menjalankan wizard greentic-component.",

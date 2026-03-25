@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Dry run: pack scaffold کی تخلیق کو چھوڑا جا رہا ہے۔",
   "wizard.dry_run.skipping_sign": "Dry run: دستخط کرنا چھوڑا جا رہا ہے۔",
   "wizard.dry_run.skipping_template_apply": "Dry run: extension template فائل جنریشن کو چھوڑا جا رہا ہے۔",
+  "wizard.error.answer_document_failed": "وزارڈ جوابات میں خرابی",
   "wizard.error.catalog_load_failed": "ایکسٹینشن کیٹلاگ لوڈ کرنے میں ناکامی",
   "wizard.error.create_app_failed": "ایپلیکیشن پیک بنانے میں ناکامی۔",
   "wizard.error.delegate_component_failed": "greentic-component وزارڈ چلانے میں ناکامی۔",
