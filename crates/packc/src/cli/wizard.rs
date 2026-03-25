@@ -403,7 +403,7 @@ fn run_interactive_command(
             &format!(
                 "{}: {}",
                 i18n.t("wizard.error.answer_document_failed"),
-                initial_result.err().expect("initial wizard answers error")
+                initial_result.expect_err("initial wizard answers error")
             ),
         )?;
         let session = run_with_mode(

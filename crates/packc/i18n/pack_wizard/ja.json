@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ドライラン: パックスキャフォールドの作成をスキップします。",
   "wizard.dry_run.skipping_sign": "ドライラン: 署名をスキップします。",
   "wizard.dry_run.skipping_template_apply": "ドライラン: 拡張テンプレートファイルの生成をスキップします。",
+  "wizard.error.answer_document_failed": "ウィザードの回答エラー",
   "wizard.error.catalog_load_failed": "拡張機能カタログの読み込みに失敗しました",
   "wizard.error.create_app_failed": "アプリケーションパックの作成に失敗しました。",
   "wizard.error.delegate_component_failed": "greentic-component ウィザードの実行に失敗しました。",

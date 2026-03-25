@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Prueba seca: ojehejáva paquete scaffold jejapo.",
   "wizard.dry_run.skipping_sign": "Prueba seca: ojehejáva hag̃ua oñemonguatia hag̃ua.",
   "wizard.dry_run.skipping_template_apply": "Prueba seca: ojehejáva extensión plantilla marandurenda kuéra ñemoheñói.",
+  "wizard.error.answer_document_failed": "Jejavy asistente rembovái rehegua",
   "wizard.error.catalog_load_failed": "Ndaikatúi oñemyenyhẽ extensión catálogo",
   "wizard.error.create_app_failed": "Ndaikatúi oñemoheñói aplicación paquete.",
   "wizard.error.delegate_component_failed": "Ndaikatúi oñemboguata greentic-component wizard.",

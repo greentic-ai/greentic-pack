@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ການທົດລອງແຫ້ງ: ຂ້າມການສ້າງ scaffold ຂອງແພັກ.",
   "wizard.dry_run.skipping_sign": "ການທົດລອງແຫ້ງ: ຂ້າມການເຊັນ.",
   "wizard.dry_run.skipping_template_apply": "ການທົດລອງແຫ້ງ: ຂ້າມການສ້າງໄຟລ໌ແມ່ແບບ extension.",
+  "wizard.error.answer_document_failed": "ຂໍ້ຜິດພາດຂອງຄໍາຕອບ Wizard",
   "wizard.error.catalog_load_failed": "ໂຫລດແຄັດຕາລ໋ອກສ່ວນຂະຫຍາຍບໍ່ສໍາເລັດ",
   "wizard.error.create_app_failed": "ສ້າງແພັກແອັບພລິເຄຊັນບໍ່ສໍາເລັດ.",
   "wizard.error.delegate_component_failed": "ດໍາເນີນ greentic-component wizard ບໍ່ສໍາເລັດ.",

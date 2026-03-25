@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Mana chiqap ruway: pack scaffold ruwayta saltashan.",
   "wizard.dry_run.skipping_sign": "Mana chiqap ruway: firmayta saltashan.",
   "wizard.dry_run.skipping_template_apply": "Mana chiqap ruway: extensión plantilla willay paqarichiyta saltashan.",
+  "wizard.error.answer_document_failed": "Aswanpa kutichiykunapi pantay",
   "wizard.error.catalog_load_failed": "Mast'ariy catálogo cargayqa pantarqan",
   "wizard.error.create_app_failed": "Aplicación paqeteta rurayqa pantarqan.",
   "wizard.error.delegate_component_failed": "greentic-component wizard purichiyqa pantarqan.",

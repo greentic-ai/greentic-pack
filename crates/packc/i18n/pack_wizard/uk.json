@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Пробний запуск: пропуск створення каркаса пакета.",
   "wizard.dry_run.skipping_sign": "Пробний запуск: пропуск підписування.",
   "wizard.dry_run.skipping_template_apply": "Пробний запуск: пропуск генерації файлів шаблону розширення.",
+  "wizard.error.answer_document_failed": "Помилка відповідей майстра",
   "wizard.error.catalog_load_failed": "Не вдалося завантажити каталог розширень",
   "wizard.error.create_app_failed": "Не вдалося створити пакет застосунку.",
   "wizard.error.delegate_component_failed": "Не вдалося запустити майстер greentic-component.",

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "சோதனை இயக்கம்: பேக் scaffold உருவாக்கம் தவிர்க்கப்படுகிறது.",
   "wizard.dry_run.skipping_sign": "சோதனை இயக்கம்: கையொப்பமிடல் தவிர்க்கப்படுகிறது.",
   "wizard.dry_run.skipping_template_apply": "சோதனை இயக்கம்: extension template கோப்பு உருவாக்கம் தவிர்க்கப்படுகிறது.",
+  "wizard.error.answer_document_failed": "வழிகாட்டி பதில்களில் பிழை",
   "wizard.error.catalog_load_failed": "நீட்டிப்பு பட்டியலை ஏற்ற முடியவில்லை",
   "wizard.error.create_app_failed": "பயன்பாட்டு பேக்கை உருவாக்க முடியவில்லை.",
   "wizard.error.delegate_component_failed": "greentic-component வழிகாட்டியை இயக்க முடியவில்லை.",

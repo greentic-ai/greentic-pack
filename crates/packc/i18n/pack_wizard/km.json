@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "សាកល្បងដំណើរការ: រំលងការបង្កើត scaffold កញ្ចប់។",
   "wizard.dry_run.skipping_sign": "សាកល្បងដំណើរការ: រំលងការចុះហត្ថលេខា។",
   "wizard.dry_run.skipping_template_apply": "សាកល្បងដំណើរការ: រំលងការបង្កើតឯកសារគំរូផ្នែកបន្ថែម។",
+  "wizard.error.answer_document_failed": "កំហុសចម្លើយរបស់អ្នកជំនួយការ",
   "wizard.error.catalog_load_failed": "បរាជ័យក្នុងការផ្ទុកកាតាឡុកផ្នែកបន្ថែម",
   "wizard.error.create_app_failed": "បរាជ័យក្នុងការបង្កើតកញ្ចប់កម្មវិធី។",
   "wizard.error.delegate_component_failed": "បរាជ័យក្នុងការដំណើរការ greentic-component wizard។",

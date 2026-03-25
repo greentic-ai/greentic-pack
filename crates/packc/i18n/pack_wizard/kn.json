@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "ಡ್ರೈ ರನ್: ಪ್ಯಾಕ್ ಸ್ಕಾಫೋಲ್ಡ್ ರಚನೆಯನ್ನು ಬಿಡಲಾಗುತ್ತಿದೆ.",
   "wizard.dry_run.skipping_sign": "ಡ್ರೈ ರನ್: ಸಹಿ ಮಾಡುವುದನ್ನು ಬಿಡಲಾಗುತ್ತಿದೆ.",
   "wizard.dry_run.skipping_template_apply": "ಡ್ರೈ ರನ್: ಎಕ್ಸ್‌ಟೆನ್ಷನ್ ಟೆಂಪ್ಲೇಟ್ ಫೈಲ್ ರಚನೆಯನ್ನು ಬಿಡಲಾಗುತ್ತಿದೆ.",
+  "wizard.error.answer_document_failed": "ವಿಜಾರ್ಡ್ ಉತ್ತರಗಳ ದೋಷ",
   "wizard.error.catalog_load_failed": "ವಿಸ್ತರಣೆ ಕ್ಯಾಟಲಾಗ್ ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ",
   "wizard.error.create_app_failed": "ಅಪ್ಲಿಕೇಶನ್ ಪ್ಯಾಕ್ ರಚಿಸಲು ವಿಫಲವಾಗಿದೆ.",
   "wizard.error.delegate_component_failed": "greentic-component ವಿಜಾರ್ಡ್ ಅನ್ನು ಚಾಲನೆ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ.",

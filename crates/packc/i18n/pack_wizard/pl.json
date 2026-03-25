@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Próba na sucho: pomijanie tworzenia szkieletu pakietu.",
   "wizard.dry_run.skipping_sign": "Próba na sucho: pomijanie podpisywania.",
   "wizard.dry_run.skipping_template_apply": "Próba na sucho: pomijanie generowania plików szablonu rozszerzenia.",
+  "wizard.error.answer_document_failed": "Błąd odpowiedzi kreatora",
   "wizard.error.catalog_load_failed": "Nie udało się załadować katalogu rozszerzeń",
   "wizard.error.create_app_failed": "Nie udało się utworzyć pakietu aplikacji.",
   "wizard.error.delegate_component_failed": "Nie udało się uruchomić kreatora greentic-component.",

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "డ్రై రన్: ప్యాక్ స్కాఫోల్డ్ సృష్టిని దాటవేస్తోంది.",
   "wizard.dry_run.skipping_sign": "డ్రై రన్: సైనింగ్‌ను దాటవేస్తోంది.",
   "wizard.dry_run.skipping_template_apply": "డ్రై రన్: ఎక్స్‌టెన్షన్ టెంప్లేట్ ఫైల్ జనరేషన్‌ను దాటవేస్తోంది.",
+  "wizard.error.answer_document_failed": "విజార్డ్ సమాధానాల లోపం",
   "wizard.error.catalog_load_failed": "ఎక్స్టెన్షన్ క్యాటలాగ్ లోడ్ చేయడంలో విఫలమైంది",
   "wizard.error.create_app_failed": "అప్లికేషన్ ప్యాక్ సృష్టించడంలో విఫలమైంది.",
   "wizard.error.delegate_component_failed": "greentic-component విజార్డ్ నడపడంలో విఫలమైంది.",

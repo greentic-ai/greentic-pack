@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Kuru çalıştırma: paket iskeleti oluşturma atlanıyor.",
   "wizard.dry_run.skipping_sign": "Kuru çalıştırma: imzalama atlanıyor.",
   "wizard.dry_run.skipping_template_apply": "Kuru çalıştırma: uzantı şablonu dosya oluşturma atlanıyor.",
+  "wizard.error.answer_document_failed": "Sihirbaz yanıtları hatası",
   "wizard.error.catalog_load_failed": "Uzantı kataloğu yüklenemedi",
   "wizard.error.create_app_failed": "Uygulama paketi oluşturulamadı.",
   "wizard.error.delegate_component_failed": "greentic-component sihirbazı çalıştırılamadı.",

@@ -52,6 +52,13 @@ fn online() -> bool {
     }
 }
 
+fn component_e2e_enabled() -> bool {
+    matches!(
+        std::env::var("GREENTIC_PACK_RUN_COMPONENT_E2E").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes")
+    )
+}
+
 fn has_external_guest_wit_mismatch(stdout: &str, stderr: &str) -> bool {
     let combined = format!("{stdout}\n{stderr}");
     combined.contains("type `host-error` not defined in interface")
@@ -299,6 +306,12 @@ fn assert_operation_in_payload(manifest_path: &Path, gtpack_path: &Path) {
 
 #[test]
 fn multi_pack_shared_component_has_operation_binding() {
+    if !component_e2e_enabled() {
+        eprintln!(
+            "skipping multi_pack_shared_component_has_operation_binding: set GREENTIC_PACK_RUN_COMPONENT_E2E=1 to enable external-tool E2E"
+        );
+        return;
+    }
     assert!(
         tool_available("greentic-component"),
         "greentic-component binary is required for this test"

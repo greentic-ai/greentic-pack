@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Skúšobný beh: preskakuje sa vytvorenie kostry balíka.",
   "wizard.dry_run.skipping_sign": "Skúšobný beh: preskakuje sa podpisovanie.",
   "wizard.dry_run.skipping_template_apply": "Skúšobný beh: preskakuje sa generovanie súborov šablóny rozšírenia.",
+  "wizard.error.answer_document_failed": "Chyba odpovedí sprievodcu",
   "wizard.error.catalog_load_failed": "Nepodarilo sa načítať katalóg rozšírení",
   "wizard.error.create_app_failed": "Nepodarilo sa vytvoriť balík aplikácie.",
   "wizard.error.delegate_component_failed": "Nepodarilo sa spustiť sprievodcu greentic-component.",

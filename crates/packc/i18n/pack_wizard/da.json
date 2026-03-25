@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Tørkørsel: springer oprettelse af pakkeskabelon over.",
   "wizard.dry_run.skipping_sign": "Tørkørsel: springer signering over.",
   "wizard.dry_run.skipping_template_apply": "Tørkørsel: springer generering af extension-skabelonfiler over.",
+  "wizard.error.answer_document_failed": "Fejl i guide-svar",
   "wizard.error.catalog_load_failed": "Kunne ikke indlæse udvidelseskatalog",
   "wizard.error.create_app_failed": "Kunne ikke oprette applikationspakke.",
   "wizard.error.delegate_component_failed": "Kunne ikke køre greentic-component-guiden.",
