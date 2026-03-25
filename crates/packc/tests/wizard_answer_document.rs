@@ -492,6 +492,54 @@ fn wizard_validate_rejects_wrong_wizard_id() {
 }
 
 #[test]
+fn wizard_run_with_invalid_answers_file_writes_localized_error_and_continues() {
+    let temp = TempDir::new().expect("tempdir");
+    let answers_path = temp.path().join("invalid_answers.json");
+    fs::write(
+        &answers_path,
+        r#"{
+  "wizard_id":"greentic-pack.wizard.run",
+  "schema_id":"greentic-pack.wizard.answers",
+  "schema_version":"1.0.0",
+  "locale":"en-GB",
+  "answers":{"pack_dir":".","run_build":"yes"},
+  "locks":{}
+}"#,
+    )
+    .expect("write invalid answers file");
+
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("--answers")
+        .arg(&answers_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn wizard --answers");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(b"0\n")
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait output");
+
+    assert!(
+        output.status.success(),
+        "wizard should continue interactively after invalid answers"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Wizard answers error: answers.run_build must be a boolean"));
+    assert!(stdout.contains("Main Menu"));
+    assert!(stdout.contains("0) Exit"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).trim().is_empty(),
+        "wizard should keep the error in wizard output, not stderr"
+    );
+}
+
+#[test]
 fn wizard_run_dry_run_records_choices_without_side_effects() {
     let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");

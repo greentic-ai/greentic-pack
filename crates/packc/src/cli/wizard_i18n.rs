@@ -137,6 +137,7 @@ const EMBEDDED_WIZARD_BUNDLES: &[(&str, &str)] = &[
     ("da", include_str!("../../i18n/pack_wizard/da.json")),
     ("de", include_str!("../../i18n/pack_wizard/de.json")),
     ("el", include_str!("../../i18n/pack_wizard/el.json")),
+    ("en", include_str!("../../i18n/pack_wizard/en.json")),
     ("en-GB", include_str!("../../i18n/pack_wizard/en-GB.json")),
     ("es", include_str!("../../i18n/pack_wizard/es.json")),
     ("et", include_str!("../../i18n/pack_wizard/et.json")),

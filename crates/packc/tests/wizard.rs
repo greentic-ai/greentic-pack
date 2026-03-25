@@ -131,6 +131,35 @@ fn wizard_add_extension_writes_answers_and_updates_pack_yaml() {
 }
 
 #[test]
+fn wizard_add_extension_invalid_integer_answer_stays_in_flow() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(
+        pack_dir.join("pack.yaml"),
+        "pack_id: demo\nversion: 0.1.0\nkind: application\npublisher: Greentic\n\ncomponents:\n  - id: provider\n    ref: file://components/provider.wasm\nflows: []\ndependencies: []\nassets: []\n",
+    )
+    .expect("write pack yaml");
+
+    let input_script = format!(
+        "5\n{}\nfixture://extensions.json\n1\n\n1\n\n\n\n\nabc\n7\n2\n\n0\n",
+        pack_dir.display()
+    );
+    let mut input = Cursor::new(input_script.into_bytes());
+    let mut output = Vec::new();
+
+    wizard::run_cli_with_io_and_locale(&mut input, &mut output, Some("en-GB"))
+        .expect("wizard add extension flow should recover from invalid integer");
+
+    let rendered = String::from_utf8(output).expect("utf8 output");
+    assert!(rendered.contains("Invalid selection."));
+    assert!(rendered.contains("updated pack.yaml"));
+    let extension = fs::read_to_string(pack_dir.join("extensions/messaging.json"))
+        .expect("read extension answers");
+    assert!(extension.contains("\"priority\": \"7\""));
+}
+
+#[test]
 fn wizard_update_flow_auto_runs_validate_after_delegate_success() {
     let _guard = test_env_lock()
         .lock()

@@ -377,14 +377,46 @@ fn run_interactive_command(
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
     let locale = resolved_locale(requested_locale);
     if let Some(path) = cmd.answers.as_deref() {
-        let doc =
-            load_answer_document(path, &target_schema_version, cmd.migrate, requested_locale)?;
-        validate_answer_document(&doc)?;
-        if !cmd.dry_run {
-            apply_answer_document(&doc)?;
+        let initial_result = (|| -> Result<()> {
+            let doc =
+                load_answer_document(path, &target_schema_version, cmd.migrate, requested_locale)?;
+            validate_answer_document(&doc)?;
+            if !cmd.dry_run {
+                apply_answer_document(&doc)?;
+            }
+            if let Some(out) = cmd.emit_answers.as_deref() {
+                write_answer_document(out, &doc)?;
+            }
+            Ok(())
+        })();
+        if initial_result.is_ok() {
+            return Ok(());
         }
-        if let Some(out) = cmd.emit_answers.as_deref() {
-            write_answer_document(out, &doc)?;
+
+        let stdin = io::stdin();
+        let stdout = io::stdout();
+        let mut input = stdin.lock();
+        let mut output = stdout.lock();
+        let i18n = WizardI18n::new(requested_locale);
+        wizard_ui::render_line(
+            &mut output,
+            &format!(
+                "{}: {}",
+                i18n.t("wizard.error.answer_document_failed"),
+                initial_result.err().expect("initial wizard answers error")
+            ),
+        )?;
+        let session = run_with_mode(
+            &mut input,
+            &mut output,
+            requested_locale,
+            RunMode::Cli,
+            Some(runtime),
+            cmd.dry_run,
+        )?;
+        if let Some(path) = cmd.emit_answers.as_deref() {
+            let doc = answer_document_from_session(&session, &locale, &target_schema_version)?;
+            write_answer_document(path, &doc)?;
         }
         return Ok(());
     }
