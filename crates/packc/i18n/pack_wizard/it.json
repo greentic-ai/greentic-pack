@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Esecuzione di prova: salto della creazione dello scaffold del pacchetto.",
   "wizard.dry_run.skipping_sign": "Esecuzione di prova: salto della firma.",
   "wizard.dry_run.skipping_template_apply": "Esecuzione di prova: salto della generazione dei file del modello di estensione.",
+  "wizard.error.answer_document_failed": "Errore nelle risposte della procedura guidata",
   "wizard.error.catalog_load_failed": "Impossibile caricare il catalogo delle estensioni",
   "wizard.error.create_app_failed": "Impossibile creare il pacchetto applicazione.",
   "wizard.error.delegate_component_failed": "Impossibile eseguire la procedura guidata greentic-component.",

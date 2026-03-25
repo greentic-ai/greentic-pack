@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Dry run: aanmaken van pack-scaffold wordt overgeslagen.",
   "wizard.dry_run.skipping_sign": "Dry run: ondertekenen wordt overgeslagen.",
   "wizard.dry_run.skipping_template_apply": "Dry run: genereren van extensiesjabloonbestanden wordt overgeslagen.",
+  "wizard.error.answer_document_failed": "Fout in wizardantwoorden",
   "wizard.error.catalog_load_failed": "Laden van extensiecatalogus mislukt",
   "wizard.error.create_app_failed": "Maken van applicatiepakket mislukt.",
   "wizard.error.delegate_component_failed": "Uitvoeren van greentic-component-wizard mislukt.",

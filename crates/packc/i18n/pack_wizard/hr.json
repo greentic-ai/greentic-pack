@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Probni rad: preskače se stvaranje kostura paketa.",
   "wizard.dry_run.skipping_sign": "Probni rad: preskače se potpisivanje.",
   "wizard.dry_run.skipping_template_apply": "Probni rad: preskače se generiranje datoteka predloška proširenja.",
+  "wizard.error.answer_document_failed": "Pogreška u odgovorima čarobnjaka",
   "wizard.error.catalog_load_failed": "Učitavanje kataloga proširenja nije uspjelo",
   "wizard.error.create_app_failed": "Stvaranje paketa aplikacije nije uspjelo.",
   "wizard.error.delegate_component_failed": "Pokretanje čarobnjaka greentic-component nije uspjelo.",

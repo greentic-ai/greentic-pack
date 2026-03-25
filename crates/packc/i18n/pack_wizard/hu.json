@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Próba futtatás: a csomagváz létrehozása kihagyva.",
   "wizard.dry_run.skipping_sign": "Próba futtatás: az aláírás kihagyva.",
   "wizard.dry_run.skipping_template_apply": "Próba futtatás: a bővítménysablon-fájlok létrehozása kihagyva.",
+  "wizard.error.answer_document_failed": "Varázsló válaszok hiba",
   "wizard.error.catalog_load_failed": "A bővítménykatalógus betöltése sikertelen.",
   "wizard.error.create_app_failed": "Az alkalmazáscsomag létrehozása sikertelen.",
   "wizard.error.delegate_component_failed": "A greentic-component varázsló futtatása sikertelen.",

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Пробен режим: пропуска се създаването на основната структура на пакета.",
   "wizard.dry_run.skipping_sign": "Пробен режим: пропуска се подписването.",
   "wizard.dry_run.skipping_template_apply": "Пробен режим: пропуска се генерирането на файлове от шаблона за разширението.",
+  "wizard.error.answer_document_failed": "Грешка в отговорите на съветника",
   "wizard.error.catalog_load_failed": "Неуспешно зареждане на каталога с разширения",
   "wizard.error.create_app_failed": "Неуспешно създаване на пакет за приложение.",
   "wizard.error.delegate_component_failed": "Неуспешно стартиране на съветника greentic-component.",

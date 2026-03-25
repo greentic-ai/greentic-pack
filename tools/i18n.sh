@@ -2,14 +2,33 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-I18N_REPO="${I18N_REPO:-/projects/ai/greentic-ng/greentic-i18n}"
 MODE="${1:-all}"
 CORE_EN_PATH="$ROOT_DIR/crates/packc/i18n/en.json"
-WIZARD_EN_GB_PATH="$ROOT_DIR/crates/packc/i18n/pack_wizard/en-GB.json"
+WIZARD_EN_PATH="$ROOT_DIR/crates/packc/i18n/pack_wizard/en.json"
 AUTH_MODE="${AUTH_MODE:-auto}"
 LOCALE="${LOCALE:-en}"
-I18N_BATCH_SIZE="${I18N_BATCH_SIZE:-200}"
+I18N_BATCH_SIZE="${I18N_BATCH_SIZE:-500}"
 I18N_MAX_RETRIES="${I18N_MAX_RETRIES:-2}"
+TRANSLATOR_BIN="${TRANSLATOR_BIN:-greentic-i18n-translator}"
+BINSTALL_BIN="${BINSTALL_BIN:-cargo-binstall}"
+LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR:-$ROOT_DIR/.i18n/cache}"
+
+default_global_cache_dir() {
+  case "$(uname -s)" in
+    Darwin)
+      printf '%s\n' "$HOME/Library/Caches/greentic/i18n-translator"
+      ;;
+    Linux)
+      printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/greentic/i18n-translator"
+      ;;
+    *)
+      printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/greentic/i18n-translator"
+      ;;
+  esac
+}
+
+GLOBAL_CACHE_DIR="${GLOBAL_CACHE_DIR:-$(default_global_cache_dir)}"
+CACHE_DIR="${CACHE_DIR:-$GLOBAL_CACHE_DIR}"
 
 TARGET_LANGS=(
   ar ar-AE ar-DZ ar-EG ar-IQ ar-MA ar-SA ar-SD ar-SY ar-TN
@@ -19,20 +38,58 @@ TARGET_LANGS=(
 )
 WIZARD_TARGET_LOCALES=("${TARGET_LANGS[@]}" "fr-FR" "nl-NL")
 
-if [[ ! -d "$I18N_REPO" ]]; then
-  echo "missing i18n repo: $I18N_REPO" >&2
-  exit 1
-fi
-
 if [[ ! -f "$CORE_EN_PATH" ]]; then
   echo "missing English catalog: $CORE_EN_PATH" >&2
   exit 1
 fi
 
-if [[ ! -f "$WIZARD_EN_GB_PATH" ]]; then
-  echo "missing wizard English catalog: $WIZARD_EN_GB_PATH" >&2
+if [[ ! -f "$WIZARD_EN_PATH" ]]; then
+  echo "missing wizard English catalog: $WIZARD_EN_PATH" >&2
   exit 1
 fi
+
+ensure_translator() {
+  if command -v "$TRANSLATOR_BIN" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v "$BINSTALL_BIN" >/dev/null 2>&1; then
+    echo "missing translator binary: $TRANSLATOR_BIN" >&2
+    echo "missing installer binary: $BINSTALL_BIN" >&2
+    echo "install cargo-binstall or set TRANSLATOR_BIN=/path/to/greentic-i18n-translator" >&2
+    exit 2
+  fi
+
+  echo "installing $TRANSLATOR_BIN via $BINSTALL_BIN" >&2
+  "$BINSTALL_BIN" -y greentic-i18n-translator
+
+  if ! command -v "$TRANSLATOR_BIN" >/dev/null 2>&1; then
+    echo "failed to install translator binary: $TRANSLATOR_BIN" >&2
+    exit 2
+  fi
+}
+
+merge_local_cache_into_global() {
+  if [[ "$CACHE_DIR" != "$GLOBAL_CACHE_DIR" ]]; then
+    return 0
+  fi
+
+  if [[ ! -d "$LOCAL_CACHE_DIR" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$GLOBAL_CACHE_DIR"
+
+  find "$LOCAL_CACHE_DIR" -type f -name '*.json' -print0 | while IFS= read -r -d '' file; do
+    local rel
+    rel="${file#$LOCAL_CACHE_DIR/}"
+    local dest="$GLOBAL_CACHE_DIR/$rel"
+    mkdir -p "$(dirname "$dest")"
+    if [[ ! -f "$dest" ]]; then
+      cp "$file" "$dest"
+    fi
+  done
+}
 
 # translator `--langs all` resolves from files next to EN_PATH; seed missing targets
 I18N_DIR="$(dirname "$CORE_EN_PATH")"
@@ -43,7 +100,7 @@ for lang in "${TARGET_LANGS[@]}"; do
   fi
 done
 
-WIZARD_I18N_DIR="$(dirname "$WIZARD_EN_GB_PATH")"
+WIZARD_I18N_DIR="$(dirname "$WIZARD_EN_PATH")"
 for locale in "${WIZARD_TARGET_LOCALES[@]}"; do
   locale_file="$WIZARD_I18N_DIR/$locale.json"
   if [[ ! -f "$locale_file" ]]; then
@@ -63,13 +120,14 @@ join_langs() {
   done
 }
 
+dedupe_langs() {
+  awk 'NF && !seen[$0]++ { print $0 }'
+}
+
 run_translator() {
-  (
-    cd "$I18N_REPO"
-    cargo run -p greentic-i18n-translator -- \
-      --locale "$LOCALE" \
-      "$@"
-  )
+  "$TRANSLATOR_BIN" \
+    --locale "$LOCALE" \
+    "$@"
 }
 
 status_output_for_catalog() {
@@ -77,14 +135,11 @@ status_output_for_catalog() {
   local joined_langs="$2"
   local output
   if output="$(
-    (
-      cd "$I18N_REPO"
-      cargo run -p greentic-i18n-translator -- \
-        --locale en \
-        status \
-        --langs "$joined_langs" \
-        --en "$en_path"
-    ) 2>&1
+    "$TRANSLATOR_BIN" \
+      --locale en \
+      status \
+      --langs "$joined_langs" \
+      --en "$en_path" 2>&1
   )"; then
     printf '%s\n' "$output"
     return 0
@@ -121,7 +176,7 @@ run_catalog() {
       else
         while IFS= read -r lang; do
           [[ -n "$lang" ]] && stale_langs+=("$lang")
-        done < <(collect_stale_langs "$status_output")
+        done < <(collect_stale_langs "$status_output" | dedupe_langs)
         if [[ ${#stale_langs[@]} -eq 0 ]]; then
           echo "==> translate: $en_path (status failed but no stale locales were detected)"
           return 1
@@ -131,6 +186,7 @@ run_catalog() {
           --langs "$(join_langs "${stale_langs[@]}")" \
           --en "$en_path" \
           --auth-mode "$AUTH_MODE" \
+          --cache-dir "$CACHE_DIR" \
           --batch-size "$I18N_BATCH_SIZE" \
           --max-retries "$I18N_MAX_RETRIES"
       fi
@@ -149,7 +205,7 @@ run_catalog() {
       else
         while IFS= read -r lang; do
           [[ -n "$lang" ]] && stale_langs+=("$lang")
-        done < <(collect_stale_langs "$status_output")
+        done < <(collect_stale_langs "$status_output" | dedupe_langs)
         if [[ ${#stale_langs[@]} -eq 0 ]]; then
           echo "==> translate: $en_path (status failed but no stale locales were detected)"
           return 1
@@ -159,6 +215,7 @@ run_catalog() {
           --langs "$(join_langs "${stale_langs[@]}")" \
           --en "$en_path" \
           --auth-mode "$AUTH_MODE" \
+          --cache-dir "$CACHE_DIR" \
           --batch-size "$I18N_BATCH_SIZE" \
           --max-retries "$I18N_MAX_RETRIES"
       fi
@@ -174,5 +231,7 @@ run_catalog() {
   esac
 }
 
+ensure_translator
+merge_local_cache_into_global
 run_catalog "$CORE_EN_PATH" "${TARGET_LANGS[@]}"
-run_catalog "$WIZARD_EN_GB_PATH" "${WIZARD_TARGET_LOCALES[@]}"
+run_catalog "$WIZARD_EN_PATH" "${WIZARD_TARGET_LOCALES[@]}"

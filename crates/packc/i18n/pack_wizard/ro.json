@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Rulare de probă: se omite crearea structurii pachetului.",
   "wizard.dry_run.skipping_sign": "Rulare de probă: se omite semnarea.",
   "wizard.dry_run.skipping_template_apply": "Rulare de probă: se omite generarea fișierelor șablon pentru extensie.",
+  "wizard.error.answer_document_failed": "Eroare la răspunsurile asistentului",
   "wizard.error.catalog_load_failed": "Încărcarea catalogului de extensii a eșuat",
   "wizard.error.create_app_failed": "Crearea pachetului aplicației a eșuat.",
   "wizard.error.delegate_component_failed": "Rularea asistentului greentic-component a eșuat.",

@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Proovikäivitus: paki karkassi loomine jäetakse vahele.",
   "wizard.dry_run.skipping_sign": "Proovikäivitus: allkirjastamine jäetakse vahele.",
   "wizard.dry_run.skipping_template_apply": "Proovikäivitus: laienduse mallifailide genereerimine jäetakse vahele.",
+  "wizard.error.answer_document_failed": "Viga viisardi vastustes",
   "wizard.error.catalog_load_failed": "Laienduste kataloogi laadimine ebaõnnestus",
   "wizard.error.create_app_failed": "Rakenduspaketi loomine ebaõnnestus.",
   "wizard.error.delegate_component_failed": "Greentic-component viisardi käivitamine ebaõnnestus.",

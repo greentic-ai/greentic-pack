@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "تشغيل تجريبي: يتم تخطي إنشاء هيكل الحزمة.",
   "wizard.dry_run.skipping_sign": "تشغيل تجريبي: يتم تخطي التوقيع.",
   "wizard.dry_run.skipping_template_apply": "تشغيل تجريبي: يتم تخطي إنشاء ملفات قالب الامتداد.",
+  "wizard.error.answer_document_failed": "خطأ في إجابات المعالج",
   "wizard.error.catalog_load_failed": "فشل تحميل كتالوج الامتدادات",
   "wizard.error.create_app_failed": "فشل إنشاء حزمة التطبيق.",
   "wizard.error.delegate_component_failed": "فشل تشغيل معالج greentic-component.",

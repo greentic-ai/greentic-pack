@@ -64,6 +64,7 @@
   "wizard.dry_run.skipping_scaffold": "Testkörning: hoppar över skapande av pack-stomme.",
   "wizard.dry_run.skipping_sign": "Testkörning: hoppar över signering.",
   "wizard.dry_run.skipping_template_apply": "Testkörning: hoppar över generering av tilläggets mallfiler.",
+  "wizard.error.answer_document_failed": "Fel i guidens svar",
   "wizard.error.catalog_load_failed": "Det gick inte att läsa in tilläggskatalogen",
   "wizard.error.create_app_failed": "Det gick inte att skapa applikationspaketet.",
   "wizard.error.delegate_component_failed": "Det gick inte att köra guiden greentic-component.",
