@@ -3,6 +3,10 @@
   "enabledManagers": ["custom.regex"],
   "baseBranches": ["develop", "release"],
   "labels": ["dependencies", "renovate"],
+  "platformAutomerge": true,
+  "automergeType": "pr",
+  "prCreation": "immediate",
+  "rebaseWhen": "never",
   "customManagers": [
     {
       "customType": "regex",
@@ -22,7 +26,8 @@
       "matchFileNames": ["ci/deps-dev.toml"],
       "automerge": true,
       "automergeType": "pr",
-      "allowedVersions": "/-dev\\./"
+      "allowedVersions": "/-dev\\./",
+      "additionalBranchPrefix": "develop-"
     },
     {
       "matchBaseBranches": ["release"],
