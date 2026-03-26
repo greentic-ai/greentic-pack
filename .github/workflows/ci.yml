@@ -1,6 +1,6 @@
 name: CI & Publish
-
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -10,114 +10,31 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  fmt:
-    name: CI (fmt)
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TARGET_DIR: target/ci
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
-        with:
-          components: rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-rust-1.91-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo fmt --all -- --check
-
-  clippy:
-    name: CI (clippy)
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TARGET_DIR: target/ci
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
-        with:
-          components: clippy
-      - name: Check for duplicate canonical WIT
-        run: bash ci/check_no_duplicate_canonical_wit.sh
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-rust-1.91-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-  test:
-    name: CI (build/test)
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TARGET_DIR: target/ci
-      TMPDIR: /tmp/greentic-pack-tmp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
-      - name: Prepare temp dir
-        run: mkdir -p "$TMPDIR"
-      - name: Check for duplicate canonical WIT
-        run: bash ci/check_no_duplicate_canonical_wit.sh
-      - name: Install lld + clang (Linux only)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y lld clang
-      - name: Configure lld for native Linux builds
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-          EOF
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-rust-1.91-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install lld + clang (Linux only)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y lld clang
-      - name: Configure lld for native Linux builds
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-          EOF
-      - name: Cache cargo-binstall
-        id: cache-cargo-binstall
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/cargo-binstall
-            ~/.cargo/.binstall
-          key: cargo-binstall-${{ runner.os }}-rust-1.91.0
-      - name: Ensure cargo-binstall
-        run: |
-          if [ ! -x "$HOME/.cargo/bin/cargo-binstall" ]; then
-            cargo install cargo-binstall --locked
-          fi
-      - name: Install wasm32-wasip2 target
-        run: rustup target add wasm32-wasip2
-      - name: Install greentic tooling
-        run: |
-          set -euo pipefail
-          BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
-          BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
-          BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
-      - run: cargo build --workspace --all-features --locked
-      - run: cargo test --workspace --all-features --locked -- --nocapture
+  ci:
+    uses: greenticai/.github/.github/workflows/host-crate-ci.yml@main
+    with:
+      setup-script: |
+        bash ci/check_no_duplicate_canonical_wit.sh
+        sudo apt-get update && sudo apt-get install -y lld clang
+        mkdir -p .cargo
+        cat > .cargo/config.toml <<'TOML'
+        [target.x86_64-unknown-linux-gnu]
+        linker = "clang"
+        rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+        TOML
+        rustup target add wasm32-wasip2
+        if [ ! -x "$HOME/.cargo/bin/cargo-binstall" ]; then
+          cargo install cargo-binstall --locked
+        fi
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
+      test-args: "--workspace --all-features --locked"
 
   publish:
     name: Publish crates
-    needs: [fmt, clippy, test]
+    needs: [ci]
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
       || github.event_name == 'workflow_dispatch'
