@@ -1778,7 +1778,7 @@ fn materialize_flow_components(
                 );
             }
             eprintln!(
-                "warning: component {} is not bundled; pack will emit PACK_COMPONENT_NOT_EXPLICIT",
+                "warning: component {} resolved via lock but not bundled locally",
                 lock_entry.component_id
             );
             continue;
@@ -1788,7 +1788,16 @@ fn materialize_flow_components(
             load_component_manifest_for_lock(pack_dir, &lock_entry.component_id, bundled_source)?;
 
         let Some(manifest) = manifest else {
-            handle_missing_component_manifest(&component_id, None, require_component_manifests)?;
+            if require_component_manifests {
+                anyhow::bail!(
+                    "component manifest metadata missing for {} (supply component.manifest.json or use --require-component-manifests=false)",
+                    component_id
+                );
+            }
+            eprintln!(
+                "warning: component manifest metadata missing for {}; component will not appear in manifest.components",
+                component_id
+            );
             continue;
         };
 

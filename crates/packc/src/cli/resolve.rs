@@ -14,7 +14,10 @@ use greentic_distributor_client::{DistClient, DistOptions};
 use greentic_pack::pack_lock::{LockedComponent, PackLockV1, write_pack_lock};
 use greentic_pack::resolver::{ComponentResolver, ResolveReq, ResolvedComponent};
 use greentic_types::cbor::canonical;
-use greentic_types::flow_resolve_summary::{FlowResolveSummarySourceRefV1, FlowResolveSummaryV1};
+use greentic_types::flow_resolve_summary::{
+    FlowResolveSummarySourceRefV1, FlowResolveSummaryV1, resolve_summary_path_for_flow,
+    write_flow_resolve_summary,
+};
 use greentic_types::schemas::component::v0_6_0::{ComponentDescribe, schema_hash};
 use hex;
 use sha2::{Digest, Sha256};
@@ -51,11 +54,40 @@ pub async fn handle(args: ResolveArgs, runtime: &RuntimeContext, emit_path: bool
         collect_from_summary(&pack_dir, flow, &summary, &mut entries)?;
     }
 
+    let mut id_remap: BTreeMap<String, String> = BTreeMap::new();
     if !entries.is_empty() {
         let resolver = PackResolver::new(runtime)?;
         let engine = Engine::default();
-        for component in entries.values_mut() {
-            populate_component_contract(&engine, &resolver, component).await?;
+        let mut rekeyed = BTreeMap::new();
+        for (key, mut component) in entries {
+            populate_component_contract(&engine, &resolver, &mut component).await?;
+            if component.component_id != key {
+                id_remap.insert(key, component.component_id.clone());
+            }
+            rekeyed.insert(component.component_id.clone(), component);
+        }
+        entries = rekeyed;
+    }
+
+    if !id_remap.is_empty() {
+        for flow in &config.flows {
+            let flow_path = flow.file.clone();
+            let summary_path = resolve_summary_path_for_flow(&flow_path);
+            if summary_path.exists() {
+                let mut summary = read_flow_resolve_summary_for_flow(&pack_dir, flow)?;
+                let mut changed = false;
+                for node in summary.nodes.values_mut() {
+                    let old_id = node.component_id.as_str().to_string();
+                    if let Some(new_id) = id_remap.get(&old_id) {
+                        node.component_id = new_id.parse().unwrap_or(node.component_id.clone());
+                        changed = true;
+                    }
+                }
+                if changed {
+                    write_flow_resolve_summary(&summary_path, &summary)
+                        .map_err(|e| anyhow!("{e}"))?;
+                }
+            }
         }
     }
 
@@ -212,11 +244,11 @@ async fn populate_component_contract(
     };
 
     if describe.info.id != component.component_id {
-        bail!(
-            "component {} describe id mismatch: {}",
-            component.component_id,
-            describe.info.id
+        eprintln!(
+            "warning: component {} describe id mismatch (expected {}, got {}); using describe id",
+            component.component_id, component.component_id, describe.info.id
         );
+        component.component_id = describe.info.id.clone();
     }
 
     let describe_hash = compute_describe_hash(&describe)?;
