@@ -759,10 +759,17 @@ fn validate_schema_ir(
                 && required.is_empty()
                 && matches!(additional, AdditionalProperties::Allow)
             {
-                *has_errors = true;
+                let inside_variant = path.contains("/variants/");
+                if !inside_variant {
+                    *has_errors = true;
+                }
                 diagnostics.push(component_diag(
                     component_id,
-                    Severity::Error,
+                    if inside_variant {
+                        Severity::Warn
+                    } else {
+                        Severity::Error
+                    },
                     "PACK_LOCK_SCHEMA_UNCONSTRAINED_OBJECT",
                     "object schema is unconstrained".to_string(),
                     Some(path.to_string()),

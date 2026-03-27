@@ -947,7 +947,15 @@ fn collect_assets(configs: &[AssetConfig], pack_root: &Path) -> Result<Vec<Asset
 }
 
 fn is_reserved_extra_file(logical_path: &str) -> bool {
-    matches!(logical_path, "sbom.cbor" | "sbom.json")
+    if matches!(logical_path, "sbom.cbor" | "sbom.json") {
+        return true;
+    }
+    if let Some(name) = logical_path.rsplit('/').next()
+        && name.ends_with(".gtpack")
+    {
+        return true;
+    }
+    false
 }
 
 fn collect_extra_dir_files(pack_root: &Path) -> Result<Vec<ExtraFile>> {
@@ -993,7 +1001,10 @@ fn collect_extra_dir_files(pack_root: &Path) -> Result<Vec<ExtraFile>> {
         let root = entry.path();
         for sub in WalkDir::new(&root)
             .into_iter()
-            .filter_entry(|walk| !walk.file_name().to_string_lossy().starts_with('.'))
+            .filter_entry(|walk| {
+                let name = walk.file_name().to_string_lossy();
+                !name.starts_with('.') && !excluded.contains(&name.as_ref())
+            })
             .filter_map(Result::ok)
         {
             if !sub.file_type().is_file() {
