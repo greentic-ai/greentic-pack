@@ -1,31 +1,38 @@
 # Security Fix Report
 
 ## Summary
+- Review date (UTC): 2026-03-27
 - Dependabot alerts reviewed: `0`
 - Code scanning alerts reviewed: `0`
 - New PR dependency vulnerabilities reviewed: `0`
 - Vulnerabilities remediated in this run: `0`
 
-No security vulnerabilities were identified from the provided alert inputs, and no new dependency vulnerabilities were introduced by this PR.
+No actionable vulnerabilities were present in the supplied alert feeds, and no new PR dependency vulnerabilities were reported.
 
 ## Checks Performed
-- Parsed provided alert payloads:
+- Parsed security inputs:
   - `security-alerts.json`
   - `dependabot-alerts.json`
   - `code-scanning-alerts.json`
   - `pr-vulnerable-changes.json`
-- Enumerated dependency manifests/lockfiles in repo (`Cargo.toml`, `Cargo.lock`, and nested Cargo test fixtures).
-- Compared this branch to `origin/main` using `git merge-base` + `git diff --name-only <merge-base>...HEAD` for dependency files.
+- Compared PR branch against `origin/main` for dependency-file changes:
+  - `git diff --name-status origin/main...HEAD -- Cargo.toml Cargo.lock crates/**/Cargo.toml`
+- Reviewed dependency diffs in changed files:
+  - `Cargo.toml` (workspace version bump only)
+  - `Cargo.lock` (routine crate version updates)
 
 ## Findings
-- No Dependabot alerts.
-- No code scanning alerts.
-- No PR dependency vulnerability entries.
-- No dependency manifest/lockfile changes detected in the PR diff against `origin/main`.
+- Dependabot alerts: none.
+- Code scanning alerts: none.
+- PR dependency vulnerability entries: none.
+- Dependency files changed in this PR:
+  - `Cargo.toml`
+  - `Cargo.lock`
+- Based on provided vulnerability inputs, none of the dependency changes introduce known vulnerable packages.
 
 ## Remediation Actions
 - No code or dependency remediation was required.
-- No security patches were applied.
+- No security patches were applied to repository files.
 
 ## Files Changed
 - `SECURITY_FIX_REPORT.md`
