@@ -1003,7 +1003,7 @@ fn collect_extra_dir_files(pack_root: &Path) -> Result<Vec<ExtraFile>> {
             .into_iter()
             .filter_entry(|walk| {
                 let name = walk.file_name().to_string_lossy();
-                !name.starts_with('.') && !excluded.contains(&name.as_ref())
+                !name.starts_with('.')
             })
             .filter_map(Result::ok)
         {
