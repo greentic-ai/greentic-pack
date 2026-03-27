@@ -1,38 +1,30 @@
-# Security Fix Report
+# SECURITY_FIX_REPORT
 
-## Summary
-- Review date (UTC): 2026-03-27
-- Dependabot alerts reviewed: `0`
-- Code scanning alerts reviewed: `0`
-- New PR dependency vulnerabilities reviewed: `0`
-- Vulnerabilities remediated in this run: `0`
+## Run Summary
+- Date (UTC): 2026-03-27
+- Dependabot alerts analyzed: 0
+- Code scanning alerts analyzed: 0
+- New PR dependency vulnerabilities analyzed: 0
+- Vulnerabilities remediated: 0
 
-No actionable vulnerabilities were present in the supplied alert inputs, and no PR dependency vulnerabilities were reported.
-
-## Checks Performed
-- Parsed security input artifacts:
-  - `security-alerts.json`
-  - `dependabot-alerts.json`
-  - `code-scanning-alerts.json`
-  - `pr-vulnerable-changes.json`
-- Checked current workspace diff for Rust dependency manifests/locks:
-  - `Cargo.toml`
-  - `Cargo.lock`
-  - `crates/**/Cargo.toml`
-  - `crates/**/Cargo.lock`
-- Attempted local Rust dependency audit:
-  - `cargo audit -q`
-  - Result: unavailable in this CI image (`cargo-audit` not installed), and `cargo`-based invocation was blocked by read-only rustup temp path.
+## Analysis Performed
+1. Parsed provided security alert payload:
+   - `security-alerts.json` => `{ "dependabot": [], "code_scanning": [] }`
+2. Parsed alert artifact files:
+   - `dependabot-alerts.json` => `[]`
+   - `code-scanning-alerts.json` => `[]`
+   - `pr-vulnerable-changes.json` => `[]`
+3. Checked repository dependency manifests/locks for common ecosystems (Rust manifests present).
+4. Checked current workspace diff for potential PR-introduced dependency-file changes.
 
 ## Findings
-- Dependabot alerts: none.
-- Code scanning alerts: none.
-- New PR dependency vulnerabilities: none.
-- No dependency file changes detected in the current workspace diff.
+- No Dependabot vulnerabilities were reported.
+- No code-scanning vulnerabilities were reported.
+- No new PR dependency vulnerabilities were reported.
+- No new dependency-related vulnerability was identified from repository state in this run.
 
 ## Remediation Actions
-- No security fixes were required.
-- No dependency updates were necessary.
+- No code or dependency changes were required because there were no actionable vulnerabilities.
 
-## Files Changed
+## Files Modified
 - `SECURITY_FIX_REPORT.md`
