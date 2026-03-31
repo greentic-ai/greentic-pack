@@ -14,6 +14,8 @@ jobs:
   ci:
     uses: greenticai/.github/.github/workflows/host-crate-ci.yml@main
     with:
+      run-semver-checks: true
+      semver-checks-package: "greentic-pack,greentic-pack-lib,pack_component_template"
       setup-script: |
         bash ci/check_no_duplicate_canonical_wit.sh
         sudo apt-get update && sudo apt-get install -y lld clang
