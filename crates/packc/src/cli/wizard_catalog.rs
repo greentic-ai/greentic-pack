@@ -469,7 +469,7 @@ const FIXTURE_EXTENSIONS_JSON: &str = include_str!("../../tests/fixtures/wizard/
 
 #[cfg(test)]
 mod tests {
-    use super::load_extension_catalog;
+    use super::*;
 
     #[test]
     fn default_docs_catalog_ref_loads_from_embedded_fallback() {
@@ -488,6 +488,65 @@ mod tests {
                 .extension_types
                 .iter()
                 .any(|extension_type| extension_type.id == "control")
+        );
+    }
+
+    #[test]
+    fn github_blob_urls_normalize_to_raw_content() {
+        let url = "https://github.com/greenticai/greentic-pack/blob/main/docs/extensions_capability_packs.catalog.v1.json";
+        assert_eq!(
+            normalize_catalog_url(url),
+            "https://raw.githubusercontent.com/greenticai/greentic-pack/main/docs/extensions_capability_packs.catalog.v1.json"
+        );
+    }
+
+    #[test]
+    fn default_catalog_url_recognizes_blob_and_raw_variants() {
+        let raw = "https://raw.githubusercontent.com/greenticai/greentic-pack/master/docs/extensions_capability_packs.catalog.v1.json";
+        assert!(is_default_catalog_download_url(
+            DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL
+        ));
+        assert!(is_default_catalog_download_url(raw));
+    }
+
+    #[test]
+    fn parse_catalog_bytes_injects_defaults_for_sparse_entries() {
+        let bytes = br#"{
+            "extension_types": [
+                {
+                    "id": "demo",
+                    "templates": [],
+                    "edit_questions": []
+                }
+            ]
+        }"#;
+
+        let catalog = parse_catalog_bytes(bytes).expect("catalog should parse");
+        let demo = catalog
+            .extension_types
+            .iter()
+            .find(|entry| entry.id == "demo")
+            .expect("demo entry should exist");
+        let custom = catalog
+            .extension_types
+            .iter()
+            .find(|entry| entry.id == "custom-scaffold")
+            .expect("custom scaffold should be injected");
+
+        assert_eq!(
+            demo.canonical_extension_key(),
+            "greentic.ext.capabilities.v1"
+        );
+        assert_eq!(demo.templates.len(), 1, "missing default template");
+        assert_eq!(
+            demo.edit_questions.len(),
+            1,
+            "missing default edit question"
+        );
+        assert_eq!(
+            custom.templates.len(),
+            1,
+            "missing custom scaffold template"
         );
     }
 }

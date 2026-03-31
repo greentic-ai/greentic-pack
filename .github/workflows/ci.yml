@@ -36,10 +36,8 @@ jobs:
 
   publish:
     name: Publish crates
-    needs: [ci]
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      || github.event_name == 'workflow_dispatch'
+    needs: [release]
+    if: needs.release.result == 'success'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -79,8 +77,12 @@ jobs:
 
   release:
     name: Build binaries + Release
-    needs: publish
-    if: needs.publish.result == 'success'
+    needs: [ci]
+    if: >-
+      needs.ci.result == 'success' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        || github.event_name == 'workflow_dispatch'
+      )
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

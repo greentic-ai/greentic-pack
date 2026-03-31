@@ -11,11 +11,38 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tempfile::TempDir;
+use walkdir::WalkDir;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_example_dir(name: &str) -> (TempDir, PathBuf) {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let src = workspace_root().join(name);
+    let dest = temp
+        .path()
+        .join(Path::new(name).file_name().expect("example name"));
+    fs::create_dir_all(&dest).expect("create example dir");
+    for entry in WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).expect("create parent");
+            }
+            fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+    (temp, dest)
 }
 
 fn write_summary(path: &Path, flow: &str, nodes: &[(&str, serde_json::Value)]) {
@@ -123,7 +150,7 @@ fn build_all_examples_manifest_only() {
     let cache_dir = temp.path().join("cache");
 
     for pack in packs {
-        let pack_dir = workspace_root().join(pack);
+        let (_pack_temp, pack_dir) = copy_example_dir(pack);
         match pack {
             "examples/weather-demo" => {
                 let summary_path = PathBuf::from("flows/weather_bot.ygtc.resolve.summary.json");
@@ -290,7 +317,7 @@ fn build_all_examples_manifest_only() {
         cmd.args([
             "build",
             "--in",
-            pack,
+            pack_dir.to_str().unwrap(),
             "--allow-pack-schema",
             "--dry-run",
             "--offline",

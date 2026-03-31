@@ -294,6 +294,8 @@ fn validate_relative_path(path: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use greentic_types::pack_manifest::ExtensionRef;
+    use serde_json::json;
 
     #[test]
     fn public_path_rejects_unknown_placeholders() {
@@ -340,5 +342,90 @@ mod tests {
         })
         .unwrap_err();
         assert!(err.to_string().contains("duplicate export name"));
+    }
+
+    #[test]
+    fn parse_extension_requires_inline_payload() {
+        let extensions = Some(BTreeMap::from([(
+            STATIC_ROUTES_EXTENSION_KEY.to_string(),
+            ExtensionRef {
+                kind: STATIC_ROUTES_EXTENSION_KEY.to_string(),
+                version: "1.0.0".to_string(),
+                digest: None,
+                location: None,
+                inline: None,
+            },
+        )]));
+
+        let err = parse_static_routes_extension(&extensions).unwrap_err();
+        assert!(err.to_string().contains("inline is required"));
+    }
+
+    #[test]
+    fn parse_extension_reads_other_inline_payload() {
+        let extensions = Some(BTreeMap::from([(
+            STATIC_ROUTES_EXTENSION_KEY.to_string(),
+            ExtensionRef {
+                kind: STATIC_ROUTES_EXTENSION_KEY.to_string(),
+                version: "1.0.0".to_string(),
+                digest: None,
+                location: None,
+                inline: Some(ExtensionInline::Other(json!({
+                    "version": 1,
+                    "routes": [{
+                        "id": "web",
+                        "public_path": "/v1/web/demo",
+                        "source_root": "assets/demo"
+                    }]
+                }))),
+            },
+        )]));
+
+        let parsed = parse_static_routes_extension(&extensions)
+            .expect("parse")
+            .expect("extension");
+        assert_eq!(parsed.routes.len(), 1);
+        assert_eq!(parsed.routes[0].id, "web");
+    }
+
+    #[test]
+    fn validate_public_path_rejects_query_strings() {
+        let err = validate_public_path("/v1/web/demo?x=1").unwrap_err();
+        assert!(err.to_string().contains("query strings and fragments"));
+    }
+
+    #[test]
+    fn validate_source_root_and_route_asset_path_reject_traversal() {
+        let err = validate_source_root("assets/../secret").unwrap_err();
+        assert!(err.to_string().contains("path traversal"));
+
+        let err = route_asset_path("assets/demo", "../index.html").unwrap_err();
+        assert!(err.to_string().contains("path traversal"));
+    }
+
+    #[test]
+    fn payload_validation_rejects_invalid_cache_settings() {
+        let payload = StaticRoutesExtensionV1 {
+            version: 1,
+            routes: vec![StaticRouteV1 {
+                id: "web".into(),
+                public_path: "/v1/web/demo".into(),
+                source_root: "assets/demo".into(),
+                scope: StaticRouteScopeV1::default(),
+                index_file: Some("index.html".into()),
+                spa_fallback: Some("index.html".into()),
+                cache: Some(StaticRouteCacheV1 {
+                    strategy: "public-max-age".into(),
+                    max_age_seconds: None,
+                }),
+                exports: BTreeMap::new(),
+            }],
+        };
+
+        let err = validate_static_routes_payload(&payload, |path| {
+            matches!(path, "assets/demo" | "assets/demo/index.html")
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("max_age_seconds is required"));
     }
 }

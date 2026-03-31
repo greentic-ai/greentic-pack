@@ -45,3 +45,38 @@ pub fn normalize_under_root(root: &Path, candidate: &Path) -> Result<PathBuf> {
 
     Ok(normalized)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_under_root;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    #[test]
+    fn normalizes_nested_path_under_root() {
+        let root = tempdir().expect("tempdir");
+        let normalized =
+            normalize_under_root(root.path(), Path::new("./assets/../assets/file.txt"))
+                .expect("path under root should succeed");
+
+        assert_eq!(normalized, root.path().join("assets/file.txt"));
+    }
+
+    #[test]
+    fn rejects_absolute_candidate_paths() {
+        let root = tempdir().expect("tempdir");
+        let err = normalize_under_root(root.path(), Path::new("/tmp/outside"))
+            .expect_err("absolute paths should fail");
+
+        assert!(err.to_string().contains("absolute paths are not allowed"));
+    }
+
+    #[test]
+    fn rejects_parent_traversal_above_root() {
+        let root = tempdir().expect("tempdir");
+        let err = normalize_under_root(root.path(), Path::new("../../escape.txt"))
+            .expect_err("escaping path should fail");
+
+        assert!(err.to_string().contains("path escapes root"));
+    }
+}

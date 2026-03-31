@@ -5,11 +5,36 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tempfile::TempDir;
+use walkdir::WalkDir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_weather_demo() -> (TempDir, PathBuf) {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let src = workspace_root().join("examples/weather-demo");
+    let dest = temp.path().join("weather-demo");
+    std::fs::create_dir_all(&dest).expect("create weather-demo dir");
+    for entry in WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).expect("create parent");
+            }
+            std::fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+    (temp, dest)
 }
 
 fn write_weather_summary(pack_dir: &Path) {
@@ -136,7 +161,7 @@ extensions:
 
 #[test]
 fn build_weather_demo_dry_run() {
-    let pack_dir = workspace_root().join("examples/weather-demo");
+    let (_pack_temp, pack_dir) = copy_weather_demo();
     write_weather_summary(&pack_dir);
     write_weather_lock(&pack_dir);
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"));
@@ -144,7 +169,7 @@ fn build_weather_demo_dry_run() {
     cmd.args([
         "build",
         "--in",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--allow-pack-schema",
         "--dry-run",
         "--log",
@@ -155,9 +180,10 @@ fn build_weather_demo_dry_run() {
 
 #[test]
 fn lint_weather_demo() {
+    let (_pack_temp, pack_dir) = copy_weather_demo();
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"));
     cmd.current_dir(workspace_root());
-    cmd.args(["lint", "--in", "examples/weather-demo", "--log", "warn"]);
+    cmd.args(["lint", "--in", pack_dir.to_str().unwrap(), "--log", "warn"]);
     cmd.assert().success();
 }
 
