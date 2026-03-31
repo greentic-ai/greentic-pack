@@ -30,11 +30,13 @@ fn has_external_guest_wit_mismatch(output: &str) -> bool {
                 || output.contains("in `bindings`")))
 }
 
+const MINIMAL_FLOW_YGTC: &str = "id: main\ntype: messaging\nnodes: {}\n";
+
 fn write_pack(dir: &Path, wasm_contents: &[u8]) {
     let flows_dir = dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
@@ -149,7 +151,7 @@ fn write_pack_with_local_summary(dir: &Path, wasm_contents: &[u8]) {
     let flows_dir = dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
@@ -192,7 +194,7 @@ fn write_pack_with_local_summary_file_uri(dir: &Path, wasm_contents: &[u8]) {
     let flows_dir = dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
@@ -266,13 +268,13 @@ fn resolve_writes_lockfile_with_digest() {
 }
 
 #[test]
-fn missing_summary_without_sidecar_errors() {
+fn missing_summary_without_sidecar_creates_empty_sidecar_and_lock() {
     let temp = TempDir::new().expect("temp dir");
     let pack_dir = temp.path().to_path_buf();
 
     let flows_dir = pack_dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
-    fs::write(flows_dir.join("main.ygtc"), "id: main\nentry: start\n").unwrap();
+    fs::write(flows_dir.join("main.ygtc"), MINIMAL_FLOW_YGTC).unwrap();
     fs::write(
         pack_dir.join("pack.yaml"),
         r#"pack_id: demo.pack
@@ -297,7 +299,15 @@ flows:
             "warn",
         ])
         .assert()
-        .failure();
+        .success();
+
+    assert!(pack_dir.join("flows/main.ygtc.resolve.json").exists());
+    assert!(
+        pack_dir
+            .join("flows/main.ygtc.resolve.summary.json")
+            .exists()
+    );
+    assert!(pack_dir.join("pack.lock.cbor").exists());
 }
 
 #[test]
@@ -417,7 +427,7 @@ fn resolve_falls_back_when_manifest_artifact_mismatch() {
     let flows_dir = pack_dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = pack_dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
@@ -499,7 +509,7 @@ fn resolve_offline_accepts_wasip2_component_with_wasi_cli_imports() {
     let flows_dir = pack_dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = pack_dir.join("components").join("noop_component_v06.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();

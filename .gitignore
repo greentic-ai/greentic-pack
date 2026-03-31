@@ -2,6 +2,10 @@
 dist/
 .packc/
 **/.packc/
+temp_auto_push.bat
 .DS_Store
 examples/.DS_Store
 .greentic/
+.i18n/
+.gitignore
+branch_structure.json
