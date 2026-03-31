@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "global": { "line_coverage_min": 60.0 },
+  "defaults": { "per_file_line_coverage_min": 60.0 },
+  "exclusions": {
+    "files": [
+      "crates/pack_component/src/data.rs",
+      "crates/pack_component_template/src/templates/template_data.rs",
+      "crates/packc/bin/packc.rs",
+      "crates/packc/bin/greentic_pack.rs"
+    ]
+  },
+  "per_file": {
+    "crates/packc/src/build.rs": { "line_coverage_min": 75.0 },
+    "crates/packc/src/validator.rs": { "line_coverage_min": 70.0 },
+    "crates/packc/src/cli/wizard.rs": { "line_coverage_min": 70.0 },
+    "crates/greentic-pack/src/reader.rs": { "line_coverage_min": 72.0 },
+    "crates/greentic-pack/src/builder.rs": { "line_coverage_min": 72.0 },
+    "crates/greentic-pack/src/static_routes.rs": { "line_coverage_min": 75.0 }
+  }
+}

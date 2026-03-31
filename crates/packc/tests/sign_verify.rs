@@ -13,11 +13,35 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
+use walkdir::WalkDir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_weather_demo() -> (tempfile::TempDir, PathBuf) {
+    let temp = tempdir().expect("temp dir");
+    let src = workspace_root().join("examples/weather-demo");
+    let dest = temp.path().join("weather-demo");
+    fs::create_dir_all(&dest).expect("create weather-demo dir");
+    for entry in WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).expect("create parent");
+            }
+            fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+    (temp, dest)
 }
 
 fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
@@ -123,7 +147,7 @@ fn sign_and_verify_manifest() {
     let temp = tempdir().expect("temp dir");
     let manifest_out = temp.path().join("manifest.cbor");
     let cache_dir = temp.path().join("cache");
-    let pack_dir = workspace_root().join("examples/weather-demo");
+    let (_pack_temp, pack_dir) = copy_weather_demo();
     write_weather_summary(&pack_dir, &cache_dir);
 
     // Build manifest
@@ -133,7 +157,7 @@ fn sign_and_verify_manifest() {
     build.args([
         "build",
         "--in",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--allow-pack-schema",
         "--manifest",
         manifest_out.to_str().unwrap(),
@@ -168,7 +192,7 @@ fn sign_and_verify_manifest() {
     sign.args([
         "sign",
         "--pack",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--manifest",
         manifest_out.to_str().unwrap(),
         "--key",
@@ -184,7 +208,7 @@ fn sign_and_verify_manifest() {
     verify.args([
         "verify",
         "--pack",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--manifest",
         manifest_out.to_str().unwrap(),
         "--key",

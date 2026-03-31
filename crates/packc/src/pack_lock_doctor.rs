@@ -947,3 +947,454 @@ fn component_diag(
 fn strip_file_uri_prefix(reference: &str) -> &str {
     reference.strip_prefix("file://").unwrap_or(reference)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use greentic_pack::PackLoad;
+    use greentic_types::ComponentId;
+    use greentic_types::component_source::ComponentSourceRef;
+    use greentic_types::pack::extensions::component_sources::{
+        ComponentSourceEntryV1, ResolvedComponentV1,
+    };
+    use greentic_types::schemas::common::schema_ir::AdditionalProperties;
+    use tempfile::TempDir;
+
+    #[test]
+    fn finish_diagnostics_sorts_and_marks_errors() {
+        let output = finish_diagnostics(vec![
+            component_diag(
+                "b.component",
+                Severity::Warn,
+                "WARN_CODE",
+                "warn".to_string(),
+                Some("z".to_string()),
+                None,
+                Value::Null,
+            ),
+            component_diag(
+                "a.component",
+                Severity::Error,
+                "ERR_CODE",
+                "err".to_string(),
+                Some("a".to_string()),
+                None,
+                Value::Null,
+            ),
+        ]);
+
+        assert!(output.has_errors);
+        assert_eq!(output.diagnostics[0].code, "ERR_CODE");
+        assert_eq!(output.diagnostics[1].code, "WARN_CODE");
+    }
+
+    #[test]
+    fn build_component_sources_map_prefers_component_id_when_present() {
+        let sources = ComponentSourcesV1::new(vec![
+            ComponentSourceEntryV1 {
+                name: "friendly".to_string(),
+                component_id: Some(ComponentId::try_from("demo.component").expect("component id")),
+                source: ComponentSourceRef::File("components/demo.wasm".to_string()),
+                resolved: ResolvedComponentV1 {
+                    digest: "sha256:abc".to_string(),
+                    signature: None,
+                    signed_by: None,
+                },
+                artifact: ArtifactLocationV1::Remote,
+                licensing_hint: None,
+                metering_hint: None,
+            },
+            ComponentSourceEntryV1 {
+                name: "name.only".to_string(),
+                component_id: None,
+                source: ComponentSourceRef::File("components/name.wasm".to_string()),
+                resolved: ResolvedComponentV1 {
+                    digest: "sha256:def".to_string(),
+                    signature: None,
+                    signed_by: None,
+                },
+                artifact: ArtifactLocationV1::Remote,
+                licensing_hint: None,
+                metering_hint: None,
+            },
+        ]);
+
+        let map = build_component_sources_map(Some(&sources));
+        assert!(map.contains_key("demo.component"));
+        assert!(map.contains_key("name.only"));
+        assert!(!map.contains_key("friendly"));
+    }
+
+    #[test]
+    fn validate_schema_ir_reports_unconstrained_objects_and_bad_bounds() {
+        let mut diagnostics = Vec::new();
+        let mut has_errors = false;
+
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Object {
+                properties: BTreeMap::new(),
+                required: Vec::new(),
+                additional: AdditionalProperties::Allow,
+            },
+            "config",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Array {
+                items: Box::new(SchemaIr::Bool),
+                min_items: Some(3),
+                max_items: Some(1),
+            },
+            "config/list",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+
+        assert!(has_errors);
+        assert!(diagnostics.iter().any(|diag| {
+            diag.diagnostic.code == "PACK_LOCK_SCHEMA_UNCONSTRAINED_OBJECT"
+                && diag.diagnostic.path.as_deref() == Some("config")
+        }));
+        assert!(diagnostics.iter().any(|diag| {
+            diag.diagnostic.code == "PACK_LOCK_SCHEMA_ARRAY_BOUNDS"
+                && diag.diagnostic.path.as_deref() == Some("config/list")
+        }));
+    }
+
+    #[test]
+    fn validate_schema_ir_downgrades_variant_unconstrained_object_to_warning() {
+        let mut diagnostics = Vec::new();
+        let mut has_errors = false;
+
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Object {
+                properties: BTreeMap::new(),
+                required: Vec::new(),
+                additional: AdditionalProperties::Allow,
+            },
+            "config/variants/0",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+
+        assert!(!has_errors);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches!(diagnostics[0].diagnostic.severity, Severity::Warn));
+    }
+
+    #[test]
+    fn strip_file_uri_prefix_handles_prefixed_and_plain_paths() {
+        assert_eq!(
+            strip_file_uri_prefix("file:///tmp/demo.wasm"),
+            "/tmp/demo.wasm"
+        );
+        assert_eq!(
+            strip_file_uri_prefix("components/demo.wasm"),
+            "components/demo.wasm"
+        );
+    }
+
+    #[test]
+    fn validate_schema_ir_reports_string_constraints_as_warnings() {
+        let mut diagnostics = Vec::new();
+        let mut has_errors = false;
+
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::String {
+                min_len: Some(1),
+                max_len: Some(8),
+                regex: Some("^demo$".to_string()),
+                format: None,
+            },
+            "config/name",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+
+        assert!(!has_errors);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].diagnostic.code,
+            "PACK_LOCK_SCHEMA_STRING_CONSTRAINT"
+        );
+    }
+
+    #[test]
+    fn load_describe_from_cache_reads_inline_and_sidecar_bytes() {
+        let temp = TempDir::new().expect("temp dir");
+        let describe = greentic_types::schemas::component::v0_6_0::ComponentDescribe {
+            info: greentic_types::schemas::component::v0_6_0::ComponentInfo {
+                id: "demo.component".to_string(),
+                version: "0.1.0".to_string(),
+                role: "tool".to_string(),
+                display_name: None,
+            },
+            provided_capabilities: Vec::new(),
+            required_capabilities: Vec::new(),
+            metadata: BTreeMap::new(),
+            operations: Vec::new(),
+            config_schema: SchemaIr::Bool,
+        };
+        let bytes = canonical::to_canonical_cbor_allow_floats(&describe).expect("describe bytes");
+        let wasm_path = temp.path().join("component.wasm");
+        std::fs::write(&wasm_path, b"\0asm").expect("wasm");
+        std::fs::write(format!("{}.describe.cbor", wasm_path.display()), &bytes).expect("sidecar");
+
+        let inline = load_describe_from_cache(Some(&bytes), None)
+            .expect("inline load")
+            .expect("inline describe");
+        let sidecar = load_describe_from_cache(None, Some(&wasm_path))
+            .expect("sidecar load")
+            .expect("sidecar describe");
+
+        assert_eq!(inline.info.id, "demo.component");
+        assert_eq!(sidecar.info.id, "demo.component");
+    }
+
+    #[test]
+    fn load_describe_sidecar_from_pack_uses_logical_suffix() {
+        let manifest = greentic_pack::builder::PackManifest {
+            meta: greentic_pack::builder::PackMeta {
+                pack_version: 1,
+                pack_id: "demo.pack".to_string(),
+                version: semver::Version::parse("0.1.0").expect("version"),
+                name: "Demo".to_string(),
+                kind: None,
+                description: None,
+                authors: Vec::new(),
+                license: None,
+                homepage: None,
+                support: None,
+                vendor: None,
+                imports: Vec::new(),
+                entry_flows: Vec::new(),
+                created_at_utc: "2026-01-01T00:00:00Z".to_string(),
+                events: None,
+                repo: None,
+                messaging: None,
+                interfaces: Vec::new(),
+                annotations: serde_json::Map::new(),
+                distribution: None,
+                components: Vec::new(),
+            },
+            flows: Vec::new(),
+            components: Vec::new(),
+            distribution: None,
+            component_descriptors: Vec::new(),
+        };
+        let mut load = PackLoad {
+            manifest,
+            report: Default::default(),
+            sbom: Vec::new(),
+            files: HashMap::new(),
+            gpack_manifest: None,
+        };
+        load.files.insert(
+            "components/demo.wasm.describe.cbor".to_string(),
+            vec![1, 2, 3],
+        );
+
+        assert_eq!(
+            load_describe_sidecar_from_pack(&load, "components/demo.wasm"),
+            Some(vec![1, 2, 3])
+        );
+    }
+
+    #[test]
+    fn compute_describe_hash_is_stable_for_same_payload() {
+        let describe = greentic_types::schemas::component::v0_6_0::ComponentDescribe {
+            info: greentic_types::schemas::component::v0_6_0::ComponentInfo {
+                id: "demo.component".to_string(),
+                version: "0.1.0".to_string(),
+                role: "tool".to_string(),
+                display_name: None,
+            },
+            provided_capabilities: Vec::new(),
+            required_capabilities: Vec::new(),
+            metadata: BTreeMap::new(),
+            operations: Vec::new(),
+            config_schema: SchemaIr::Bool,
+        };
+
+        let first = compute_describe_hash(&describe).expect("first hash");
+        let second = compute_describe_hash(&describe).expect("second hash");
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
+    }
+
+    #[test]
+    fn fallback_heuristics_only_trigger_for_known_errors() {
+        let fallback = anyhow!("failed to instantiate component-v0-v6-v0 during describe");
+        let other = anyhow!("totally different error");
+
+        assert!(should_fallback_to_describe_cache(&fallback));
+        assert!(should_fallback_to_untyped_describe(&fallback));
+        assert!(!should_fallback_to_describe_cache(&other));
+        assert!(!should_fallback_to_untyped_describe(&other));
+    }
+
+    #[test]
+    fn load_pack_lock_returns_none_when_no_bytes_or_disk_file_exist() {
+        let manifest = greentic_pack::builder::PackManifest {
+            meta: greentic_pack::builder::PackMeta {
+                pack_version: 1,
+                pack_id: "demo.pack".to_string(),
+                version: semver::Version::parse("0.1.0").expect("version"),
+                name: "Demo".to_string(),
+                kind: None,
+                description: None,
+                authors: Vec::new(),
+                license: None,
+                homepage: None,
+                support: None,
+                vendor: None,
+                imports: Vec::new(),
+                entry_flows: Vec::new(),
+                created_at_utc: "2026-01-01T00:00:00Z".to_string(),
+                events: None,
+                repo: None,
+                messaging: None,
+                interfaces: Vec::new(),
+                annotations: serde_json::Map::new(),
+                distribution: None,
+                components: Vec::new(),
+            },
+            flows: Vec::new(),
+            components: Vec::new(),
+            distribution: None,
+            component_descriptors: Vec::new(),
+        };
+        let load = PackLoad {
+            manifest,
+            report: Default::default(),
+            sbom: Vec::new(),
+            files: HashMap::new(),
+            gpack_manifest: None,
+        };
+        let temp = TempDir::new().expect("temp dir");
+
+        assert!(load_pack_lock(&load, None).expect("none").is_none());
+        assert!(
+            load_pack_lock(&load, Some(temp.path()))
+                .expect("none")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn read_pack_lock_from_bytes_rejects_invalid_lock_documents() {
+        let invalid = PackLockV1::new(BTreeMap::from([(
+            "demo.component".to_string(),
+            LockedComponent {
+                component_id: "demo.component".to_string(),
+                r#ref: None,
+                abi_version: "0.6.0".to_string(),
+                resolved_digest: "sha256:abc".to_string(),
+                describe_hash: "not-a-real-hash".to_string(),
+                operations: Vec::new(),
+                world: None,
+                component_version: None,
+                role: None,
+            },
+        )]));
+        let bytes = canonical::to_canonical_cbor_allow_floats(&invalid).expect("cbor");
+
+        let err = read_pack_lock_from_bytes(&bytes).expect_err("invalid lock should fail");
+        assert!(err.to_string().contains("describe_hash"));
+    }
+
+    #[test]
+    fn validate_schema_ir_reports_missing_required_and_empty_variants() {
+        let mut diagnostics = Vec::new();
+        let mut has_errors = false;
+
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Object {
+                properties: BTreeMap::new(),
+                required: vec!["missing".to_string()],
+                additional: AdditionalProperties::Forbid,
+            },
+            "config",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::OneOf {
+                variants: Vec::new(),
+            },
+            "config/choice",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Enum { values: Vec::new() },
+            "config/enum",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+
+        assert!(has_errors);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| { diag.diagnostic.code == "PACK_LOCK_SCHEMA_REQUIRED_MISSING" })
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| { diag.diagnostic.code == "PACK_LOCK_SCHEMA_ONEOF_EMPTY" })
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| { diag.diagnostic.code == "PACK_LOCK_SCHEMA_ENUM_EMPTY" })
+        );
+    }
+
+    #[test]
+    fn validate_schema_ir_reports_numeric_bound_inversions() {
+        let mut diagnostics = Vec::new();
+        let mut has_errors = false;
+
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Int {
+                min: Some(10),
+                max: Some(1),
+            },
+            "config/int",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+        validate_schema_ir(
+            "demo.component",
+            &SchemaIr::Float {
+                min: Some(4.0),
+                max: Some(2.0),
+            },
+            "config/float",
+            &mut diagnostics,
+            &mut has_errors,
+        );
+
+        assert!(has_errors);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| { diag.diagnostic.code == "PACK_LOCK_SCHEMA_INT_BOUNDS" })
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| { diag.diagnostic.code == "PACK_LOCK_SCHEMA_FLOAT_BOUNDS" })
+        );
+    }
+}

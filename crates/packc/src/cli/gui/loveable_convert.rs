@@ -821,3 +821,122 @@ fn find_theme_css(assets_root: &Path) -> Option<PathBuf> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_options(pack_kind: GuiPackKind) -> ConvertOptions {
+        ConvertOptions {
+            pack_kind,
+            pack_id: "demo.gui".to_string(),
+            version: Version::parse("1.2.3").expect("semver"),
+            pack_manifest_kind: "application".to_string(),
+            publisher: "greentic.gui".to_string(),
+            name: Some("Demo GUI".to_string()),
+            source: Source::AssetsDir(PathBuf::from("assets")),
+            package_dir: None,
+            install_cmd: None,
+            build_cmd: None,
+            build_dir: None,
+            spa: None,
+            routes: Vec::new(),
+            out: PathBuf::from("/tmp/demo.gtpack"),
+        }
+    }
+
+    #[test]
+    fn parse_routes_accepts_mixed_explicit_and_flat_entries() {
+        let routes = parse_routes(
+            &["/login:login.html".to_string()],
+            Some("/settings:settings.html,/profile:profile.html"),
+        )
+        .expect("routes");
+
+        assert_eq!(routes.len(), 3);
+        assert_eq!(routes[0].path, "/login");
+        assert_eq!(routes[1].html, PathBuf::from("settings.html"));
+    }
+
+    #[test]
+    fn parse_route_entry_rejects_non_absolute_route_paths() {
+        let err = parse_route_entry("login:login.html").expect_err("route should fail");
+        assert!(err.to_string().contains("must start with '/'"));
+    }
+
+    #[test]
+    fn default_install_command_prefers_lockfiles() {
+        let temp = TempDir::new().expect("tempdir");
+        assert_eq!(default_install_command(temp.path()), "npm install");
+
+        fs::write(temp.path().join("yarn.lock"), "").expect("write yarn");
+        assert_eq!(default_install_command(temp.path()), "yarn install");
+
+        fs::write(temp.path().join("pnpm-lock.yaml"), "").expect("write pnpm");
+        assert_eq!(default_install_command(temp.path()), "pnpm install");
+    }
+
+    #[test]
+    fn build_feature_routes_generates_per_page_routes_for_mpa() {
+        let opts = sample_options(GuiPackKind::Feature);
+        let html_files = vec![
+            PathBuf::from("index.html"),
+            PathBuf::from("settings/index.html"),
+            PathBuf::from("reports.html"),
+            PathBuf::from("404.html"),
+        ];
+
+        let routes = build_feature_routes(&opts, &html_files);
+        let rendered: Vec<String> = routes
+            .iter()
+            .map(|value| value["path"].as_str().unwrap_or_default().to_string())
+            .collect();
+
+        assert_eq!(rendered, vec!["/", "/settings", "/reports"]);
+    }
+
+    #[test]
+    fn detect_workers_deduplicates_ids_and_uses_slot_selector() {
+        let temp = TempDir::new().expect("tempdir");
+        let index = temp.path().join("index.html");
+        fs::write(
+            &index,
+            r#"
+            <div data-greentic-worker="alpha.worker" data-greentic-worker-slot="hero"></div>
+            <div data-greentic-worker="alpha.worker"></div>
+            "#,
+        )
+        .expect("write html");
+
+        let workers =
+            detect_workers(temp.path(), &[PathBuf::from("index.html")]).expect("workers parse");
+        assert_eq!(workers.len(), 1);
+        assert_eq!(workers[0]["id"], "worker");
+        assert_eq!(workers[0]["worker_id"], "alpha.worker");
+        assert_eq!(workers[0]["attach"]["selector"], "#hero");
+    }
+
+    #[test]
+    fn write_pack_manifest_sorts_assets_and_includes_gui_manifest() {
+        let temp = TempDir::new().expect("tempdir");
+        let assets_root = temp.path().join("gui/assets/nested");
+        fs::create_dir_all(&assets_root).expect("assets dir");
+        fs::write(temp.path().join("gui/assets/index.html"), "<html/>").expect("index");
+        fs::write(assets_root.join("app.js"), "console.log('x')").expect("app");
+
+        let opts = sample_options(GuiPackKind::Feature);
+        write_pack_manifest(&opts, temp.path(), 2).expect("manifest write");
+
+        let manifest = fs::read_to_string(temp.path().join("pack.yaml")).expect("pack yaml");
+        let gui_manifest_idx = manifest
+            .find("gui/manifest.json")
+            .expect("gui manifest asset");
+        let index_idx = manifest.find("gui/assets/index.html").expect("index asset");
+        let nested_idx = manifest
+            .find("gui/assets/nested/app.js")
+            .expect("nested asset");
+
+        assert!(index_idx < nested_idx);
+        assert!(nested_idx < gui_manifest_idx);
+    }
+}

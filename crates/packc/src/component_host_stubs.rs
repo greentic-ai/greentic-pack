@@ -91,3 +91,28 @@ pub fn stub_remaining_imports(
         .define_unknown_imports_as_traps(component)
         .map_err(|err| anyhow::anyhow!("stub remaining component imports: {err}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_host_state_exposes_wasi_and_http_views() {
+        let mut state = DescribeHostState::default();
+
+        let ctx_view = state.ctx();
+        let _ = ctx_view.table;
+        let _ = ctx_view.ctx;
+
+        let http_view = state.http();
+        let _ = http_view.table;
+        let _ = http_view.ctx;
+    }
+
+    #[test]
+    fn describe_host_imports_register_without_error() {
+        let engine = wasmtime::Engine::default();
+        let mut linker = Linker::new(&engine);
+        add_describe_host_imports(&mut linker).expect("host imports should register");
+    }
+}

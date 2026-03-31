@@ -12,11 +12,35 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use tempfile::TempDir;
+use walkdir::WalkDir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_weather_demo() -> (TempDir, PathBuf) {
+    let temp = TempDir::new().expect("temp dir");
+    let src = workspace_root().join("examples/weather-demo");
+    let dest = temp.path().join("weather-demo");
+    std::fs::create_dir_all(&dest).expect("create weather-demo dir");
+    for entry in WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).expect("create parent");
+            }
+            std::fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+    (temp, dest)
 }
 
 fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
@@ -125,10 +149,10 @@ fn write_weather_summary(pack_dir: &Path, _cache_dir: &Path) {
 
 #[test]
 fn plan_outputs_json_for_gtpack() {
+    let (_pack_temp, pack_dir) = copy_weather_demo();
     let temp = TempDir::new().expect("temp dir");
     let gtpack = temp.path().join("demo.gtpack");
     let cache_dir = temp.path().join("cache");
-    let pack_dir = workspace_root().join("examples/weather-demo");
     write_weather_summary(&pack_dir, &cache_dir);
 
     // Build a small pack to exercise the CLI.
@@ -138,7 +162,7 @@ fn plan_outputs_json_for_gtpack() {
         .args([
             "build",
             "--in",
-            "examples/weather-demo",
+            pack_dir.to_str().unwrap(),
             "--allow-pack-schema",
             "--no-update",
             "--offline",

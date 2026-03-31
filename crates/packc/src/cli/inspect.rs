@@ -1215,3 +1215,189 @@ fn format_component_artifact(artifact: &ArtifactLocationV1) -> String {
         ArtifactLocationV1::Remote => "remote".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::os::unix::process::ExitStatusExt;
+    use std::path::PathBuf;
+
+    fn sample_args() -> InspectArgs {
+        InspectArgs {
+            path: None,
+            pack: None,
+            input: None,
+            archive: false,
+            source: false,
+            allow_oci_tags: false,
+            flow_doctor: true,
+            component_doctor: true,
+            format: InspectFormat::Human,
+            validate: true,
+            no_validate: false,
+            validators_root: PathBuf::from(".greentic/validators"),
+            validator_pack: Vec::new(),
+            validator_wasm: Vec::new(),
+            validator_allow: vec![DEFAULT_VALIDATOR_ALLOW.to_string()],
+            validator_cache_dir: PathBuf::from(".greentic/cache/validators"),
+            validator_policy: ValidatorPolicy::Optional,
+            online: false,
+            use_describe_cache: false,
+        }
+    }
+
+    #[test]
+    fn sort_json_orders_object_keys_recursively() {
+        let value = serde_json::json!({
+            "z": 1,
+            "a": { "b": 2, "a": 1 },
+            "list": [{ "d": 4, "c": 3 }]
+        });
+
+        let sorted = to_sorted_json(value).expect("json serialization should succeed");
+        let root_a = sorted.find("\"a\"").expect("root a key");
+        let root_z = sorted.find("\"z\"").expect("root z key");
+        let nested_a = sorted.find("\"a\": 1").expect("nested a key");
+        let nested_b = sorted.find("\"b\": 2").expect("nested b key");
+
+        assert!(root_a < root_z, "root keys should be sorted: {sorted}");
+        assert!(
+            nested_a < nested_b,
+            "nested keys should be sorted: {sorted}"
+        );
+    }
+
+    #[test]
+    fn flow_doctor_unsupported_detects_common_cli_errors() {
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(256),
+            stdout: Vec::new(),
+            stderr: b"error: unexpected argument '--stdin' found".to_vec(),
+        };
+
+        assert!(flow_doctor_unsupported(&output));
+    }
+
+    #[test]
+    fn sanitize_component_id_replaces_path_like_characters() {
+        assert_eq!(
+            sanitize_component_id("demo/component:beta@1"),
+            "demo_component_beta_1"
+        );
+    }
+
+    #[test]
+    fn forbidden_source_paths_match_dev_only_inputs() {
+        assert!(is_forbidden_source_path("pack.yaml"));
+        assert!(is_forbidden_source_path("flows/main.json"));
+        assert!(is_forbidden_source_path("flows/main.ygtc"));
+        assert!(is_forbidden_source_path("components/demo.manifest.json"));
+        assert!(!is_forbidden_source_path("gui/assets/index.html"));
+    }
+
+    #[test]
+    fn find_forbidden_source_paths_returns_only_matching_entries() {
+        let files = HashMap::from([
+            ("pack.yaml".to_string(), Vec::new()),
+            ("flows/main.ygtc".to_string(), Vec::new()),
+            ("gui/assets/index.html".to_string(), Vec::new()),
+        ]);
+
+        let forbidden = find_forbidden_source_paths(&files);
+        assert_eq!(forbidden.len(), 2);
+        assert!(forbidden.contains(&"pack.yaml".to_string()));
+        assert!(forbidden.contains(&"flows/main.ygtc".to_string()));
+    }
+
+    #[test]
+    fn resolve_mode_prefers_pack_and_input_flags() {
+        let pack_args = InspectArgs {
+            pack: Some(PathBuf::from("demo.gtpack")),
+            ..sample_args()
+        };
+        let source_args = InspectArgs {
+            input: Some(PathBuf::from("demo")),
+            ..sample_args()
+        };
+
+        assert!(matches!(
+            resolve_mode(&pack_args).expect("pack mode"),
+            InspectMode::Archive(path) if path.as_path() == std::path::Path::new("demo.gtpack")
+        ));
+        assert!(matches!(
+            resolve_mode(&source_args).expect("source mode"),
+            InspectMode::Source(path) if path.as_path() == std::path::Path::new("demo")
+        ));
+    }
+
+    #[test]
+    fn resolve_mode_auto_detects_dir_and_gtpack_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let dir = temp.path().join("pack");
+        let file = temp.path().join("pack.gtpack");
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(&file, b"stub").expect("file");
+
+        let dir_args = InspectArgs {
+            path: Some(dir.clone()),
+            ..sample_args()
+        };
+        let file_args = InspectArgs {
+            path: Some(file.clone()),
+            ..sample_args()
+        };
+
+        assert!(matches!(
+            resolve_mode(&dir_args).expect("dir mode"),
+            InspectMode::Source(path) if path == dir
+        ));
+        assert!(matches!(
+            resolve_mode(&file_args).expect("file mode"),
+            InspectMode::Archive(path) if path == file
+        ));
+    }
+
+    #[test]
+    fn parse_validator_wasm_args_rejects_missing_paths() {
+        let err = parse_validator_wasm_args(&["demo.component=".to_string()])
+            .expect_err("missing validator path should fail");
+        assert!(
+            err.to_string()
+                .contains("expected format COMPONENT_ID=FILE")
+        );
+    }
+
+    #[test]
+    fn parse_validator_wasm_args_parses_component_pairs() {
+        let validators = parse_validator_wasm_args(&[
+            "demo.component=validators/demo.wasm".to_string(),
+            "other.component = validators/other.wasm".to_string(),
+        ])
+        .expect("validator args should parse");
+
+        assert_eq!(validators.len(), 2);
+        assert_eq!(validators[0].component_id, "demo.component");
+        assert_eq!(validators[1].path, PathBuf::from("validators/other.wasm"));
+    }
+
+    #[test]
+    fn format_helpers_preserve_existing_schemes_and_inline_paths() {
+        assert_eq!(format_source_ref("oci", "oci://example"), "oci://example");
+        assert_eq!(
+            format_source_ref("file", "components/demo.wasm"),
+            "file://components/demo.wasm"
+        );
+        assert_eq!(
+            format_component_artifact(&ArtifactLocationV1::Inline {
+                wasm_path: "components/demo.wasm".to_string(),
+                manifest_path: None,
+            }),
+            "inline (components/demo.wasm)"
+        );
+        assert_eq!(
+            format_component_artifact(&ArtifactLocationV1::Remote),
+            "remote"
+        );
+    }
+}

@@ -658,7 +658,7 @@ exit 0
             .and_then(Value::as_object)
             .and_then(|v| v.get("flow"))
             .and_then(Value::as_str),
-        None
+        Some("ok")
     );
     assert_eq!(
         answers
@@ -1484,7 +1484,7 @@ exit 0\n",
             .and_then(Value::as_object)
             .and_then(|v| v.get("flow"))
             .and_then(Value::as_str),
-        None
+        Some("dry-run")
     );
     assert_eq!(
         answers
@@ -1507,6 +1507,7 @@ exit 0\n",
         .expect("run apply");
     assert!(apply_output.status.success(), "apply should succeed");
     assert!(pack_dir.is_dir(), "pack should be created from answers");
+    assert!(pack_dir.join("flow.replayed").exists());
     assert!(pack_dir.join("component.replayed").exists());
 }
 

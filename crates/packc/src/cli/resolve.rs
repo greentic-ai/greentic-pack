@@ -6,11 +6,14 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use crate::config::load_pack_config;
-use crate::flow_resolve::{read_flow_resolve_summary_for_flow, strip_file_uri_prefix};
+use crate::flow_resolve::{
+    ensure_sidecar_exists, read_flow_resolve_summary_for_flow, strip_file_uri_prefix,
+};
 use crate::runtime::RuntimeContext;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use greentic_distributor_client::{DistClient, DistOptions};
+use greentic_flow::compile_ygtc_str;
 use greentic_pack::pack_lock::{LockedComponent, PackLockV1, write_pack_lock};
 use greentic_pack::resolver::{ComponentResolver, ResolveReq, ResolvedComponent};
 use greentic_types::cbor::canonical;
@@ -50,6 +53,8 @@ pub async fn handle(args: ResolveArgs, runtime: &RuntimeContext, emit_path: bool
     let config = load_pack_config(&pack_dir)?;
     let mut entries: BTreeMap<String, LockedComponent> = BTreeMap::new();
     for flow in &config.flows {
+        let compiled = compile_flow(&pack_dir, flow)?;
+        ensure_sidecar_exists(&pack_dir, flow, &compiled, false)?;
         let summary = read_flow_resolve_summary_for_flow(&pack_dir, flow)?;
         collect_from_summary(&pack_dir, flow, &summary, &mut entries)?;
     }
@@ -101,6 +106,18 @@ pub async fn handle(args: ResolveArgs, runtime: &RuntimeContext, emit_path: bool
     }
 
     Ok(())
+}
+
+fn compile_flow(pack_dir: &Path, flow: &crate::config::FlowConfig) -> Result<greentic_types::Flow> {
+    let flow_path = if flow.file.is_absolute() {
+        flow.file.clone()
+    } else {
+        pack_dir.join(&flow.file)
+    };
+    let yaml_src = fs::read_to_string(&flow_path)
+        .with_context(|| format!("failed to read flow {}", flow_path.display()))?;
+    compile_ygtc_str(&yaml_src)
+        .with_context(|| format!("failed to compile flow {}", flow_path.display()))
 }
 
 fn resolve_lock_path(pack_dir: &Path, override_path: Option<&Path>) -> PathBuf {
@@ -498,12 +515,17 @@ fn format_reference(source: &FlowResolveSummarySourceRefV1) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::resolve_runtime;
     use greentic_types::ComponentId;
+    use greentic_types::flow_resolve::{read_flow_resolve, sidecar_path_for_flow};
     use greentic_types::flow_resolve_summary::{
         FlowResolveSummarySourceRefV1, FlowResolveSummaryV1, NodeResolveSummaryV1,
+        read_flow_resolve_summary, resolve_summary_path_for_flow,
     };
     use std::collections::BTreeMap;
+    use std::fs;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     fn sample_flow() -> crate::config::FlowConfig {
         crate::config::FlowConfig {
@@ -593,5 +615,82 @@ mod tests {
         let mut entries = BTreeMap::new();
         let err = collect_from_summary(&pack_dir, &flow, &summary, &mut entries).unwrap_err();
         assert!(err.to_string().contains("points to different artifacts"));
+    }
+
+    #[tokio::test]
+    async fn handle_creates_missing_sidecar_before_reading_summary() {
+        let temp = TempDir::new().expect("tempdir");
+        let pack_dir = temp.path().join("pack");
+        fs::create_dir_all(pack_dir.join("flows")).expect("create flows dir");
+        fs::write(
+            pack_dir.join("pack.yaml"),
+            r#"pack_id: dev.local.resolve-sidecar
+version: 0.1.0
+kind: application
+publisher: Test
+components: []
+dependencies: []
+flows:
+- id: main
+  file: flows/main.ygtc
+  tags: [default]
+  entrypoints: [default]
+assets: []
+"#,
+        )
+        .expect("write pack yaml");
+        fs::write(
+            pack_dir.join("flows/main.ygtc"),
+            r#"id: main
+type: messaging
+start: hello
+nodes:
+  hello:
+    handle_message:
+      input: "hi"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("write flow");
+
+        let runtime = resolve_runtime(Some(temp.path()), None, true, None).expect("runtime");
+        handle(
+            ResolveArgs {
+                input: pack_dir.clone(),
+                lock: None,
+            },
+            &runtime,
+            false,
+        )
+        .await
+        .expect("resolve should create sidecar instead of failing");
+
+        let flow_cfg = sample_flow();
+        let sidecar_path = sidecar_path_for_flow(&pack_dir.join(&flow_cfg.file));
+        let summary_path = resolve_summary_path_for_flow(&pack_dir.join(&flow_cfg.file));
+        assert!(
+            sidecar_path.exists(),
+            "resolve should create the missing sidecar"
+        );
+        assert!(
+            summary_path.exists(),
+            "resolve should write a summary for the new sidecar"
+        );
+
+        let sidecar = read_flow_resolve(&sidecar_path).expect("read sidecar");
+        assert!(sidecar.nodes.is_empty(), "new sidecar should start empty");
+
+        let summary = read_flow_resolve_summary(&summary_path).expect("read summary");
+        assert!(
+            summary.nodes.is_empty(),
+            "summary should reflect the empty sidecar"
+        );
+
+        let lock_path = pack_dir.join("pack.lock.cbor");
+        assert!(
+            lock_path.exists(),
+            "resolve should still write pack.lock.cbor"
+        );
     }
 }

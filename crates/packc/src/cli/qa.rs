@@ -1307,4 +1307,417 @@ mod tests {
             "missing validation text in: {msg}"
         );
     }
+
+    #[test]
+    fn select_target_components_rejects_unknown_component_without_all_locked() {
+        let cfg = PackConfig {
+            pack_id: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "Greentic".to_string(),
+            name: None,
+            bootstrap: None,
+            components: vec![ComponentConfig {
+                id: "demo.component".to_string(),
+                version: "0.1.0".to_string(),
+                world: "greentic:component/stub".to_string(),
+                supports: vec![FlowKindLabel::Messaging],
+                profiles: ComponentProfiles::default(),
+                capabilities: ComponentCapabilities::default(),
+                wasm: PathBuf::from("components/demo.wasm"),
+                operations: Vec::new(),
+                config_schema: None,
+                resources: None,
+                configurators: None,
+            }],
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+        };
+        let lock = PackLockV1::new(BTreeMap::new());
+        let args = QaArgs {
+            pack_dir: PathBuf::from("."),
+            mode: QaModeLabel::Default,
+            answers: None,
+            locale: "en".to_string(),
+            non_interactive: false,
+            reask: false,
+            components: vec!["missing.component".to_string()],
+            all_locked: false,
+            pack_only: false,
+        };
+
+        let err = select_target_components(&cfg, &lock, &args).expect_err("should reject unknown");
+        assert!(err.to_string().contains("not found in pack.yaml"));
+    }
+
+    #[test]
+    fn parse_bool_accepts_common_true_false_spellings() {
+        assert_eq!(parse_bool("YES"), Some(true));
+        assert_eq!(parse_bool("0"), Some(false));
+        assert_eq!(parse_bool("maybe"), None);
+    }
+
+    #[test]
+    fn parse_choice_matches_index_value_and_localized_label() {
+        let bundle = BTreeMap::from([("choice.label".to_string(), "Friendly".to_string())]);
+        let options = vec![
+            greentic_types::schemas::component::v0_6_0::qa::ChoiceOption {
+                value: "internal".to_string(),
+                label: I18nText::new("choice.label", Some("Fallback".to_string())),
+            },
+        ];
+
+        assert_eq!(
+            parse_choice("1", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_choice("internal", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_choice("Friendly", &options, &bundle),
+            Some("internal".to_string())
+        );
+    }
+
+    #[test]
+    fn collect_answers_for_pack_uses_defaults_in_non_interactive_mode() {
+        let spec = sample_pack_qa_spec(PackQaMode::Default);
+        let err = collect_answers_for_pack(&spec, None, &BTreeMap::new(), true, false)
+            .expect_err("required unanswered question should fail");
+        assert!(err.to_string().contains("missing required pack answer"));
+
+        let mut spec_with_default = spec.clone();
+        spec_with_default.defaults.insert(
+            "region".to_string(),
+            ciborium::value::Value::Text("eu-west".to_string()),
+        );
+        let answers =
+            collect_answers_for_pack(&spec_with_default, None, &BTreeMap::new(), true, false)
+                .expect("answers");
+
+        assert_eq!(answers.get("region"), Some(&serde_json::json!("eu-west")));
+    }
+
+    #[test]
+    fn load_answers_normalizes_mode_without_dropping_content() {
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("answers.json");
+        fs::write(
+            &path,
+            r#"{
+                "schema_version": 1,
+                "mode": "setup",
+                "pack": {"region": "us-east"},
+                "components": {}
+            }"#,
+        )
+        .expect("answers file");
+
+        let answers = load_answers(&path, false, &QaModeLabel::Default).expect("load answers");
+        assert_eq!(answers.mode, "default");
+        assert_eq!(
+            answers.pack.get("region"),
+            Some(&serde_json::json!("us-east"))
+        );
+    }
+
+    #[test]
+    fn render_text_prefers_i18n_then_fallback_then_key() {
+        let bundle = BTreeMap::from([("known.key".to_string(), "Localized".to_string())]);
+        assert_eq!(
+            render_text(
+                &I18nText::new("known.key", Some("Fallback".to_string())),
+                &bundle
+            ),
+            "Localized"
+        );
+        assert_eq!(
+            render_text(
+                &I18nText::new("missing.key", Some("Fallback".to_string())),
+                &bundle
+            ),
+            "Fallback"
+        );
+        assert_eq!(
+            render_text(&I18nText::new("missing.key", None), &bundle),
+            "missing.key"
+        );
+    }
+
+    #[test]
+    fn answers_paths_for_unknown_extension_append_answers_suffixes() {
+        let temp = TempDir::new().expect("temp dir");
+        let custom = temp.path().join("answers.custom");
+        let (json_path, cbor_path) =
+            resolve_answers_paths(temp.path(), Some(custom.as_path()), "setup").expect("paths");
+        assert!(json_path.ends_with("answers.answers.json"));
+        assert!(cbor_path.ends_with("answers.answers.cbor"));
+    }
+
+    #[test]
+    fn select_target_components_all_locked_returns_sorted_lock_entries() {
+        let cfg = PackConfig {
+            pack_id: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "Greentic".to_string(),
+            name: None,
+            bootstrap: None,
+            components: Vec::new(),
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+        };
+        let lock = PackLockV1::new(BTreeMap::from([
+            (
+                "z.component".to_string(),
+                greentic_pack::pack_lock::LockedComponent {
+                    component_id: "z.component".to_string(),
+                    abi_version: "0.6.0".to_string(),
+                    describe_hash: "describe-z".to_string(),
+                    resolved_digest: "sha256:z".to_string(),
+                    operations: Vec::new(),
+                    world: None,
+                    component_version: None,
+                    role: None,
+                    r#ref: None,
+                },
+            ),
+            (
+                "a.component".to_string(),
+                greentic_pack::pack_lock::LockedComponent {
+                    component_id: "a.component".to_string(),
+                    abi_version: "0.6.0".to_string(),
+                    describe_hash: "describe-a".to_string(),
+                    resolved_digest: "sha256:a".to_string(),
+                    operations: Vec::new(),
+                    world: None,
+                    component_version: None,
+                    role: None,
+                    r#ref: None,
+                },
+            ),
+        ]));
+        let args = QaArgs {
+            pack_dir: PathBuf::from("."),
+            mode: QaModeLabel::Default,
+            answers: None,
+            locale: "en".to_string(),
+            non_interactive: false,
+            reask: false,
+            components: Vec::new(),
+            all_locked: true,
+            pack_only: false,
+        };
+
+        let targets = select_target_components(&cfg, &lock, &args).expect("targets");
+        assert_eq!(
+            targets,
+            vec!["a.component".to_string(), "z.component".to_string()]
+        );
+    }
+
+    #[test]
+    fn load_i18n_bundle_ignores_non_string_values() {
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("assets/i18n");
+        fs::create_dir_all(&path).expect("i18n dir");
+        fs::write(
+            path.join("en.json"),
+            r#"{"title":"Hello","count":3,"nested":{"x":1}}"#,
+        )
+        .expect("bundle");
+
+        let bundle = load_i18n_bundle(temp.path(), "en").expect("bundle load");
+        assert_eq!(bundle.get("title").map(String::as_str), Some("Hello"));
+        assert!(!bundle.contains_key("count"));
+        assert!(!bundle.contains_key("nested"));
+    }
+
+    #[test]
+    fn decode_qa_spec_source_round_trips_inline_cbor() {
+        let source = QaSpecSource::InlineCbor(CborBytes::new(vec![0xa1, 0x01, 0x02]));
+        let bytes = canonical::to_canonical_cbor_allow_floats(&source).expect("source bytes");
+        let value: ciborium::value::Value = canonical::from_cbor(&bytes).expect("value");
+
+        let decoded = decode_qa_spec_source(&value).expect("decode");
+        assert_eq!(decoded, source);
+    }
+
+    #[test]
+    fn index_component_paths_resolves_relative_and_absolute_wasm_paths() {
+        let cfg = PackConfig {
+            pack_id: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "Greentic".to_string(),
+            name: None,
+            bootstrap: None,
+            components: vec![
+                ComponentConfig {
+                    id: "relative.component".to_string(),
+                    version: "0.1.0".to_string(),
+                    world: "greentic:component/stub".to_string(),
+                    supports: vec![FlowKindLabel::Messaging],
+                    profiles: ComponentProfiles::default(),
+                    capabilities: ComponentCapabilities::default(),
+                    wasm: PathBuf::from("components/relative.wasm"),
+                    operations: Vec::new(),
+                    config_schema: None,
+                    resources: None,
+                    configurators: None,
+                },
+                ComponentConfig {
+                    id: "absolute.component".to_string(),
+                    version: "0.1.0".to_string(),
+                    world: "greentic:component/stub".to_string(),
+                    supports: vec![FlowKindLabel::Messaging],
+                    profiles: ComponentProfiles::default(),
+                    capabilities: ComponentCapabilities::default(),
+                    wasm: PathBuf::from("/tmp/absolute.wasm"),
+                    operations: Vec::new(),
+                    config_schema: None,
+                    resources: None,
+                    configurators: None,
+                },
+            ],
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+        };
+
+        let map = index_component_paths(&cfg, Path::new("/work/demo"));
+        assert_eq!(
+            map.get("relative.component"),
+            Some(&PathBuf::from("/work/demo/components/relative.wasm"))
+        );
+        assert_eq!(
+            map.get("absolute.component"),
+            Some(&PathBuf::from("/tmp/absolute.wasm"))
+        );
+    }
+
+    #[test]
+    fn cbor_value_to_json_formats_bytes_tags_and_maps() {
+        let tagged = ciborium::value::Value::Tag(
+            42,
+            Box::new(ciborium::value::Value::Bytes(vec![0xde, 0xad])),
+        );
+        let mapped = ciborium::value::Value::Map(vec![
+            (
+                ciborium::value::Value::Integer(1.into()),
+                ciborium::value::Value::Text("one".to_string()),
+            ),
+            (
+                ciborium::value::Value::Text("two".to_string()),
+                ciborium::value::Value::Bool(true),
+            ),
+        ]);
+
+        assert_eq!(cbor_value_to_json(&tagged), serde_json::json!("dead"));
+        assert_eq!(
+            cbor_value_to_json(&mapped),
+            serde_json::json!({"1":"one","two":true})
+        );
+    }
+
+    #[test]
+    fn parse_pack_choice_matches_index_value_and_localized_label() {
+        let bundle = BTreeMap::from([("pack.choice".to_string(), "Localized".to_string())]);
+        let options = vec![greentic_types::schemas::pack::v0_6_0::qa::ChoiceOption {
+            value: "internal".to_string(),
+            label: I18nText::new("pack.choice", Some("Fallback".to_string())),
+        }];
+
+        assert_eq!(
+            parse_pack_choice("1", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_pack_choice("internal", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_pack_choice("Localized", &options, &bundle),
+            Some("internal".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_component_bytes_validates_file_digest() {
+        let temp = TempDir::new().expect("temp dir");
+        let wasm = temp.path().join("component.wasm");
+        fs::write(&wasm, b"demo-bytes").expect("wasm");
+        let digest = digest_for_bytes(b"demo-bytes");
+
+        let runtime =
+            crate::runtime::resolve_runtime(Some(temp.path()), None, true, None).expect("runtime");
+        let dist = DistClient::new(DistOptions {
+            cache_dir: runtime.cache_dir(),
+            allow_tags: true,
+            offline: true,
+            allow_insecure_local_http: false,
+            ..DistOptions::default()
+        });
+
+        let resolved = resolve_component_bytes(
+            &dist,
+            &runtime,
+            &format!("file://{}", wasm.display()),
+            Some(&digest),
+        )
+        .expect("resolve");
+        assert_eq!(resolved.bytes, b"demo-bytes");
+
+        let err = resolve_component_bytes(
+            &dist,
+            &runtime,
+            &format!("file://{}", wasm.display()),
+            Some("sha256:deadbeef"),
+        )
+        .err()
+        .expect("digest mismatch should fail");
+        assert!(err.to_string().contains("digest mismatch"));
+    }
+
+    #[test]
+    fn validate_component_config_output_accepts_missing_descriptor_or_schema() {
+        let config_cbor =
+            canonical::to_canonical_cbor_allow_floats(&serde_json::json!({"ok": true}))
+                .expect("config");
+        validate_component_config_output("demo.component", None, &config_cbor)
+            .expect("no descriptor should skip validation");
+
+        let descriptor = ComponentDescriptor {
+            name: "demo.component".to_string(),
+            version: "0.1.0".to_string(),
+            summary: None,
+            capabilities: Vec::new(),
+            ops: vec![Op {
+                name: "not-setup".to_string(),
+                summary: None,
+                input: IoSchema {
+                    schema: SchemaSource::InlineCbor(vec![0xa0]),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                output: IoSchema {
+                    schema: SchemaSource::InlineCbor(vec![0xa0]),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                examples: Vec::new(),
+            }],
+            schemas: Vec::new(),
+            setup: None,
+        };
+        validate_component_config_output("demo.component", Some(&descriptor), &config_cbor)
+            .expect("missing setup.apply_answers op should skip validation");
+    }
 }

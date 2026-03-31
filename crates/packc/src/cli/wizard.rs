@@ -3196,12 +3196,19 @@ fn flow_delegate_args(_pack_dir: &Path) -> Vec<String> {
 }
 
 fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -> bool {
-    let args = flow_delegate_args(pack_dir);
-    let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
-    if ok && session.dry_run {
-        // greentic-flow wizard no longer emits replayable answer docs in this path.
-        session.flow_wizard_answers = None;
+    if !session.dry_run {
+        let args = flow_delegate_args(pack_dir);
+        return run_delegate_owned("greentic-flow", &args, pack_dir);
     }
+    let answers_path = temp_answers_path("greentic-flow-wizard-answers");
+    let mut args = flow_delegate_args(pack_dir);
+    args.push("--emit-answers".to_string());
+    args.push(answers_path.display().to_string());
+    let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
+    if ok {
+        session.flow_wizard_answers = read_json_value(&answers_path);
+    }
+    let _ = fs::remove_file(&answers_path);
     ok
 }
 
@@ -3228,7 +3235,18 @@ fn run_component_delegate_for_session(session: &mut WizardSession, pack_dir: &Pa
 }
 
 fn run_flow_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
-    let _ = answers;
+    if let Some(answers) = answers {
+        let answers_path = temp_answers_path("greentic-flow-wizard-replay");
+        if !write_json_value(&answers_path, answers) {
+            return false;
+        }
+        let mut args = flow_delegate_args(pack_dir);
+        args.push("--answers-file".to_string());
+        args.push(answers_path.display().to_string());
+        let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
+        let _ = fs::remove_file(&answers_path);
+        return ok;
+    }
     let args = flow_delegate_args(pack_dir);
     run_delegate_owned("greentic-flow", &args, pack_dir)
 }

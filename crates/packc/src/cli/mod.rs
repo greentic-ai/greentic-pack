@@ -321,3 +321,92 @@ pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_parse_build_populates_defaults() {
+        let cli = Cli::parse_from(["greentic-pack", "build", "--in", "demo-pack"]);
+        assert_eq!(cli.verbosity, "info");
+        assert!(!cli.offline);
+        assert!(!cli.json);
+        assert!(matches!(
+            cli.command,
+            Command::Build(BuildArgs {
+                input,
+                no_update: false,
+                dry_run: false,
+                allow_oci_tags: false,
+                require_component_manifests: false,
+                no_extra_dirs: false,
+                dev: false,
+                allow_pack_schema: false,
+                ..
+            }) if input.as_path() == std::path::Path::new("demo-pack")
+        ));
+    }
+
+    #[test]
+    fn cli_parse_nested_subcommands_and_globals() {
+        let cli = Cli::parse_from([
+            "greentic-pack",
+            "--json",
+            "--offline",
+            "--locale",
+            "nl",
+            "providers",
+            "validate",
+        ]);
+        assert!(cli.json);
+        assert!(cli.offline);
+        assert_eq!(cli.locale.as_deref(), Some("nl"));
+        assert!(matches!(
+            cli.command,
+            Command::Providers(self::providers::ProvidersCommand::Validate(_))
+        ));
+    }
+
+    #[test]
+    fn print_help_for_known_paths_returns_true() {
+        crate::cli_i18n::init_locale(Some("en"));
+
+        assert!(print_help_for_path(&[]));
+        assert!(print_help_for_path(&["build".to_string()]));
+        assert!(print_help_for_path(&[
+            "wizard".to_string(),
+            "run".to_string()
+        ]));
+        assert!(print_help_for_path(&[
+            "providers".to_string(),
+            "validate".to_string()
+        ]));
+        assert!(print_help_for_path(&[
+            "add-extension".to_string(),
+            "dependency".to_string()
+        ]));
+    }
+
+    #[test]
+    fn print_help_for_unknown_paths_returns_false() {
+        crate::cli_i18n::init_locale(Some("en"));
+        assert!(!print_help_for_path(&["does-not-exist".to_string()]));
+        assert!(!print_help_for_path(&[
+            "wizard".to_string(),
+            "missing".to_string()
+        ]));
+    }
+
+    #[test]
+    fn print_top_level_help_does_not_panic() {
+        crate::cli_i18n::init_locale(Some("en"));
+        print_top_level_help();
+    }
+
+    #[test]
+    fn resolve_env_filter_uses_cli_verbosity_when_env_missing() {
+        let cli = Cli::parse_from(["greentic-pack", "--log", "debug", "build", "--in", "demo"]);
+        assert_eq!(resolve_env_filter(&cli), "debug");
+    }
+}
