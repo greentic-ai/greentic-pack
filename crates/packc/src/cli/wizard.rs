@@ -6,6 +6,7 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
@@ -34,16 +35,10 @@ const PACK_WIZARD_SCHEMA_ID: &str = "greentic-pack.wizard.answers";
 const PACK_WIZARD_SCHEMA_VERSION: &str = "1.0.0";
 const DEFAULT_EXTENSION_CATALOG_REF: &str =
     "file://docs/extensions_capability_packs.catalog.v1.json";
+static FORCED_WIZARD_SCHEMA: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Args, Default)]
 pub struct WizardArgs {
-    /// Print the current answers document schema and exit (implicit `run`)
-    #[arg(
-        long,
-        default_value_t = false,
-        long_help = "Print the current answers document schema and exit.\n\nAgentic coding tools should call this first to fetch the pack-level answer schema, plus the embedded greentic-flow and greentic-component wizard schemas used for nested replay."
-    )]
-    pub schema: bool,
     /// Load AnswerDocument JSON and run in non-interactive mode (implicit `run`)
     #[arg(long, value_name = "FILE")]
     pub answers: Option<PathBuf>,
@@ -75,13 +70,6 @@ pub enum WizardCommand {
 
 #[derive(Debug, Args, Default)]
 pub struct WizardRunArgs {
-    /// Print the current answers document schema and exit
-    #[arg(
-        long,
-        default_value_t = false,
-        long_help = "Print the current answers document schema and exit.\n\nAgentic coding tools should call this first to fetch the pack-level answer schema, plus the embedded greentic-flow and greentic-component wizard schemas used for nested replay."
-    )]
-    pub schema: bool,
     /// Load AnswerDocument JSON and run in non-interactive mode
     #[arg(long, value_name = "FILE")]
     pub answers: Option<PathBuf>,
@@ -216,22 +204,37 @@ struct FlowSchemaContext {
     flow_wizard_answers: Option<Value>,
 }
 
+pub(crate) fn set_forced_schema_flag(requested: bool) {
+    FORCED_WIZARD_SCHEMA.store(requested, Ordering::Relaxed);
+}
+
+fn consume_forced_schema_flag() -> bool {
+    FORCED_WIZARD_SCHEMA.swap(false, Ordering::Relaxed)
+}
+
 pub fn handle(
     args: WizardArgs,
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
 ) -> Result<()> {
     let implicit_run_args = WizardRunArgs {
-        schema: args.schema,
         answers: args.answers,
         emit_answers: args.emit_answers,
         schema_version: args.schema_version,
         migrate: args.migrate,
         dry_run: args.dry_run,
     };
+    let schema_requested = consume_forced_schema_flag();
     match args.command {
-        None => run_interactive_command(implicit_run_args, runtime, requested_locale),
-        Some(WizardCommand::Run(cmd)) => run_interactive_command(cmd, runtime, requested_locale),
+        None => run_interactive_command(
+            implicit_run_args,
+            runtime,
+            requested_locale,
+            schema_requested,
+        ),
+        Some(WizardCommand::Run(cmd)) => {
+            run_interactive_command(cmd, runtime, requested_locale, schema_requested)
+        }
         Some(WizardCommand::Validate(cmd)) => run_validate_command(cmd, requested_locale),
         Some(WizardCommand::Apply(cmd)) => run_apply_command(cmd, requested_locale),
     }
@@ -393,8 +396,9 @@ fn run_interactive_command(
     cmd: WizardRunArgs,
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
+    schema_requested: bool,
 ) -> Result<()> {
-    if maybe_print_answer_schema(&cmd)? {
+    if maybe_print_answer_schema(&cmd, schema_requested)? {
         return Ok(());
     }
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
@@ -463,8 +467,8 @@ fn run_interactive_command(
     Ok(())
 }
 
-fn maybe_print_answer_schema(cmd: &WizardRunArgs) -> Result<bool> {
-    if !cmd.schema {
+fn maybe_print_answer_schema(cmd: &WizardRunArgs, schema_requested: bool) -> Result<bool> {
+    if !schema_requested {
         return Ok(false);
     }
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
