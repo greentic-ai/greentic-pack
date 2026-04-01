@@ -1,5 +1,4 @@
-use clap::Parser;
-use packc::cli::{self, Cli};
+use packc::cli::{self};
 use tokio::runtime::Builder;
 
 fn main() -> anyhow::Result<()> {
