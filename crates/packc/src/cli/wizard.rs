@@ -211,7 +211,6 @@ pub(crate) fn set_forced_schema_flag(requested: bool) {
 fn consume_forced_schema_flag() -> bool {
     FORCED_WIZARD_SCHEMA.swap(false, Ordering::Relaxed)
 }
-
 pub fn handle(
     args: WizardArgs,
     runtime: &RuntimeContext,
@@ -488,7 +487,6 @@ fn maybe_print_answer_schema(cmd: &WizardRunArgs, schema_requested: bool) -> Res
     wizard_ui::render_text(&mut output, "\n").context("write wizard schema newline")?;
     Ok(true)
 }
-
 fn run_validate_command(cmd: WizardValidateArgs, requested_locale: Option<&str>) -> Result<()> {
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
     let doc = load_answer_document(

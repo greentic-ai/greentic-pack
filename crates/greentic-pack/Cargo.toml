@@ -43,4 +43,8 @@ hex = { workspace = true }
 assert_cmd = { workspace = true }
 zip = { workspace = true }
 serde_json = { workspace = true }
+criterion = "0.5"
 
+[[bench]]
+name = "perf"
+harness = false

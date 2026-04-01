@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use greentic_types::pack_manifest::{ExtensionInline, ExtensionRef};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, HashSet};
 
 pub const STATIC_ROUTES_EXTENSION_KEY: &str = "greentic.static-routes.v1";
 
@@ -82,15 +82,15 @@ where
         bail!("extensions[{STATIC_ROUTES_EXTENSION_KEY}] routes must not be empty");
     }
 
-    let mut seen_ids = BTreeSet::new();
-    let mut seen_paths = BTreeSet::new();
-    let mut seen_exports = BTreeSet::new();
+    let mut seen_ids = HashSet::new();
+    let mut seen_paths = HashSet::new();
+    let mut seen_exports = HashSet::new();
 
     for route in &payload.routes {
         if route.id.trim().is_empty() {
             bail!("extensions[{STATIC_ROUTES_EXTENSION_KEY}] route id must not be empty");
         }
-        if !seen_ids.insert(route.id.clone()) {
+        if !seen_ids.insert(route.id.as_str()) {
             bail!(
                 "extensions[{STATIC_ROUTES_EXTENSION_KEY}] duplicate route id `{}`",
                 route.id
@@ -104,12 +104,13 @@ where
             )
         })?;
         let normalized_path = normalize_public_path(&route.public_path);
-        if !seen_paths.insert(normalized_path.clone()) {
+        if seen_paths.contains(normalized_path.as_str()) {
             bail!(
                 "extensions[{STATIC_ROUTES_EXTENSION_KEY}] duplicate public_path `{}`",
                 normalized_path
             );
         }
+        seen_paths.insert(normalized_path);
 
         validate_source_root(&route.source_root).map_err(|err| {
             anyhow::anyhow!(
@@ -185,7 +186,7 @@ where
                     export_key
                 );
             }
-            if !seen_exports.insert(export_name.clone()) {
+            if !seen_exports.insert(export_name.as_str()) {
                 bail!(
                     "extensions[{STATIC_ROUTES_EXTENSION_KEY}] duplicate export name `{}`",
                     export_name

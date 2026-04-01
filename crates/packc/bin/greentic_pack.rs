@@ -1,5 +1,4 @@
-use clap::Parser;
-use packc::cli::{self, Cli};
+use packc::cli::{self};
 use tokio::runtime::Builder;
 
 fn main() -> anyhow::Result<()> {
@@ -27,7 +26,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let cli = Cli::parse_from(args);
+    let cli = cli::parse_cli_from_args(args);
     let env_filter = cli::resolve_env_filter(&cli);
 
     if std::env::var_os("RUST_LOG").is_none() {
