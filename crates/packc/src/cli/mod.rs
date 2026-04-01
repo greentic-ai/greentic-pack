@@ -399,6 +399,33 @@ mod tests {
     }
 
     #[test]
+    fn localized_wizard_help_mentions_schema_option() {
+        let en_catalog: serde_json::Value =
+            serde_json::from_str(include_str!("../../i18n/en.json")).expect("valid English i18n");
+        let en_wizard = en_catalog["cli.help.page.wizard"]
+            .as_str()
+            .expect("English wizard help string");
+        let en_run = en_catalog["cli.help.page.wizard_run"]
+            .as_str()
+            .expect("English wizard run help string");
+        assert!(en_wizard.contains("--schema"));
+        assert!(en_run.contains("--schema"));
+
+        let nl_catalog: serde_json::Value =
+            serde_json::from_str(include_str!("../../i18n/nl.json")).expect("valid Dutch i18n");
+        let nl_wizard = nl_catalog["cli.help.page.wizard"]
+            .as_str()
+            .expect("Dutch wizard help string");
+        let nl_run = nl_catalog["cli.help.page.wizard_run"]
+            .as_str()
+            .expect("Dutch wizard run help string");
+        assert!(nl_wizard.contains("--schema"));
+        assert!(nl_run.contains("--schema"));
+        assert!(nl_wizard.contains("AnswerDocument-schema"));
+        assert!(nl_run.contains("AnswerDocument-schema"));
+    }
+
+    #[test]
     fn print_top_level_help_does_not_panic() {
         crate::cli_i18n::init_locale(Some("en"));
         print_top_level_help();

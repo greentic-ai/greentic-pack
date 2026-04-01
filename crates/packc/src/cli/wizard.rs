@@ -37,6 +37,13 @@ const DEFAULT_EXTENSION_CATALOG_REF: &str =
 
 #[derive(Debug, Args, Default)]
 pub struct WizardArgs {
+    /// Print the current answers document schema and exit (implicit `run`)
+    #[arg(
+        long,
+        default_value_t = false,
+        long_help = "Print the current answers document schema and exit.\n\nAgentic coding tools should call this first to fetch the pack-level answer schema, plus the embedded greentic-flow and greentic-component wizard schemas used for nested replay."
+    )]
+    pub schema: bool,
     /// Load AnswerDocument JSON and run in non-interactive mode (implicit `run`)
     #[arg(long, value_name = "FILE")]
     pub answers: Option<PathBuf>,
@@ -68,6 +75,13 @@ pub enum WizardCommand {
 
 #[derive(Debug, Args, Default)]
 pub struct WizardRunArgs {
+    /// Print the current answers document schema and exit
+    #[arg(
+        long,
+        default_value_t = false,
+        long_help = "Print the current answers document schema and exit.\n\nAgentic coding tools should call this first to fetch the pack-level answer schema, plus the embedded greentic-flow and greentic-component wizard schemas used for nested replay."
+    )]
+    pub schema: bool,
     /// Load AnswerDocument JSON and run in non-interactive mode
     #[arg(long, value_name = "FILE")]
     pub answers: Option<PathBuf>,
@@ -197,12 +211,18 @@ struct WizardExecutionPlan {
     extension_operation: Option<ExtensionOperationRecord>,
 }
 
+struct FlowSchemaContext {
+    pack_dir: Option<PathBuf>,
+    flow_wizard_answers: Option<Value>,
+}
+
 pub fn handle(
     args: WizardArgs,
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
 ) -> Result<()> {
     let implicit_run_args = WizardRunArgs {
+        schema: args.schema,
         answers: args.answers,
         emit_answers: args.emit_answers,
         schema_version: args.schema_version,
@@ -374,6 +394,9 @@ fn run_interactive_command(
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
 ) -> Result<()> {
+    if maybe_print_answer_schema(&cmd)? {
+        return Ok(());
+    }
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
     let locale = resolved_locale(requested_locale);
     if let Some(path) = cmd.answers.as_deref() {
@@ -438,6 +461,28 @@ fn run_interactive_command(
         write_answer_document(path, &doc)?;
     }
     Ok(())
+}
+
+fn maybe_print_answer_schema(cmd: &WizardRunArgs) -> Result<bool> {
+    if !cmd.schema {
+        return Ok(false);
+    }
+    let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
+    let flow_context = cmd.answers.as_deref().and_then(|path| {
+        load_answer_document(path, &target_schema_version, cmd.migrate, None)
+            .ok()
+            .and_then(|doc| execution_plan_from_answers(&doc.answers).ok())
+            .map(|plan| FlowSchemaContext {
+                pack_dir: Some(plan.pack_dir),
+                flow_wizard_answers: plan.flow_wizard_answers,
+            })
+    });
+    let schema = wizard_answer_schema(&target_schema_version, flow_context.as_ref())?;
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    serde_json::to_writer_pretty(&mut output, &schema).context("write wizard schema")?;
+    wizard_ui::render_text(&mut output, "\n").context("write wizard schema newline")?;
+    Ok(true)
 }
 
 fn run_validate_command(cmd: WizardValidateArgs, requested_locale: Option<&str>) -> Result<()> {
@@ -684,6 +729,299 @@ fn answer_document_from_session(
     })
 }
 
+fn wizard_answer_schema(
+    schema_version: &str,
+    flow_context: Option<&FlowSchemaContext>,
+) -> Result<Value> {
+    let flow_runtime_schema = load_flow_wizard_runtime_schema(flow_context)?;
+    let component_modes = [
+        "create",
+        "add_operation",
+        "update_operation",
+        "build_test",
+        "doctor",
+    ];
+    let component_mode_refs = component_modes
+        .iter()
+        .map(|mode| Value::String(format!("#/$defs/greentic_component_wizard_{mode}")))
+        .collect::<Vec<_>>();
+
+    let mut defs = serde_json::Map::new();
+    defs.insert(
+        "greentic_flow_wizard_runtime_schema".to_string(),
+        flow_runtime_schema,
+    );
+    defs.insert(
+        "greentic_flow_wizard_generic_schema".to_string(),
+        generic_flow_wizard_schema(),
+    );
+    defs.insert(
+        "greentic_flow_step_answers".to_string(),
+        flow_step_answers_schema(),
+    );
+    defs.insert(
+        "greentic_flow_wizard_action".to_string(),
+        flow_wizard_action_schema(),
+    );
+    for mode in component_modes {
+        defs.insert(
+            format!("greentic_component_wizard_{mode}"),
+            load_component_wizard_schema(mode)?,
+        );
+    }
+    defs.insert(
+        "greentic_component_wizard_any_mode".to_string(),
+        json!({
+            "description": "Any greentic-component wizard answer document supported by greentic-pack replay.",
+            "oneOf": component_mode_refs
+                .iter()
+                .map(|reference| json!({ "$ref": reference }))
+                .collect::<Vec<_>>(),
+        }),
+    );
+
+    Ok(json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://greenticai.github.io/greentic-pack/schemas/wizard.answers.schema.json",
+        "title": "greentic-pack wizard answers",
+        "type": "object",
+        "additionalProperties": false,
+        "$comment": "Nested flow step answers are component-specific. Resolve those contracts by calling `greentic-flow component-schema <file/oci/repo/store>.wasm [--mode default|setup|update|remove]` and pass the resulting schema through to greentic-flow when composing flow wizard answers.",
+        "properties": {
+            "wizard_id": {
+                "type": "string",
+                "const": PACK_WIZARD_ID
+            },
+            "schema_id": {
+                "type": "string",
+                "const": PACK_WIZARD_SCHEMA_ID
+            },
+            "schema_version": {
+                "type": "string",
+                "const": schema_version
+            },
+            "locale": {
+                "type": "string"
+            },
+            "answers": pack_wizard_answers_schema(),
+            "locks": {
+                "type": "object",
+                "additionalProperties": true
+            }
+        },
+        "required": ["wizard_id", "schema_id", "schema_version", "answers"],
+        "$defs": Value::Object(defs),
+    }))
+}
+
+fn pack_wizard_answers_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "pack_dir": { "type": "string" },
+            "create_pack_scaffold": { "type": "boolean" },
+            "create_pack_id": { "type": "string" },
+            "run_delegate_flow": { "type": "boolean" },
+            "run_delegate_component": { "type": "boolean" },
+            "run_doctor": { "type": "boolean" },
+            "run_build": { "type": "boolean" },
+            "dry_run": { "type": "boolean" },
+            "mode": { "type": "string" },
+            "sign": { "type": "boolean" },
+            "sign_key_path": { "type": "string" },
+            "selected_actions": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "flow_wizard_answers": {
+                "description": "Nested greentic-flow wizard answers. The generic plan contract is provided here, and the current greentic-flow runtime schema is embedded under #/$defs/greentic_flow_wizard_runtime_schema.",
+                "anyOf": [
+                    { "$ref": "#/$defs/greentic_flow_wizard_generic_schema" },
+                    { "$ref": "#/$defs/greentic_flow_wizard_runtime_schema" }
+                ]
+            },
+            "component_wizard_answers": {
+                "description": "Nested greentic-component wizard answers for component-level replay inside greentic-pack.",
+                "$ref": "#/$defs/greentic_component_wizard_any_mode"
+            },
+            "extension_operation": { "type": "string" },
+            "extension_catalog_ref": { "type": "string" },
+            "extension_type_id": { "type": "string" },
+            "extension_template_id": { "type": "string" },
+            "extension_template_qa_answers": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+            },
+            "extension_edit_answers": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+            }
+        },
+        "required": ["pack_dir"]
+    })
+}
+
+fn generic_flow_wizard_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Generic greentic-flow wizard plan schema embedded by greentic-pack. For a concrete flow plan, also fetch greentic-flow's current runtime schema directly with `greentic-flow wizard <pack> --answers <plan.json> --schema <schema.json>`.",
+        "properties": {
+            "schema_id": {
+                "type": "string",
+                "const": "greentic-flow.wizard.plan"
+            },
+            "schema_version": {
+                "type": "string"
+            },
+            "actions": {
+                "type": "array",
+                "items": {
+                    "$ref": "#/$defs/greentic_flow_wizard_action"
+                }
+            }
+        },
+        "required": ["schema_id", "schema_version", "actions"]
+    })
+}
+
+fn flow_step_answers_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "Exact step-answer contract resolution is component-specific. Call `greentic-flow component-schema <file/oci/repo/store>.wasm [--mode default|setup|update|remove]` and pass that schema on to greentic-flow when composing nested add-step/update-step/delete-step answers.",
+        "$comment": "Resolve per-component step answer schemas via `greentic-flow component-schema <file/oci/repo/store>.wasm [--mode default|setup|update|remove]`.",
+        "additionalProperties": true
+    })
+}
+
+fn flow_step_action_schema(action: &str) -> Value {
+    let mut required = vec![json!("action"), json!("flow")];
+    if matches!(action, "add-step" | "update-step") {
+        required.push(json!("component"));
+        required.push(json!("mode"));
+    }
+    if action == "update-step" {
+        required.push(json!("step_id"));
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "action": { "type": "string", "const": action },
+            "flow": { "type": "string" },
+            "step_id": { "type": "string" },
+            "after": { "type": "string" },
+            "component": { "type": "string" },
+            "mode": {
+                "type": "string",
+                "enum": ["default", "setup", "update", "remove"]
+            },
+            "answers": { "$ref": "#/$defs/greentic_flow_step_answers" }
+        },
+        "required": required
+    })
+}
+
+fn flow_wizard_action_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "action": { "type": "string", "const": "add-flow" },
+                    "flow": { "type": "string" },
+                    "flow_id": { "type": "string" },
+                    "flow_type": { "type": "string" }
+                },
+                "required": ["action", "flow", "flow_id", "flow_type"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "action": { "type": "string", "const": "edit-flow-summary" },
+                    "flow": { "type": "string" },
+                    "name": { "type": "string" },
+                    "description": { "type": "string" }
+                },
+                "required": ["action", "flow"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "action": { "type": "string", "const": "generate-translations" },
+                    "locales": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                },
+                "required": ["action", "locales"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "action": { "type": "string", "const": "delete-flow" },
+                    "flow": { "type": "string" }
+                },
+                "required": ["action", "flow"]
+            },
+            flow_step_action_schema("add-step"),
+            flow_step_action_schema("update-step"),
+            flow_step_action_schema("delete-step")
+        ]
+    })
+}
+
+fn load_flow_wizard_runtime_schema(flow_context: Option<&FlowSchemaContext>) -> Result<Value> {
+    let temp = tempfile::tempdir().context("create temp dir for flow wizard schema")?;
+    let cwd = flow_context
+        .and_then(|ctx| ctx.pack_dir.as_deref())
+        .unwrap_or_else(|| temp.path());
+    let mut args = vec!["wizard".to_string(), "--schema".to_string()];
+    let mut temp_answers_path = None;
+
+    if let Some(ctx) = flow_context
+        && let Some(pack_dir) = ctx.pack_dir.as_ref()
+    {
+        args.push(pack_dir.display().to_string());
+        if let Some(flow_answers) = ctx.flow_wizard_answers.as_ref() {
+            let answers_path = temp.path().join("flow.answers.json");
+            if !write_json_value(&answers_path, flow_answers) {
+                return Err(anyhow!(
+                    "failed to write temp greentic-flow answers plan {}",
+                    answers_path.display()
+                ));
+            }
+            args.push("--answers".to_string());
+            args.push(answers_path.display().to_string());
+            temp_answers_path = Some(answers_path);
+        }
+    }
+
+    let result = capture_delegate_json("greentic-flow", &args, cwd)
+        .context("failed to fetch nested greentic-flow wizard schema");
+    if let Some(path) = temp_answers_path.as_deref() {
+        let _ = fs::remove_file(path);
+    }
+    result
+}
+
+fn load_component_wizard_schema(mode: &str) -> Result<Value> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let args = vec![
+        "wizard".to_string(),
+        "--schema".to_string(),
+        "--mode".to_string(),
+        mode.to_string(),
+    ];
+    capture_delegate_json("greentic-component", &args, &cwd)
+        .with_context(|| format!("fetch nested greentic-component wizard schema for mode '{mode}'"))
+}
+
 fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
     if doc.wizard_id != PACK_WIZARD_ID {
         return Err(anyhow!(
@@ -772,6 +1110,19 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
         if !ok {
             return Err(anyhow!(
                 "wizard apply failed while running component delegate for {}",
+                plan.pack_dir.display()
+            ));
+        }
+    }
+    if plan.run_doctor || plan.run_build {
+        let update_ok = run_process(
+            &self_exe,
+            &["update", "--in", &plan.pack_dir.display().to_string()],
+            None,
+        )?;
+        if !update_ok {
+            return Err(anyhow!(
+                "wizard apply failed while syncing pack manifest for {}",
                 plan.pack_dir.display()
             ));
         }
@@ -2599,6 +2950,15 @@ fn run_update_validate_sequence<R: BufRead, W: Write>(
     }
 
     wizard_ui::render_line(output, &i18n.t(progress_key))?;
+    let update_ok = run_process(
+        self_exe,
+        &["update", "--in", &pack_dir_path.display().to_string()],
+        None,
+    )?;
+    if !update_ok {
+        wizard_ui::render_line(output, &i18n.t("wizard.error.finalize_build_failed"))?;
+        return Ok(false);
+    }
     wizard_ui::render_line(output, &i18n.t("wizard.progress.running_doctor"))?;
     let doctor_ok = run_process(
         self_exe,
@@ -3129,46 +3489,31 @@ fn run_process(binary: &Path, args: &[&str], cwd: Option<&Path>) -> Result<bool>
 }
 
 fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
-    if let Some(override_bin) = delegate_override_binary(binary)
-        && override_bin.exists()
-    {
-        return run_process(&override_bin, args, Some(cwd)).unwrap_or(false);
-    }
-
-    if should_prefer_monorepo_delegate(binary)
-        && let Some(dev_bin) = monorepo_delegate_binary(binary)
-        && dev_bin.exists()
-    {
-        return run_process(&dev_bin, args, Some(cwd)).unwrap_or(false);
-    }
-
-    if let Some(path_bin) = resolve_from_path(binary) {
-        return run_process(&path_bin, args, Some(cwd)).unwrap_or(false);
-    }
-
-    if let Some(current_exe) = std::env::current_exe().ok()
-        && let Some(exe_dir) = current_exe.parent()
-    {
-        let local_bin = exe_dir.join(binary);
-        if local_bin.exists() {
-            return run_process(&local_bin, args, Some(cwd)).unwrap_or(false);
-        }
-    }
-
-    Command::new(binary)
-        .args(args)
-        .current_dir(cwd)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    let resolved = crate::external_tools::resolve(binary).unwrap_or_else(|| PathBuf::from(binary));
+    run_process(&resolved, args, Some(cwd)).unwrap_or(false)
 }
 
 fn run_delegate_owned(binary: &str, args: &[String], cwd: &Path) -> bool {
     let argv = args.iter().map(String::as_str).collect::<Vec<_>>();
     run_delegate(binary, &argv, cwd)
+}
+
+fn capture_delegate_json(binary: &str, args: &[String], cwd: &Path) -> Result<Value> {
+    let resolved = crate::external_tools::resolve(binary).unwrap_or_else(|| PathBuf::from(binary));
+    let output = Command::new(&resolved)
+        .args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .with_context(|| format!("spawn {}", resolved.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("{} failed: {}", resolved.display(), stderr.trim()));
+    }
+    serde_json::from_slice(&output.stdout)
+        .with_context(|| format!("parse json emitted by {}", resolved.display()))
 }
 
 fn temp_answers_path(prefix: &str) -> PathBuf {
@@ -3202,6 +3547,8 @@ fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -
     }
     let answers_path = temp_answers_path("greentic-flow-wizard-answers");
     let mut args = flow_delegate_args(pack_dir);
+    args.push("--execution".to_string());
+    args.push("dry-run".to_string());
     args.push("--emit-answers".to_string());
     args.push(answers_path.display().to_string());
     let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
@@ -3241,6 +3588,8 @@ fn run_flow_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
             return false;
         }
         let mut args = flow_delegate_args(pack_dir);
+        args.push("--execution".to_string());
+        args.push("execute".to_string());
         args.push("--answers-file".to_string());
         args.push(answers_path.display().to_string());
         let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
@@ -3292,53 +3641,6 @@ fn handle_delegate_failure<R: BufRead, W: Write>(
         return Ok(true);
     }
     Ok(false)
-}
-
-fn delegate_override_binary(binary: &str) -> Option<PathBuf> {
-    let key = match binary {
-        "greentic-flow" => "GREENTIC_FLOW_BIN",
-        "greentic-component" => "GREENTIC_COMPONENT_BIN",
-        _ => return None,
-    };
-    env::var_os(key).map(PathBuf::from)
-}
-
-fn monorepo_delegate_binary(binary: &str) -> Option<PathBuf> {
-    if binary != "greentic-flow" {
-        return None;
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir.parent()?.parent()?;
-    let sibling_root = repo_root.join("../greentic-flow");
-    for rel in ["target/debug/greentic-flow", "target/release/greentic-flow"] {
-        let candidate = sibling_root.join(rel);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-fn should_prefer_monorepo_delegate(binary: &str) -> bool {
-    if binary != "greentic-flow" {
-        return false;
-    }
-    let Some(path_bin) = resolve_from_path(binary) else {
-        return false;
-    };
-    let path_str = path_bin.to_string_lossy();
-    path_str.contains("/.cargo/bin/greentic-flow")
-}
-
-fn resolve_from_path(binary: &str) -> Option<PathBuf> {
-    let path_var = env::var_os("PATH")?;
-    for dir in env::split_paths(&path_var) {
-        let candidate = dir.join(binary);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
 }
 
 fn wizard_self_exe() -> Result<PathBuf> {

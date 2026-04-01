@@ -70,7 +70,10 @@ Starts the interactive wizard main menu.
   - `GREENTIC_PACK_WIZARD_SELF_EXE`
   - `GREENTIC_FLOW_BIN`
   - `GREENTIC_COMPONENT_BIN`
-  Source: `crates/packc/src/cli/wizard.rs:73`, `crates/packc/src/cli/wizard.rs:1679`, `crates/packc/src/cli/wizard.rs:1726`.
+  - `GREENTIC_FLOW_DEV_BIN`
+  - `GREENTIC_COMPONENT_DEV_BIN`
+  Delegated tools are resolved explicitly via env override first, then `PATH`, then the running executable directory. Sibling repositories under `../greentic-flow` and `../greentic-component` are no longer auto-detected.
+  Source: `crates/packc/src/external_tools.rs`, `crates/packc/src/cli/wizard.rs`, `crates/packc/src/cli/inspect.rs`.
 
 ## D) Tests
 
@@ -83,6 +86,6 @@ Starts the interactive wizard main menu.
 ## Constraints and compatibility requirements (for PR-PACK-03 Stage 2)
 - Keep `greentic-pack wizard` interactive UX and menu contract intact unless explicitly changing CLI surface.
 - Preserve locale behavior: global `--locale` plus env fallback and `en-GB` default.
-- Preserve delegation resolution order and env overrides for local dev/test behavior.
+- Preserve explicit delegation resolution behavior for local dev/test use: env overrides first, then `PATH`, with no implicit sibling-repo fallback.
 - Preserve failure navigation semantics (`0) Back`, `M) Main Menu`) used throughout tests.
 - Keep existing extension entry persistence behavior (`extensions/<type>.json` and inline extension merge in `pack.yaml`) unless intentionally migrated.

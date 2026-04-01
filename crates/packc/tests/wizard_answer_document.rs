@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 #[test]
@@ -853,10 +853,27 @@ exit 0\n",
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("self:new --dir"));
-    assert!(calls.contains("flow:wizard ."));
+    assert!(calls.contains("flow:wizard . --execution execute --answers-file"));
     assert!(calls.contains("component:wizard --project-root . --execution execute --qa-answers"));
+    assert!(calls.contains("self:update --in"));
     assert!(calls.contains("self:doctor --in"));
     assert!(calls.contains("self:build --in"));
+    let update_idx = calls.find("self:update --in").expect("update call");
+    let doctor_idx = calls.find("self:doctor --in").expect("doctor call");
+    let resolve_idx = calls.find("self:resolve --in").expect("resolve call");
+    let build_idx = calls.find("self:build --in").expect("build call");
+    assert!(
+        update_idx < doctor_idx,
+        "update should happen before doctor"
+    );
+    assert!(
+        doctor_idx < resolve_idx,
+        "doctor should happen before resolve"
+    );
+    assert!(
+        resolve_idx < build_idx,
+        "resolve should happen before build"
+    );
 }
 
 #[test]
@@ -1392,13 +1409,15 @@ exit 0\n",
 echo \"flow:$*\" >> \"{}\"\n\
 emit=\"\"\n\
 answers=\"\"\n\
+mode=\"\"\n\
 while [ \"$#\" -gt 0 ]; do\n\
+  if [ \"$1\" = \"--execution\" ]; then mode=\"$2\"; shift 2; continue; fi\n\
   if [ \"$1\" = \"--emit-answers\" ]; then emit=\"$2\"; shift 2; continue; fi\n\
   if [ \"$1\" = \"--answers-file\" ]; then answers=\"$2\"; shift 2; continue; fi\n\
   shift\n\
 done\n\
-if [ -n \"$emit\" ]; then printf '{{\"flow\":\"dry-run\"}}' > \"$emit\"; fi\n\
-if [ -n \"$answers\" ]; then touch \"$PWD/flow.replayed\"; fi\n\
+if [ \"$mode\" = \"dry-run\" ] && [ -n \"$emit\" ]; then printf '{{\"flow\":\"dry-run\"}}' > \"$emit\"; fi\n\
+if [ \"$mode\" = \"execute\" ] && [ -n \"$answers\" ]; then touch \"$PWD/flow.replayed\"; fi\n\
 exit 0\n",
             log_path.display()
         ),
@@ -1509,6 +1528,339 @@ exit 0\n",
     assert!(pack_dir.is_dir(), "pack should be created from answers");
     assert!(pack_dir.join("flow.replayed").exists());
     assert!(pack_dir.join("component.replayed").exists());
+    let calls = fs::read_to_string(&log_path).expect("read calls");
+    assert!(calls.contains("flow:wizard . --execution dry-run --emit-answers"));
+    assert!(calls.contains("flow:wizard . --execution execute --answers-file"));
+}
+
+#[test]
+fn wizard_schema_embeds_pack_flow_and_component_contracts() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let flow_exe = temp.path().join("greentic-flow");
+    let component_exe = temp.path().join("greentic-component");
+
+    write_script(
+        &flow_exe,
+        r#"#!/usr/bin/env bash
+printf '%s\n' "$*" > /dev/null
+cat <<'JSON'
+{"schema_id":"greentic-flow.wizard.plan","schema_version":"2.0.0","type":"object","properties":{"actions":{"type":"array"}}}
+JSON
+exit 0
+"#,
+    );
+    write_script(
+        &component_exe,
+        r#"#!/usr/bin/env bash
+mode=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--mode" ]; then mode="$2"; shift 2; continue; fi
+  shift
+done
+printf '{"title":"component-%s","type":"object","properties":{"answers":{"type":"object","properties":{"mode":{"const":"%s"}}}}}\n' "$mode" "$mode"
+"#,
+    );
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("--schema")
+        .env("GREENTIC_FLOW_BIN", &flow_exe)
+        .env("GREENTIC_COMPONENT_BIN", &component_exe)
+        .output()
+        .expect("run wizard --schema");
+    assert!(output.status.success(), "wizard --schema should succeed");
+
+    let schema: Value = serde_json::from_slice(&output.stdout).expect("parse wizard schema");
+    assert_eq!(
+        schema
+            .get("properties")
+            .and_then(|v| v.get("schema_id"))
+            .and_then(|v| v.get("const"))
+            .and_then(Value::as_str),
+        Some("greentic-pack.wizard.answers")
+    );
+    assert_eq!(
+        schema
+            .get("properties")
+            .and_then(|v| v.get("answers"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("flow_wizard_answers"))
+            .and_then(|v| v.get("anyOf"))
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        schema
+            .get("$defs")
+            .and_then(|v| v.get("greentic_flow_wizard_runtime_schema"))
+            .and_then(|v| v.get("schema_id"))
+            .and_then(Value::as_str),
+        Some("greentic-flow.wizard.plan")
+    );
+    assert_eq!(
+        schema
+            .get("$defs")
+            .and_then(|v| v.get("greentic_component_wizard_create"))
+            .and_then(|v| v.get("title"))
+            .and_then(Value::as_str),
+        Some("component-create")
+    );
+    assert_eq!(
+        schema
+            .get("$defs")
+            .and_then(|v| v.get("greentic_component_wizard_doctor"))
+            .and_then(|v| v.get("title"))
+            .and_then(Value::as_str),
+        Some("component-doctor")
+    );
+    let step_comment = schema
+        .get("$defs")
+        .and_then(|v| v.get("greentic_flow_step_answers"))
+        .and_then(|v| v.get("$comment"))
+        .and_then(Value::as_str)
+        .expect("flow step comment");
+    assert!(step_comment.contains("component-schema <file/oci/repo/store>.wasm"));
+    assert!(step_comment.contains("default|setup|update|remove"));
+}
+
+#[test]
+fn wizard_schema_with_answers_uses_pack_specific_flow_schema_and_dev_overrides() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    let flow_dev_exe = temp.path().join("greentic-flow-dev");
+    let component_dev_exe = temp.path().join("greentic-component-dev");
+    let flow_log = temp.path().join("flow.log");
+    let component_log = temp.path().join("component.log");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_script(
+        &flow_dev_exe,
+        &format!(
+            r#"#!/usr/bin/env bash
+echo "$*" > "{}"
+if [ "$1" != "wizard" ] || [ "$2" != "--schema" ] || [ "$3" != "{}" ] || [ "$4" != "--answers" ] || [ ! -f "$5" ]; then
+  exit 1
+fi
+cat <<'JSON'
+{{"schema_id":"greentic-flow.wizard.plan","schema_version":"2.0.0","title":"pack-specific-flow-schema","properties":{{"actions":{{"type":"array","prefixItems":[{{"action":"from-pack"}}]}}}}}}
+JSON
+exit 0
+"#,
+            flow_log.display(),
+            pack_dir.display()
+        ),
+    );
+    write_script(
+        &component_dev_exe,
+        &format!(
+            r#"#!/usr/bin/env bash
+echo "$*" >> "{}"
+mode=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--mode" ]; then mode="$2"; shift 2; continue; fi
+  shift
+done
+printf '{{"title":"component-%s","type":"object"}}\n' "$mode"
+"#,
+            component_log.display()
+        ),
+    );
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_delegate_flow": true,
+                "run_delegate_component": false,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "flow_wizard_answers": {
+                    "schema_id": "greentic-flow.wizard.plan",
+                    "schema_version": "2.0.0",
+                    "actions": [
+                        {
+                            "action": "add-step",
+                            "flow": "flows/order_tracking_flow.ygtc",
+                            "component": "components/order-status.wasm",
+                            "mode": "setup",
+                            "answers": {
+                                "tenant": "acme"
+                            }
+                        }
+                    ]
+                }
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("--schema")
+        .arg("--answers")
+        .arg(&answers_path)
+        .env("GREENTIC_FLOW_DEV_BIN", &flow_dev_exe)
+        .env("GREENTIC_COMPONENT_DEV_BIN", &component_dev_exe)
+        .output()
+        .expect("run wizard --schema --answers");
+    assert!(output.status.success(), "wizard --schema should succeed");
+
+    let schema: Value = serde_json::from_slice(&output.stdout).expect("parse wizard schema");
+    assert_eq!(
+        schema
+            .get("$defs")
+            .and_then(|v| v.get("greentic_flow_wizard_runtime_schema"))
+            .and_then(|v| v.get("title"))
+            .and_then(Value::as_str),
+        Some("pack-specific-flow-schema")
+    );
+    let flow_args = fs::read_to_string(&flow_log).expect("read flow log");
+    assert!(flow_args.contains("wizard --schema"));
+    assert!(flow_args.contains(&pack_dir.display().to_string()));
+    assert!(flow_args.contains("--answers"));
+    let component_args = fs::read_to_string(&component_log).expect("read component log");
+    assert!(component_args.contains("wizard --schema --mode create"));
+}
+
+#[test]
+fn wizard_apply_replays_nested_flow_step_and_component_answers_without_dropping_them() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let flow_exe = temp.path().join("greentic-flow");
+    let component_exe = temp.path().join("greentic-component");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_script(&self_exe, "#!/usr/bin/env bash\nexit 0\n");
+    write_script(
+        &flow_exe,
+        r#"#!/usr/bin/env bash
+answers=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--answers-file" ]; then answers="$2"; shift 2; continue; fi
+  shift
+done
+if [ -n "$answers" ]; then cp "$answers" "$PWD/flow.replayed.json"; fi
+exit 0
+"#,
+    );
+    write_script(
+        &component_exe,
+        r#"#!/usr/bin/env bash
+answers=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--qa-answers" ]; then answers="$2"; shift 2; continue; fi
+  shift
+done
+if [ -n "$answers" ]; then cp "$answers" "$PWD/component.replayed.json"; fi
+exit 0
+"#,
+    );
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_delegate_flow": true,
+                "run_delegate_component": true,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "flow_wizard_answers": {
+                    "schema_id": "greentic-flow.wizard.plan",
+                    "schema_version": "2.0.0",
+                    "actions": [
+                        {
+                            "action": "add-step",
+                            "flow": "flows/order_tracking_flow.ygtc",
+                            "component": "components/order-status.wasm",
+                            "mode": "setup",
+                            "answers": {
+                                "tenant": "acme",
+                                "card": {
+                                    "template": "adaptive-card"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "component_wizard_answers": {
+                    "wizard_id": "greentic-component.wizard.run",
+                    "schema_id": "greentic-component.wizard.run",
+                    "schema_version": "1.0.0",
+                    "answers": {
+                        "mode": "create",
+                        "fields": {
+                            "component_name": "order-status"
+                        }
+                    },
+                    "locks": {}
+                }
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .env("GREENTIC_PACK_WIZARD_SELF_EXE", &self_exe)
+        .env("GREENTIC_FLOW_BIN", &flow_exe)
+        .env("GREENTIC_COMPONENT_BIN", &component_exe)
+        .output()
+        .expect("run wizard apply");
+    assert!(output.status.success(), "wizard apply should succeed");
+
+    let replayed_flow: Value = serde_json::from_slice(
+        &fs::read(pack_dir.join("flow.replayed.json")).expect("read replayed flow answers"),
+    )
+    .expect("parse replayed flow answers");
+    assert_eq!(
+        replayed_flow
+            .get("actions")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("answers"))
+            .and_then(|v| v.get("card"))
+            .and_then(|v| v.get("template"))
+            .and_then(Value::as_str),
+        Some("adaptive-card")
+    );
+    let replayed_component: Value = serde_json::from_slice(
+        &fs::read(pack_dir.join("component.replayed.json"))
+            .expect("read replayed component answers"),
+    )
+    .expect("parse replayed component answers");
+    assert_eq!(
+        replayed_component
+            .get("answers")
+            .and_then(|v| v.get("fields"))
+            .and_then(|v| v.get("component_name"))
+            .and_then(Value::as_str),
+        Some("order-status")
+    );
 }
 
 fn write_script(path: &std::path::Path, body: &str) {

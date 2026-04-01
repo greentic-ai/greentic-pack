@@ -274,7 +274,9 @@ fn run_flow_doctors(
             continue;
         };
 
-        let mut command = Command::new("greentic-flow");
+        let flow_bin = crate::external_tools::resolve("greentic-flow")
+            .unwrap_or_else(|| PathBuf::from("greentic-flow"));
+        let mut command = Command::new(&flow_bin);
         command
             .args(["doctor", "--json", "--stdin"])
             .stdin(Stdio::piped())
@@ -293,7 +295,9 @@ fn run_flow_doctors(
                 });
                 return Ok(false);
             }
-            Err(err) => return Err(err).context("run greentic-flow doctor"),
+            Err(err) => {
+                return Err(err).with_context(|| format!("run {} doctor", flow_bin.display()));
+            }
         };
         if let Some(mut stdin) = child.stdin.take() {
             stdin
@@ -430,7 +434,9 @@ fn run_component_doctors(load: &PackLoad, diagnostics: &mut Vec<Diagnostic>) -> 
         fs::write(&wasm_path, wasm_bytes)?;
         fs::write(&manifest_path, manifest_bytes)?;
 
-        let output = match Command::new("greentic-component")
+        let component_bin = crate::external_tools::resolve("greentic-component")
+            .unwrap_or_else(|| PathBuf::from("greentic-component"));
+        let output = match Command::new(&component_bin)
             .args(["doctor"])
             .arg(&wasm_path)
             .args(["--manifest"])
@@ -452,7 +458,9 @@ fn run_component_doctors(load: &PackLoad, diagnostics: &mut Vec<Diagnostic>) -> 
                 });
                 return Ok(false);
             }
-            Err(err) => return Err(err).context("run greentic-component doctor"),
+            Err(err) => {
+                return Err(err).with_context(|| format!("run {} doctor", component_bin.display()));
+            }
         };
 
         if !output.status.success() {
