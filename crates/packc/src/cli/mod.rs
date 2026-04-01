@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::{convert::TryFrom, path::PathBuf};
+use std::{convert::TryFrom, ffi::OsString, path::PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -176,7 +176,36 @@ pub struct BuildArgs {
 }
 
 pub fn run() -> Result<()> {
-    Runtime::new()?.block_on(run_with_cli(Cli::parse(), false))
+    let cli = parse_cli_from_env();
+    Runtime::new()?.block_on(run_with_cli(cli, false))
+}
+
+fn parse_cli_from_env() -> Cli {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let (rewritten, wizard_schema_requested) = rewrite_wizard_schema_flags(args);
+    self::wizard::set_forced_schema_flag(wizard_schema_requested);
+    Cli::parse_from(rewritten)
+}
+
+fn rewrite_wizard_schema_flags(args: Vec<OsString>) -> (Vec<OsString>, bool) {
+    let mut saw_wizard = false;
+    let mut schema_requested = false;
+    let mut rewritten = Vec::with_capacity(args.len());
+
+    for arg in args {
+        if arg == "wizard" {
+            saw_wizard = true;
+            rewritten.push(arg);
+            continue;
+        }
+        if saw_wizard && arg == "--schema" {
+            schema_requested = true;
+            continue;
+        }
+        rewritten.push(arg);
+    }
+
+    (rewritten, schema_requested)
 }
 
 pub fn print_top_level_help() {
@@ -408,5 +437,52 @@ mod tests {
     fn resolve_env_filter_uses_cli_verbosity_when_env_missing() {
         let cli = Cli::parse_from(["greentic-pack", "--log", "debug", "build", "--in", "demo"]);
         assert_eq!(resolve_env_filter(&cli), "debug");
+    }
+
+    #[test]
+    fn rewrite_wizard_schema_flags_strips_schema_after_wizard() {
+        let (rewritten, schema_requested) = rewrite_wizard_schema_flags(vec![
+            "greentic-pack".into(),
+            "--locale".into(),
+            "nl".into(),
+            "wizard".into(),
+            "run".into(),
+            "--schema".into(),
+            "--answers".into(),
+            "answers.json".into(),
+        ]);
+
+        assert!(schema_requested);
+        assert_eq!(
+            rewritten,
+            vec![
+                OsString::from("greentic-pack"),
+                OsString::from("--locale"),
+                OsString::from("nl"),
+                OsString::from("wizard"),
+                OsString::from("run"),
+                OsString::from("--answers"),
+                OsString::from("answers.json"),
+            ]
+        );
+    }
+
+    #[test]
+    fn rewrite_wizard_schema_flags_leaves_other_schema_flags_alone() {
+        let (rewritten, schema_requested) = rewrite_wizard_schema_flags(vec![
+            "greentic-pack".into(),
+            "build".into(),
+            "--schema".into(),
+        ]);
+
+        assert!(!schema_requested);
+        assert_eq!(
+            rewritten,
+            vec![
+                OsString::from("greentic-pack"),
+                OsString::from("build"),
+                OsString::from("--schema"),
+            ]
+        );
     }
 }

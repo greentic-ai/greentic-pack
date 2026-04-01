@@ -6,6 +6,7 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
@@ -34,6 +35,7 @@ const PACK_WIZARD_SCHEMA_ID: &str = "greentic-pack.wizard.answers";
 const PACK_WIZARD_SCHEMA_VERSION: &str = "1.0.0";
 const DEFAULT_EXTENSION_CATALOG_REF: &str =
     "file://docs/extensions_capability_packs.catalog.v1.json";
+static FORCED_WIZARD_SCHEMA: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Args, Default)]
 pub struct WizardArgs {
@@ -197,6 +199,18 @@ struct WizardExecutionPlan {
     extension_operation: Option<ExtensionOperationRecord>,
 }
 
+struct FlowSchemaContext {
+    pack_dir: Option<PathBuf>,
+    flow_wizard_answers: Option<Value>,
+}
+
+pub(crate) fn set_forced_schema_flag(requested: bool) {
+    FORCED_WIZARD_SCHEMA.store(requested, Ordering::Relaxed);
+}
+
+fn consume_forced_schema_flag() -> bool {
+    FORCED_WIZARD_SCHEMA.swap(false, Ordering::Relaxed)
+}
 pub fn handle(
     args: WizardArgs,
     runtime: &RuntimeContext,
@@ -209,9 +223,17 @@ pub fn handle(
         migrate: args.migrate,
         dry_run: args.dry_run,
     };
+    let schema_requested = consume_forced_schema_flag();
     match args.command {
-        None => run_interactive_command(implicit_run_args, runtime, requested_locale),
-        Some(WizardCommand::Run(cmd)) => run_interactive_command(cmd, runtime, requested_locale),
+        None => run_interactive_command(
+            implicit_run_args,
+            runtime,
+            requested_locale,
+            schema_requested,
+        ),
+        Some(WizardCommand::Run(cmd)) => {
+            run_interactive_command(cmd, runtime, requested_locale, schema_requested)
+        }
         Some(WizardCommand::Validate(cmd)) => run_validate_command(cmd, requested_locale),
         Some(WizardCommand::Apply(cmd)) => run_apply_command(cmd, requested_locale),
     }
@@ -373,7 +395,11 @@ fn run_interactive_command(
     cmd: WizardRunArgs,
     runtime: &RuntimeContext,
     requested_locale: Option<&str>,
+    schema_requested: bool,
 ) -> Result<()> {
+    if maybe_print_answer_schema(&cmd, schema_requested)? {
+        return Ok(());
+    }
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
     let locale = resolved_locale(requested_locale);
     if let Some(path) = cmd.answers.as_deref() {
@@ -440,6 +466,27 @@ fn run_interactive_command(
     Ok(())
 }
 
+fn maybe_print_answer_schema(cmd: &WizardRunArgs, schema_requested: bool) -> Result<bool> {
+    if !schema_requested {
+        return Ok(false);
+    }
+    let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
+    let flow_context = cmd.answers.as_deref().and_then(|path| {
+        load_answer_document(path, &target_schema_version, cmd.migrate, None)
+            .ok()
+            .and_then(|doc| execution_plan_from_answers(&doc.answers).ok())
+            .map(|plan| FlowSchemaContext {
+                pack_dir: Some(plan.pack_dir),
+                flow_wizard_answers: plan.flow_wizard_answers,
+            })
+    });
+    let schema = wizard_answer_schema(&target_schema_version, flow_context.as_ref())?;
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    serde_json::to_writer_pretty(&mut output, &schema).context("write wizard schema")?;
+    wizard_ui::render_text(&mut output, "\n").context("write wizard schema newline")?;
+    Ok(true)
+}
 fn run_validate_command(cmd: WizardValidateArgs, requested_locale: Option<&str>) -> Result<()> {
     let target_schema_version = target_schema_version(cmd.schema_version.as_deref())?;
     let doc = load_answer_document(
