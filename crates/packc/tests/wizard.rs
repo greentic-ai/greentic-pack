@@ -218,7 +218,7 @@ fn wizard_update_flow_auto_runs_validate_after_delegate_success() {
 }
 
 #[test]
-fn wizard_update_flow_prefers_path_delegate_over_sibling_binary() {
+fn wizard_update_flow_uses_path_delegate_when_available() {
     let _guard = test_env_lock()
         .lock()
         .unwrap_or_else(|err| err.into_inner());

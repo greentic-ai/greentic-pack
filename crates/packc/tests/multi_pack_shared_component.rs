@@ -24,7 +24,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn tool_available(name: &str) -> bool {
-    Command::new(name)
+    Command::new(resolve_tool_path(name))
         .arg("--help")
         .output()
         .map(|o| o.status.success())
@@ -32,9 +32,22 @@ fn tool_available(name: &str) -> bool {
 }
 
 fn greentic_component_cmd() -> Command {
-    let mut cmd = Command::new("greentic-component");
+    let mut cmd = Command::new(resolve_tool_path("greentic-component"));
     cmd.env_remove("CARGO_TARGET_DIR");
     cmd
+}
+
+fn resolve_tool_path(name: &str) -> PathBuf {
+    let override_path = match name {
+        "greentic-component" => std::env::var_os("GREENTIC_COMPONENT_BIN")
+            .or_else(|| std::env::var_os("GREENTIC_COMPONENT_DEV_BIN")),
+        "greentic-flow" => std::env::var_os("GREENTIC_FLOW_BIN")
+            .or_else(|| std::env::var_os("GREENTIC_FLOW_DEV_BIN")),
+        _ => None,
+    };
+    override_path
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(name))
 }
 
 fn online() -> bool {
