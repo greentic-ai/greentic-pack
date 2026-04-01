@@ -13,7 +13,7 @@
   "per_file": {
     "crates/packc/src/build.rs": { "line_coverage_min": 75.0 },
     "crates/packc/src/validator.rs": { "line_coverage_min": 70.0 },
-    "crates/packc/src/cli/wizard.rs": { "line_coverage_min": 70.0 },
+    "crates/packc/src/cli/wizard.rs": { "line_coverage_min": 75.0 },
     "crates/greentic-pack/src/reader.rs": { "line_coverage_min": 72.0 },
     "crates/greentic-pack/src/builder.rs": { "line_coverage_min": 72.0 },
     "crates/greentic-pack/src/static_routes.rs": { "line_coverage_min": 75.0 }
