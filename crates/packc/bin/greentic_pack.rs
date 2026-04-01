@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let cli = Cli::parse_from(args);
+    let cli = cli::parse_cli_from_args(args);
     let env_filter = cli::resolve_env_filter(&cli);
 
     if std::env::var_os("RUST_LOG").is_none() {

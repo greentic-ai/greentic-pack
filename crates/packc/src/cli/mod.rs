@@ -180,8 +180,12 @@ pub fn run() -> Result<()> {
     Runtime::new()?.block_on(run_with_cli(cli, false))
 }
 
-fn parse_cli_from_env() -> Cli {
+pub fn parse_cli_from_env() -> Cli {
     let args: Vec<OsString> = std::env::args_os().collect();
+    parse_cli_from_args(args)
+}
+
+pub fn parse_cli_from_args(args: Vec<OsString>) -> Cli {
     let (rewritten, wizard_schema_requested) = rewrite_wizard_schema_flags(args);
     self::wizard::set_forced_schema_flag(wizard_schema_requested);
     Cli::parse_from(rewritten)
