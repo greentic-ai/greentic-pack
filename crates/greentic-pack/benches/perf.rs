@@ -2,8 +2,11 @@ use std::collections::BTreeMap;
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use greentic_pack::{
-    LockedComponent, LockedOperation, PackLockV1, StaticRouteCacheV1, StaticRouteScopeV1,
-    StaticRouteV1, StaticRoutesExtensionV1, validate_pack_lock, validate_static_routes_payload,
+    pack_lock::{LockedComponent, LockedOperation, PackLockV1, validate_pack_lock},
+    static_routes::{
+        StaticRouteCacheV1, StaticRouteScopeV1, StaticRouteV1, StaticRoutesExtensionV1,
+        validate_static_routes_payload,
+    },
 };
 
 fn build_pack_lock(components: usize, operations_per_component: usize) -> PackLockV1 {
@@ -87,8 +90,8 @@ fn legacy_collect_route_uniques(payload: &StaticRoutesExtensionV1) -> usize {
 }
 
 fn current_collect_route_uniques(payload: &StaticRoutesExtensionV1) -> usize {
-    let mut seen_ids = std::collections::HashSet::new();
-    let mut seen_exports = std::collections::HashSet::new();
+    let mut seen_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut seen_exports: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for route in &payload.routes {
         seen_ids.insert(route.id.as_str());
         for export_name in route.exports.values() {
@@ -140,7 +143,7 @@ fn bench_validate_static_routes_payload(c: &mut Criterion) {
             &payload,
             |b, payload| {
                 b.iter(|| {
-                    validate_static_routes_payload(black_box(payload), |path| {
+                    validate_static_routes_payload(black_box(payload), |path: &str| {
                         path.ends_with("index.html") || path.starts_with("assets/site-")
                     })
                     .expect("valid routes")
