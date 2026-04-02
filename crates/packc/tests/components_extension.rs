@@ -78,7 +78,10 @@ fn write_pack_files(dir: &Path, oci_ref: &str, allow_tags: bool) -> PathBuf {
     let wasm_path = dir.join("components/demo.wasm");
     write_stub_wasm(&wasm_path);
     write_describe_sidecar(&wasm_path, "demo.component", "0.1.0");
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
 
     let pack_yaml = format!(
         r#"pack_id: dev.local.oci-demo

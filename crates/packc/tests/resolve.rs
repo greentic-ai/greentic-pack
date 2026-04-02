@@ -42,7 +42,10 @@ fn write_pack(dir: &Path, wasm_contents: &[u8]) {
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
     fs::write(&wasm_path, wasm_contents).unwrap();
     write_describe_sidecar(&wasm_path, "demo.component");
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = format!(
         r#"{{
   "schema_version": 1,
@@ -158,7 +161,10 @@ fn write_pack_with_local_summary(dir: &Path, wasm_contents: &[u8]) {
     fs::write(&wasm_path, wasm_contents).unwrap();
     write_describe_sidecar(&wasm_path, "demo.component");
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = serde_json::json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -201,7 +207,10 @@ fn write_pack_with_local_summary_file_uri(dir: &Path, wasm_contents: &[u8]) {
     fs::write(&wasm_path, wasm_contents).unwrap();
     write_describe_sidecar(&wasm_path, "demo.component");
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = serde_json::json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -515,7 +524,10 @@ fn resolve_offline_accepts_wasip2_component_with_wasi_cli_imports() {
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
     fs::write(&wasm_path, wasm_bytes).unwrap();
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = serde_json::json!({
         "schema_version": 1,
         "flow": "main.ygtc",

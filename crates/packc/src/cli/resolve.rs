@@ -226,7 +226,7 @@ async fn populate_component_contract(
         component_version: component.component_version.clone(),
     })?;
     let bytes = resolved.bytes;
-    component.resolved_digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+    component.resolved_digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
     let use_describe_cache =
         std::env::var("GREENTIC_PACK_USE_DESCRIBE_CACHE").is_ok() || cfg!(test);
     let describe = match describe_component(engine, &bytes) {

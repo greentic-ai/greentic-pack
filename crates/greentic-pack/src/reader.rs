@@ -935,7 +935,7 @@ fn media_type_for(path: &str) -> &'static str {
 fn sha256_prefixed(bytes: &[u8]) -> String {
     let mut sha = Sha256::new();
     sha.update(bytes);
-    format!("sha256:{:x}", sha.finalize())
+    format!("sha256:{}", hex::encode(sha.finalize()))
 }
 
 fn convert_gpack_manifest(

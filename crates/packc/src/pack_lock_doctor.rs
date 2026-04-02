@@ -156,7 +156,7 @@ pub fn run_pack_lock_doctor(input: PackLockDoctorInput<'_>) -> Result<PackLockDo
             }
         };
 
-        let digest = format!("sha256:{:x}", Sha256::digest(&wasm.bytes));
+        let digest = format!("sha256:{}", hex::encode(Sha256::digest(&wasm.bytes)));
         if digest != locked.resolved_digest {
             has_errors = true;
             diagnostics.push(component_diag(
