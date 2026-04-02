@@ -219,8 +219,8 @@ fn write_summary(pack_dir: &Path, wasm_src: &Path, component_id: &str) {
     let parent = summary_path.parent().expect("summary parent");
     fs::create_dir_all(parent).expect("summary dir");
     let digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(fs::read(wasm_src).expect("read wasm"))
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(wasm_src).expect("read wasm")))
     );
     // flows/.. relative path to components/
     let rel_path = "../components/shared.component.wasm";

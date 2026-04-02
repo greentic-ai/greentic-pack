@@ -152,7 +152,10 @@ flows:
     )
     .unwrap();
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -253,7 +256,10 @@ nodes:
     )
     .unwrap();
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = json!({
         "schema_version": 1,
         "flow": "main.ygtc",

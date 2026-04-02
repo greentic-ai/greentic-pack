@@ -105,22 +105,22 @@ fn write_weather_summary(pack_dir: &Path, _cache_dir: &Path) {
     let qa_path = pack_dir.join("components/qa.process/component.wasm");
     write_describe_sidecar(&qa_path, "qa.process", "0.1.0");
     let qa_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&qa_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(std::fs::read(&qa_path).unwrap()))
     );
 
     let mcp_path = pack_dir.join("components/mcp.exec/component.wasm");
     write_describe_sidecar(&mcp_path, "mcp.exec", "0.1.0");
     let mcp_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&mcp_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(std::fs::read(&mcp_path).unwrap()))
     );
 
     let templating_path = pack_dir.join("components/templating.handlebars/component.wasm");
     write_describe_sidecar(&templating_path, "templating.handlebars", "0.1.0");
     let templating_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&templating_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(std::fs::read(&templating_path).unwrap()))
     );
 
     let doc = serde_json::json!({

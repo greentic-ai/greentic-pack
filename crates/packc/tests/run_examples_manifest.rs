@@ -72,7 +72,7 @@ fn write_summary(path: &Path, flow: &str, nodes: &[(&str, serde_json::Value)]) {
 
 fn digest_for(path: &Path) -> String {
     let bytes = fs::read(path).expect("read artifact for digest");
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
@@ -128,7 +128,7 @@ fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
 
 fn cache_component(cache_dir: &Path, component_id: &str) -> String {
     let bytes = format!("component-{component_id}").into_bytes();
-    let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
     let dir = cache_dir.join(digest.trim_start_matches("sha256:"));
     fs::create_dir_all(&dir).expect("cache dir");
     let wasm_path = dir.join("component.wasm");
