@@ -510,7 +510,7 @@ fn resolve_component_artifacts(
         .context("encode component manifest to canonical cbor")?;
     let mut sha = Sha256::new();
     sha.update(&manifest_bytes);
-    let manifest_hash_sha256 = format!("sha256:{:x}", sha.finalize());
+    let manifest_hash_sha256 = format!("sha256:{}", hex::encode(sha.finalize()));
     let manifest_path = format!("components/{}.manifest.cbor", cfg.id);
 
     let binary = ComponentBinary {
@@ -1637,7 +1637,7 @@ async fn collect_lock_component_artifacts(
         let cache_path = resolved.cache_path;
         let bytes = fs::read(&cache_path)
             .with_context(|| format!("failed to read cached component {}", cache_path.display()))?;
-        let wasm_sha256 = format!("{:x}", Sha256::digest(&bytes));
+        let wasm_sha256 = hex::encode(Sha256::digest(&bytes));
         let logical_path = if is_tag {
             format!("blobs/sha256/{}.wasm", wasm_sha256)
         } else {
@@ -1922,7 +1922,7 @@ fn component_manifest_file_from_manifest(
         .context("encode component manifest to canonical cbor")?;
     let mut sha = Sha256::new();
     sha.update(&manifest_bytes);
-    let manifest_hash_sha256 = format!("sha256:{:x}", sha.finalize());
+    let manifest_hash_sha256 = format!("sha256:{}", hex::encode(sha.finalize()));
     let manifest_path = format!("components/{}.manifest.cbor", manifest.id.as_str());
 
     Ok(ComponentManifestFile {
@@ -2519,7 +2519,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2577,7 +2577,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2637,7 +2637,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2693,7 +2693,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2750,7 +2750,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),

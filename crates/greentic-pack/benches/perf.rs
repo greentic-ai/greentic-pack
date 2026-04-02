@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
+use std::hint::black_box;
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use greentic_pack::{
     pack_lock::{LockedComponent, LockedOperation, PackLockV1, validate_pack_lock},
     static_routes::{

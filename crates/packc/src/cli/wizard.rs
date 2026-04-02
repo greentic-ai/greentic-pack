@@ -20,6 +20,7 @@ use serde_yaml_bw::{Mapping, Value as YamlValue};
 
 use crate::cli::add_extension::{
     CapabilityOfferSpec, ensure_capabilities_extension, inject_capability_offer_spec,
+    inject_provider_entry_for_wizard,
 };
 use crate::cli::wizard_catalog::{
     CatalogQuestion, CatalogQuestionKind, DEFAULT_EXTENSION_CATALOG_DOWNLOAD_URL, ExtensionCatalog,
@@ -35,6 +36,7 @@ const PACK_WIZARD_SCHEMA_ID: &str = "greentic-pack.wizard.answers";
 const PACK_WIZARD_SCHEMA_VERSION: &str = "1.0.0";
 const DEFAULT_EXTENSION_CATALOG_REF: &str =
     "file://docs/extensions_capability_packs.catalog.v1.json";
+const LEGACY_MESSAGING_WEBCHAT_GUI_EXTENSION_ID: &str = "messaging-webchat-gui";
 static FORCED_WIZARD_SCHEMA: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Args, Default)]
@@ -1271,7 +1273,12 @@ fn json_value_to_string_map(
 fn parse_extension_operation_record(
     answers: &BTreeMap<String, Value>,
 ) -> Result<Option<ExtensionOperationRecord>> {
-    let Some(operation) = answers.get("extension_operation").and_then(Value::as_str) else {
+    let operation = answers
+        .get("extension_operation")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| infer_extension_operation_from_selected_actions(answers));
+    let Some(operation) = operation.as_deref() else {
         return Ok(None);
     };
     let catalog_ref = answers
@@ -1302,6 +1309,27 @@ fn parse_extension_operation_record(
         template_qa_answers,
         edit_answers,
     }))
+}
+
+fn infer_extension_operation_from_selected_actions(
+    answers: &BTreeMap<String, Value>,
+) -> Option<String> {
+    let selected = answers.get("selected_actions")?.as_array()?;
+    let contains = |needle: &str| {
+        selected
+            .iter()
+            .any(|value| matches!(value.as_str(), Some(item) if item == needle))
+    };
+    if contains("main.update_extension_pack") || contains("update_extension_pack.edit_entries") {
+        return Some("update_extension_pack".to_string());
+    }
+    if contains("main.create_extension_pack") || contains("create_extension_pack.start") {
+        return Some("create_extension_pack".to_string());
+    }
+    if contains("main.add_extension") {
+        return Some("add_extension".to_string());
+    }
+    None
 }
 
 fn run_create_extension_pack<R: BufRead, W: Write>(
@@ -2317,6 +2345,9 @@ fn validate_extension_operation_record(operation: &ExtensionOperationRecord) -> 
 }
 
 fn apply_extension_operation(pack_dir: &Path, operation: &ExtensionOperationRecord) -> Result<()> {
+    if operation.extension_type_id == LEGACY_MESSAGING_WEBCHAT_GUI_EXTENSION_ID {
+        return apply_legacy_messaging_webchat_gui_extension(pack_dir, operation);
+    }
     let catalog = load_extension_catalog(&operation.catalog_ref, None)?;
     let extension_type = catalog
         .extension_types
@@ -2351,6 +2382,23 @@ fn apply_extension_operation(pack_dir: &Path, operation: &ExtensionOperationReco
     }
 
     persist_extension_state(pack_dir, extension_type, operation)
+}
+
+fn apply_legacy_messaging_webchat_gui_extension(
+    pack_dir: &Path,
+    operation: &ExtensionOperationRecord,
+) -> Result<()> {
+    let pack_yaml = pack_dir.join("pack.yaml");
+    let contents =
+        fs::read_to_string(&pack_yaml).with_context(|| format!("read {}", pack_yaml.display()))?;
+    let provider_id = optional_answer(&operation.edit_answers, "entry_label")
+        .unwrap_or_else(|| LEGACY_MESSAGING_WEBCHAT_GUI_EXTENSION_ID.to_string());
+    let version = crate::config::load_pack_config(pack_dir)
+        .map(|cfg| cfg.version.to_string())
+        .unwrap_or_else(|_| "0.1.0".to_string());
+    let updated = inject_provider_entry_for_wizard(&contents, &provider_id, "messaging", &version)?;
+    fs::write(&pack_yaml, updated).with_context(|| format!("write {}", pack_yaml.display()))?;
+    Ok(())
 }
 
 fn ask_main_menu<R: BufRead, W: Write>(
@@ -3549,8 +3597,6 @@ fn run_flow_delegate_for_session(session: &mut WizardSession, pack_dir: &Path) -
     }
     let answers_path = temp_answers_path("greentic-flow-wizard-answers");
     let mut args = flow_delegate_args(pack_dir);
-    args.push("--execution".to_string());
-    args.push("dry-run".to_string());
     args.push("--emit-answers".to_string());
     args.push(answers_path.display().to_string());
     let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
@@ -3590,9 +3636,7 @@ fn run_flow_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
             return false;
         }
         let mut args = flow_delegate_args(pack_dir);
-        args.push("--execution".to_string());
-        args.push("execute".to_string());
-        args.push("--answers-file".to_string());
+        args.push("--answers".to_string());
         args.push(answers_path.display().to_string());
         let ok = run_delegate_owned("greentic-flow", &args, pack_dir);
         let _ = fs::remove_file(&answers_path);

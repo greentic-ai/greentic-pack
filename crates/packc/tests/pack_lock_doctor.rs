@@ -103,7 +103,7 @@ fn write_pack_archive(
 }
 
 fn build_pack_lock(component_id: &str, component_bytes: &[u8], describe_hash: &str) -> Vec<u8> {
-    let digest = format!("sha256:{:x}", Sha256::digest(component_bytes));
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(component_bytes)));
     let component = LockedComponent {
         component_id: component_id.to_string(),
         r#ref: None,
@@ -177,7 +177,7 @@ fn build_describe_cache(component_id: &str) -> (Vec<u8>, String) {
         config_schema,
     };
     let bytes = canonical::to_canonical_cbor_allow_floats(&describe).expect("encode describe");
-    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let digest = hex::encode(Sha256::digest(&bytes));
     (bytes, digest)
 }
 

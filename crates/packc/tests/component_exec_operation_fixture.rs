@@ -102,7 +102,10 @@ fn component_exec_operation_is_preserved_in_manifest() {
     let wasm_path = pack_root.join("components/fixture.wasm");
     write_stub_wasm(&wasm_path);
     write_describe_sidecar(&wasm_path, COMPONENT_ID, "0.1.0");
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = json!({
         "schema_version": 1,
         "flow": "main.ygtc",

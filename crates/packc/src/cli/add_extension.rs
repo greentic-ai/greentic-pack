@@ -475,6 +475,32 @@ fn build_provider_decl(args: &ProviderArgs, root: &Path) -> Result<ProviderDecl>
     })
 }
 
+pub(crate) fn inject_provider_entry_for_wizard(
+    contents: &str,
+    provider_id: &str,
+    kind: &str,
+    version: &str,
+) -> Result<String> {
+    let provider = ProviderDecl {
+        provider_type: provider_id.to_string(),
+        capabilities: vec![kind.to_string()],
+        ops: match kind {
+            "messaging" => vec!["send".to_string(), "receive".to_string()],
+            "events" => vec!["emit".to_string(), "subscribe".to_string()],
+            _ => vec!["run".to_string()],
+        },
+        config_schema_ref: format!("schemas/{kind}/{provider_id}/config.schema.json"),
+        state_schema_ref: None,
+        runtime: ProviderRuntimeRef {
+            component_ref: provider_id.to_string(),
+            export: "provider".to_string(),
+            world: PROVIDER_RUNTIME_WORLD.to_string(),
+        },
+        docs_ref: None,
+    };
+    inject_provider_entry(contents, &provider, ProviderMetadata::default(), version)
+}
+
 fn find_config_schema_ref(root: &Path, kind: &str, provider_id: &str) -> String {
     let schemas = root.join("schemas");
     if schemas.exists() {

@@ -818,7 +818,27 @@ exit 0\n",
     "create_pack_id":"my-pack",
     "run_delegate_flow":true,
     "run_delegate_component":true,
-    "flow_wizard_answers":{{"flow":"ok"}},
+    "selected_actions":[
+      "main.update_application_pack",
+      "update_application_pack.edit_flows"
+    ],
+    "flow_wizard_answers":{{
+      "schema_id":"greentic-flow.wizard.plan",
+      "schema_version":"2.0.0",
+      "actions":[
+        {{
+          "action":"add-flow",
+          "flow":"flows/demo.ygtc"
+        }},
+        {{
+          "action":"add-step",
+          "flow":"flows/demo.ygtc",
+          "component":"components/demo.wasm",
+          "mode":"setup",
+          "answers":{{"tenant":"acme"}}
+        }}
+      ]
+    }},
     "component_wizard_answers":{{"component":"ok"}},
     "run_doctor":true,
     "run_build":true,
@@ -853,7 +873,7 @@ exit 0\n",
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("self:new --dir"));
-    assert!(calls.contains("flow:wizard . --execution execute --answers-file"));
+    assert!(calls.contains("flow:wizard . --answers"));
     assert!(calls.contains("component:wizard --project-root . --execution execute --qa-answers"));
     assert!(calls.contains("self:update --in"));
     assert!(calls.contains("self:doctor --in"));
@@ -1409,15 +1429,13 @@ exit 0\n",
 echo \"flow:$*\" >> \"{}\"\n\
 emit=\"\"\n\
 answers=\"\"\n\
-mode=\"\"\n\
 while [ \"$#\" -gt 0 ]; do\n\
-  if [ \"$1\" = \"--execution\" ]; then mode=\"$2\"; shift 2; continue; fi\n\
   if [ \"$1\" = \"--emit-answers\" ]; then emit=\"$2\"; shift 2; continue; fi\n\
-  if [ \"$1\" = \"--answers-file\" ]; then answers=\"$2\"; shift 2; continue; fi\n\
+  if [ \"$1\" = \"--answers\" ]; then answers=\"$2\"; shift 2; continue; fi\n\
   shift\n\
 done\n\
-if [ \"$mode\" = \"dry-run\" ] && [ -n \"$emit\" ]; then printf '{{\"flow\":\"dry-run\"}}' > \"$emit\"; fi\n\
-if [ \"$mode\" = \"execute\" ] && [ -n \"$answers\" ]; then touch \"$PWD/flow.replayed\"; fi\n\
+if [ -n \"$emit\" ]; then printf '{{\"flow\":\"dry-run\"}}' > \"$emit\"; fi\n\
+if [ -n \"$answers\" ]; then touch \"$PWD/flow.replayed\"; fi\n\
 exit 0\n",
             log_path.display()
         ),
@@ -1529,8 +1547,8 @@ exit 0\n",
     assert!(pack_dir.join("flow.replayed").exists());
     assert!(pack_dir.join("component.replayed").exists());
     let calls = fs::read_to_string(&log_path).expect("read calls");
-    assert!(calls.contains("flow:wizard . --execution dry-run --emit-answers"));
-    assert!(calls.contains("flow:wizard . --execution execute --answers-file"));
+    assert!(calls.contains("flow:wizard . --emit-answers"));
+    assert!(calls.contains("flow:wizard . --answers"));
 }
 
 #[test]
@@ -1751,7 +1769,7 @@ fn wizard_apply_replays_nested_flow_step_and_component_answers_without_dropping_
         r#"#!/usr/bin/env bash
 answers=""
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--answers-file" ]; then answers="$2"; shift 2; continue; fi
+  if [ "$1" = "--answers" ]; then answers="$2"; shift 2; continue; fi
   shift
 done
 if [ -n "$answers" ]; then cp "$answers" "$PWD/flow.replayed.json"; fi
@@ -1861,6 +1879,178 @@ exit 0
             .and_then(Value::as_str),
         Some("order-status")
     );
+}
+
+#[test]
+fn wizard_apply_selected_actions_can_infer_update_extension_operation() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let create_answers = temp.path().join("create.json");
+    let update_answers = temp.path().join("update.json");
+
+    fs::write(
+        &create_answers,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "create_pack_scaffold": true,
+                "create_pack_id": "selected-actions-extension-op",
+                "selected_actions": ["main.create_application_pack", "create_application_pack.start", "main.exit"],
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false
+            },
+            "locks": {}
+        }))
+        .expect("serialize create answers"),
+    )
+    .expect("write create answers");
+    let create_output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&create_answers)
+        .output()
+        .expect("run create apply");
+    assert!(
+        create_output.status.success(),
+        "create apply should succeed"
+    );
+
+    fs::write(
+        &update_answers,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "selected_actions": ["main.update_extension_pack", "update_extension_pack.edit_entries", "main.exit"],
+                "extension_catalog_ref": default_catalog_ref(),
+                "extension_type_id": "messaging",
+                "extension_edit_answers": {
+                    "entry_label": "messaging",
+                    "create_offer": "false",
+                    "offer_id": "messaging-offer",
+                    "cap_id": "greentic.cap.messaging.provider.v1",
+                    "component_ref": "provider",
+                    "op": "send",
+                    "version": "v1",
+                    "priority": "0",
+                    "requires_setup": "false",
+                    "qa_ref": "qa/setup.json",
+                    "hook_op_names": ""
+                },
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false
+            },
+            "locks": {}
+        }))
+        .expect("serialize update answers"),
+    )
+    .expect("write update answers");
+    let update_output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&update_answers)
+        .output()
+        .expect("run update apply");
+    assert!(
+        update_output.status.success(),
+        "update apply should succeed"
+    );
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    assert!(pack_yaml.contains("greentic.ext.capabilities.v1"));
+}
+
+#[test]
+fn wizard_apply_messaging_webchat_gui_writes_provider_extension_entry() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let create_answers = temp.path().join("create.json");
+    let update_answers = temp.path().join("update.json");
+
+    fs::write(
+        &create_answers,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "create_pack_scaffold": true,
+                "create_pack_id": "messaging-webchat-gui-provider",
+                "selected_actions": ["main.create_application_pack", "create_application_pack.start", "main.exit"],
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false
+            },
+            "locks": {}
+        }))
+        .expect("serialize create answers"),
+    )
+    .expect("write create answers");
+    let create_output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&create_answers)
+        .output()
+        .expect("run create apply");
+    assert!(
+        create_output.status.success(),
+        "create apply should succeed"
+    );
+
+    fs::write(
+        &update_answers,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "selected_actions": ["main.update_extension_pack", "update_extension_pack.edit_entries", "main.exit"],
+                "extension_operation": "update_extension_pack",
+                "extension_catalog_ref": default_catalog_ref(),
+                "extension_type_id": "messaging-webchat-gui",
+                "extension_edit_answers": {
+                    "entry_label": "messaging-webchat-gui"
+                },
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false
+            },
+            "locks": {}
+        }))
+        .expect("serialize update answers"),
+    )
+    .expect("write update answers");
+    let update_output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&update_answers)
+        .output()
+        .expect("run update apply");
+    assert!(
+        update_output.status.success(),
+        "update apply should succeed"
+    );
+    let pack_yaml = fs::read_to_string(pack_dir.join("pack.yaml")).expect("read pack yaml");
+    assert!(pack_yaml.contains("greentic.provider-extension.v1"));
+    assert!(pack_yaml.contains("provider_type: messaging-webchat-gui"));
 }
 
 fn write_script(path: &std::path::Path, body: &str) {

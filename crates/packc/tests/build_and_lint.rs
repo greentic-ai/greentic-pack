@@ -48,16 +48,22 @@ fn write_weather_summary(pack_dir: &Path) {
     let mcp_path = pack_dir.join("components/mcp.exec/component.wasm");
     let templating_path = pack_dir.join("components/templating.handlebars/component.wasm");
     let qa_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&qa_path).expect("read qa wasm"))
+        "sha256:{}",
+        hex::encode(Sha256::digest(
+            std::fs::read(&qa_path).expect("read qa wasm")
+        ))
     );
     let mcp_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&mcp_path).expect("read mcp wasm"))
+        "sha256:{}",
+        hex::encode(Sha256::digest(
+            std::fs::read(&mcp_path).expect("read mcp wasm")
+        ))
     );
     let templating_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&templating_path).expect("read templating wasm"))
+        "sha256:{}",
+        hex::encode(Sha256::digest(
+            std::fs::read(&templating_path).expect("read templating wasm")
+        ))
     );
     let doc = json!({
         "schema_version": 1,

@@ -120,7 +120,10 @@ flows:
     );
     fs::write(pack_dir.join("pack.yaml"), pack_yaml).expect("pack.yaml");
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
 
     let flow = format!(
         r#"id: main
@@ -244,7 +247,7 @@ fn component_manifests_are_embedded_and_indexed() {
 
     let mut sha = Sha256::new();
     sha.update(&manifest_cbor);
-    let computed = format!("{:x}", sha.finalize());
+    let computed = hex::encode(sha.finalize());
     assert_eq!(
         manifest_hash, computed,
         "content hash should match file bytes"
