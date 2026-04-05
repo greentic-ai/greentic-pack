@@ -1,4 +1,7 @@
 use crate::cli::resolve::{self, ResolveArgs};
+use crate::component_host_stubs::{
+    DescribeHostState, add_describe_host_imports, stub_remaining_imports,
+};
 use crate::config::{
     AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackConfig,
 };
@@ -484,6 +487,28 @@ fn resolve_component_artifacts(
             );
         }
         from_disk
+    } else if let Ok(from_describe) = manifest_from_wasm_describe(&resolved_wasm) {
+        info!(
+            id = %cfg.id,
+            "no component.manifest.json on disk; derived manifest from WASM describe() export"
+        );
+        // Validate id/version match same as disk path
+        if from_describe.id.to_string() != cfg.id {
+            anyhow::bail!(
+                "component id mismatch: describe() returned `{}` but pack.yaml expects `{}`",
+                from_describe.id,
+                cfg.id
+            );
+        }
+        if from_describe.version.to_string() != cfg.version {
+            warn!(
+                id = %cfg.id,
+                describe_version = %from_describe.version,
+                expected_version = %cfg.version,
+                "describe() version differs from pack.yaml; using pack.yaml version"
+            );
+        }
+        from_describe
     } else if allow_pack_schema || is_legacy_pack_schema_component(&cfg.id) {
         warn!(
             id = %cfg.id,
@@ -492,7 +517,9 @@ fn resolve_component_artifacts(
         manifest_from_config(cfg)?
     } else {
         anyhow::bail!(
-            "component {} is missing component.manifest.json; refusing to derive schema from pack.yaml on 0.6 path (migration-only override: --allow-pack-schema)",
+            "component {} is missing component.manifest.json and describe() fallback failed; \
+             refusing to derive schema from pack.yaml on 0.6 path \
+             (migration-only override: --allow-pack-schema)",
             cfg.id
         );
     };
@@ -551,6 +578,236 @@ fn manifest_from_config(cfg: &ComponentConfig) -> Result<ComponentManifest> {
         resources: cfg.resources.clone().unwrap_or_default(),
         dev_flows: BTreeMap::new(),
     })
+}
+
+/// Load a WASM component, call its `describe()` export, and construct a
+/// [`ComponentManifest`] from the returned payload.
+///
+/// This is the fallback path used when no `component.manifest.json` (or CBOR)
+/// file exists on disk. The component must export the
+/// `greentic:component/component-descriptor` interface with a `describe()`
+/// function returning CBOR bytes.
+///
+/// Only the canonical `ComponentDescribe` format from `greentic-types` is
+/// supported: `info.id`, `info.version`, `operations[].id`, etc.
+///
+/// The function decodes the CBOR into a generic JSON value and extracts
+/// fields from the canonical format.
+fn manifest_from_wasm_describe(wasm_path: &Path) -> Result<ComponentManifest> {
+    let describe_bytes = call_wasm_describe(wasm_path)
+        .with_context(|| format!("describe() call on {}", wasm_path.display()))?;
+
+    let payload: serde_json::Value =
+        canonical::from_cbor(&describe_bytes).context("decode describe() CBOR into JSON value")?;
+
+    manifest_from_describe_value(&payload, wasm_path)
+}
+
+/// Construct a [`ComponentManifest`] from a generic JSON representation of the
+/// describe() payload. Only the canonical `ComponentDescribe` format from
+/// `greentic-types` is supported.
+///
+/// Required fields: `info.id`, `info.version`.
+/// World is resolved from `info.role` (preferred) or `metadata.world`.
+fn manifest_from_describe_value(
+    payload: &serde_json::Value,
+    wasm_path: &Path,
+) -> Result<ComponentManifest> {
+    // -- Extract component id (required: info.id) --
+    let raw_id = payload
+        .pointer("/info/id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            anyhow!(
+                "describe() payload missing info.id for {}",
+                wasm_path.display()
+            )
+        })?;
+
+    let component_id = ComponentId::new(raw_id)
+        .with_context(|| format!("invalid component id from describe: {raw_id}"))?;
+
+    // -- Extract version (required: info.version, fallback to 0.0.0) --
+    let version_str = payload
+        .pointer("/info/version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("0.0.0");
+    let version = Version::parse(version_str)
+        .with_context(|| format!("invalid version from describe: {version_str}"))?;
+
+    // -- Extract world from info.role or metadata.world --
+    let world = payload
+        .pointer("/info/role")
+        .and_then(|v| v.as_str())
+        .or_else(|| payload.pointer("/metadata/world").and_then(|v| v.as_str()))
+        .unwrap_or("component")
+        .to_string();
+
+    // -- Extract operations --
+    let operations = extract_operations_from_describe(payload);
+
+    // -- Extract config_schema --
+    let config_schema = payload
+        .get("config_schema")
+        .filter(|v| !v.is_null())
+        .cloned();
+
+    // -- Extract profiles --
+    let profiles = extract_profiles_from_describe(payload);
+
+    // -- Extract capabilities --
+    let capabilities = extract_capabilities_from_describe(payload);
+
+    // -- Extract supports (flow kinds) --
+    let supports = payload
+        .get("supports")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    // -- Extract configurators --
+    let configurators = payload
+        .get("configurators")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+    // -- Extract resources --
+    let resources = payload
+        .get("resources")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    Ok(ComponentManifest {
+        id: component_id,
+        version,
+        supports,
+        world,
+        profiles,
+        capabilities,
+        configurators,
+        operations,
+        config_schema,
+        resources,
+        dev_flows: BTreeMap::new(),
+    })
+}
+
+/// Extract operations from the canonical `ComponentDescribe` format.
+///
+/// Each operation has `id`, `input.schema`, and `output.schema`.
+fn extract_operations_from_describe(payload: &serde_json::Value) -> Vec<ComponentOperation> {
+    let Some(ops_arr) = payload.get("operations").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+
+    ops_arr
+        .iter()
+        .filter_map(|op| {
+            let name = op.get("id").and_then(|v| v.as_str())?;
+            let input_schema = op
+                .pointer("/input/schema")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let output_schema = op
+                .pointer("/output/schema")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            Some(ComponentOperation {
+                name: name.to_string(),
+                input_schema,
+                output_schema,
+            })
+        })
+        .collect()
+}
+
+/// Extract profile metadata from the canonical `ComponentDescribe` format.
+fn extract_profiles_from_describe(
+    payload: &serde_json::Value,
+) -> greentic_types::ComponentProfiles {
+    if let Some(profiles_val) = payload.get("profiles")
+        && let Ok(profiles) = serde_json::from_value(profiles_val.clone())
+    {
+        return profiles;
+    }
+    greentic_types::ComponentProfiles::default()
+}
+
+/// Extract capabilities from the canonical `ComponentDescribe` format.
+fn extract_capabilities_from_describe(
+    payload: &serde_json::Value,
+) -> greentic_types::ComponentCapabilities {
+    if let Some(caps_val) = payload.get("capabilities")
+        && let Ok(caps) = serde_json::from_value(caps_val.clone())
+    {
+        return caps;
+    }
+    greentic_types::ComponentCapabilities::default()
+}
+
+/// Instantiate a WASM component and invoke its `describe()` export, returning
+/// the raw CBOR bytes.
+fn call_wasm_describe(wasm_path: &Path) -> Result<Vec<u8>> {
+    let wasm_bytes =
+        fs::read(wasm_path).with_context(|| format!("read WASM file {}", wasm_path.display()))?;
+
+    let mut config = wasmtime::Config::new();
+    config.wasm_component_model(true);
+    config.consume_fuel(true);
+    let engine =
+        wasmtime::Engine::new(&config).map_err(|err| anyhow!("create wasmtime engine: {err}"))?;
+
+    let component = wasmtime::component::Component::from_binary(&engine, &wasm_bytes)
+        .map_err(|err| anyhow!("decode component {}: {err}", wasm_path.display()))?;
+    let mut store = wasmtime::Store::new(&engine, DescribeHostState::default());
+    store
+        .set_fuel(10_000_000)
+        .map_err(|err| anyhow!("set fuel limit for describe(): {err}"))?;
+    let mut linker = wasmtime::component::Linker::new(&engine);
+    add_describe_host_imports(&mut linker)?;
+    stub_remaining_imports(&mut linker, &component)?;
+
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .map_err(|err| anyhow!("instantiate component for describe: {err}"))?;
+
+    // Resolve the descriptor interface export using known candidate names.
+    let descriptor_index = [
+        "component-descriptor",
+        "greentic:component/component-descriptor",
+        "greentic:component/component-descriptor@0.6.0",
+        "greentic:component/component-descriptor@0.6.1",
+    ]
+    .iter()
+    .find_map(|name| instance.get_export_index(&mut store, None, name))
+    .ok_or_else(|| {
+        anyhow!(
+            "missing exported descriptor interface on {}",
+            wasm_path.display()
+        )
+    })?;
+
+    // Resolve the describe function within the descriptor interface.
+    let describe_func_index = [
+        "describe",
+        "greentic:component/component-descriptor@0.6.0#describe",
+        "greentic:component/component-descriptor@0.6.1#describe",
+    ]
+    .iter()
+    .find_map(|name| instance.get_export_index(&mut store, Some(&descriptor_index), name))
+    .ok_or_else(|| {
+        anyhow!(
+            "missing describe function export on {}",
+            wasm_path.display()
+        )
+    })?;
+
+    let describe_func = instance
+        .get_typed_func::<(), (Vec<u8>,)>(&mut store, &describe_func_index)
+        .map_err(|err| anyhow!("lookup typed describe function: {err}"))?;
+    let (raw_bytes,) = describe_func
+        .call(&mut store, ())
+        .map_err(|err| anyhow!("call describe(): {err}"))?;
+
+    Ok(raw_bytes)
 }
 
 fn resolve_component_wasm_path(path: &Path) -> Result<PathBuf> {
@@ -1776,9 +2033,35 @@ fn materialize_flow_components(
         let manifest =
             load_component_manifest_for_lock(pack_dir, &lock_entry.component_id, bundled_source)?;
 
-        let Some(manifest) = manifest else {
-            handle_missing_component_manifest(&component_id, None, require_component_manifests)?;
-            continue;
+        let manifest = match manifest {
+            Some(existing) => existing,
+            None => {
+                // Attempt describe() fallback when manifest file is absent on disk.
+                let wasm_path = bundled_source.expect("bundled_source checked above");
+                match manifest_from_wasm_describe(wasm_path) {
+                    Ok(from_describe) => {
+                        info!(
+                            component_id = %lock_entry.component_id,
+                            "no component.manifest on disk for lock entry; \
+                             derived manifest from WASM describe() export"
+                        );
+                        from_describe
+                    }
+                    Err(err) => {
+                        warn!(
+                            component_id = %component_id,
+                            error = %err,
+                            "describe() fallback failed for component; falling through to missing manifest handler"
+                        );
+                        handle_missing_component_manifest(
+                            &component_id,
+                            None,
+                            require_component_manifests,
+                        )?;
+                        continue;
+                    }
+                }
+            }
         };
 
         if manifest.id.as_str() != lock_entry.component_id.as_str() {
@@ -3369,5 +3652,129 @@ flows:
             "error message should describe missing network access, got {}",
             msg
         );
+    }
+
+    // ---------------------------------------------------------------
+    // Tests for describe-to-manifest mapping functions
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn build_component_manifest_from_describe_value_component_format() {
+        let payload = json!({
+            "info": {
+                "id": "test-component",
+                "version": "1.0.0",
+                "role": "component-v0-v6-v0"
+            },
+            "operations": [
+                {"id": "run", "input": {"schema": "cbor"}, "output": {"schema": "cbor"}}
+            ],
+            "profiles": {
+                "default": "default",
+                "supported": ["default"]
+            },
+            "capabilities": {
+                "wasi": {},
+                "host": {"http": true, "secrets": true}
+            }
+        });
+        let wasm_path = PathBuf::from("test.wasm");
+        let result = manifest_from_describe_value(&payload, &wasm_path);
+        assert!(result.is_ok(), "expected Ok, got: {result:?}");
+        let manifest = result.unwrap();
+        assert_eq!(manifest.id.to_string(), "test-component");
+        assert_eq!(manifest.version.to_string(), "1.0.0");
+        assert_eq!(manifest.world, "component-v0-v6-v0");
+        assert_eq!(manifest.operations.len(), 1);
+        assert_eq!(manifest.operations[0].name, "run");
+    }
+
+    #[test]
+    fn build_component_manifest_from_describe_value_minimal_fields() {
+        let payload = json!({
+            "info": {
+                "id": "minimal-component",
+                "version": "0.1.0",
+                "role": "provider"
+            },
+            "operations": [
+                {"id": "run", "input": {"schema": "cbor"}, "output": {"schema": "cbor"}},
+                {"id": "send", "input": {"schema": "cbor"}, "output": {"schema": "cbor"}}
+            ]
+        });
+        let wasm_path = PathBuf::from("minimal.wasm");
+        let result = manifest_from_describe_value(&payload, &wasm_path);
+        assert!(result.is_ok(), "expected Ok, got: {result:?}");
+        let manifest = result.unwrap();
+        assert_eq!(manifest.id.to_string(), "minimal-component");
+        assert_eq!(manifest.version.to_string(), "0.1.0");
+        assert_eq!(manifest.world, "provider");
+        assert_eq!(manifest.operations.len(), 2);
+        assert_eq!(manifest.operations[0].name, "run");
+        assert_eq!(manifest.operations[1].name, "send");
+    }
+
+    #[test]
+    fn build_component_manifest_from_describe_value_missing_info_id_fails() {
+        let payload = json!({"info": {"version": "1.0.0"}});
+        let wasm_path = PathBuf::from("test.wasm");
+        let result = manifest_from_describe_value(&payload, &wasm_path);
+        assert!(result.is_err(), "expected error when info.id is missing");
+    }
+
+    #[test]
+    fn build_component_manifest_from_describe_value_no_info_fails() {
+        let payload = json!({"operations": []});
+        let wasm_path = PathBuf::from("test.wasm");
+        let result = manifest_from_describe_value(&payload, &wasm_path);
+        assert!(result.is_err(), "expected error when info block is missing");
+    }
+
+    #[test]
+    fn extract_operations_canonical_format() {
+        let payload = json!({
+            "operations": [
+                {"id": "run", "input": {"schema": "string"}, "output": {"schema": "string"}},
+                {"id": "validate", "input": {"schema": "json"}, "output": {"schema": "json"}}
+            ]
+        });
+        let ops = extract_operations_from_describe(&payload);
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[0].name, "run");
+        assert_eq!(ops[1].name, "validate");
+    }
+
+    #[test]
+    fn extract_operations_skips_entries_without_id() {
+        let payload = json!({
+            "operations": [
+                {"id": "run", "input": {"schema": "cbor"}, "output": {"schema": "cbor"}},
+                {"name": "legacy-op"}
+            ]
+        });
+        let ops = extract_operations_from_describe(&payload);
+        assert_eq!(ops.len(), 1, "entries without 'id' should be skipped");
+        assert_eq!(ops[0].name, "run");
+    }
+
+    #[test]
+    fn extract_operations_returns_empty_when_missing() {
+        let payload = json!({"info": {"id": "test"}});
+        let ops = extract_operations_from_describe(&payload);
+        assert!(ops.is_empty());
+    }
+
+    #[test]
+    fn extract_profiles_returns_default_when_missing() {
+        let payload = json!({"info": {"id": "test"}});
+        let profiles = extract_profiles_from_describe(&payload);
+        assert_eq!(profiles, greentic_types::ComponentProfiles::default());
+    }
+
+    #[test]
+    fn extract_capabilities_returns_default_when_missing() {
+        let payload = json!({"info": {"id": "test"}});
+        let caps = extract_capabilities_from_describe(&payload);
+        assert_eq!(caps, greentic_types::ComponentCapabilities::default());
     }
 }
