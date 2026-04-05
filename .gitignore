@@ -1,7 +1,9 @@
 /target
 dist/
 .packc/
+temp_auto_push.bat
 **/.packc/
 .DS_Store
 examples/.DS_Store
-.greentic/
+.greentic/.gitignore
+branch_structure.json
