@@ -22,6 +22,9 @@ include = [
     "i18n/**/*.json",
 ]
 
+[package.metadata.cargo-semver-checks.lints]
+struct_marked_non_exhaustive = "allow"
+
 [features]
 default = []
 pem = []
