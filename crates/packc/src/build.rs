@@ -391,7 +391,7 @@ fn assemble_manifest(
     let mut manifest = PackManifest {
         schema_version: "pack-v1".to_string(),
         pack_id: PackId::new(config.pack_id.clone()).context("invalid pack_id")?,
-        name: config.name.clone(),
+        name: config.display_name.clone().or(config.name.clone()),
         version: Version::parse(&config.version)
             .context("invalid pack version (expected semver)")?,
         kind: map_kind(&config.kind)?,
@@ -3269,6 +3269,7 @@ flows:
             kind: "application".to_string(),
             publisher: "demo".to_string(),
             name: None,
+            display_name: None,
             bootstrap: Some(bootstrap),
             components: Vec::new(),
             dependencies: Vec::new(),

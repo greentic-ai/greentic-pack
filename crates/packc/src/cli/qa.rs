@@ -1133,6 +1133,7 @@ mod tests {
             kind: "application".to_string(),
             publisher: "Greentic".to_string(),
             name: None,
+            display_name: None,
             bootstrap: None,
             components: vec![ComponentConfig {
                 id: "demo.component".to_string(),
@@ -1316,6 +1317,7 @@ mod tests {
             kind: "application".to_string(),
             publisher: "Greentic".to_string(),
             name: None,
+            display_name: None,
             bootstrap: None,
             components: vec![ComponentConfig {
                 id: "demo.component".to_string(),
@@ -1466,6 +1468,7 @@ mod tests {
             kind: "application".to_string(),
             publisher: "Greentic".to_string(),
             name: None,
+            display_name: None,
             bootstrap: None,
             components: Vec::new(),
             dependencies: Vec::new(),
@@ -1557,6 +1560,7 @@ mod tests {
             kind: "application".to_string(),
             publisher: "Greentic".to_string(),
             name: None,
+            display_name: None,
             bootstrap: None,
             components: vec![
                 ComponentConfig {

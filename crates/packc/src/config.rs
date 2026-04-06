@@ -14,6 +14,7 @@ const PROVIDER_RUNTIME_WORLD: &str = "greentic:provider/schema-core@1.0.0";
 const LEGACY_PROVIDER_EXTENSION_KIND: &str = "greentic.ext.provider";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct PackConfig {
     pub pack_id: String,
     pub version: String,
@@ -21,6 +22,8 @@ pub struct PackConfig {
     pub publisher: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bootstrap: Option<BootstrapConfig>,
     #[serde(default)]
