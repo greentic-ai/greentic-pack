@@ -399,7 +399,19 @@ fn assemble_manifest(
         components: component_manifests,
         flows,
         dependencies,
-        capabilities: derive_pack_capabilities(&components),
+        capabilities: {
+            let mut caps = derive_pack_capabilities(&components);
+            let mut seen: BTreeSet<String> = caps.iter().map(|c| c.name.clone()).collect();
+            for cap_name in &config.provided_capabilities {
+                if seen.insert(cap_name.clone()) {
+                    caps.push(ComponentCapability {
+                        name: cap_name.clone(),
+                        description: None,
+                    });
+                }
+            }
+            caps
+        },
         secret_requirements: secret_requirements.to_vec(),
         signatures: PackSignatures::default(),
         bootstrap,
@@ -3276,6 +3288,7 @@ flows:
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            provided_capabilities: Vec::new(),
         }
     }
 
