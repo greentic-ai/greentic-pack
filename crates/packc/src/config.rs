@@ -40,6 +40,10 @@ pub struct PackConfig {
         deserialize_with = "deserialize_extensions"
     )]
     pub extensions: Option<BTreeMap<String, ExtensionRef>>,
+    /// Pack-level provided capabilities (e.g. `greentic:state/state-store`).
+    /// Merged with auto-derived component capabilities into the manifest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provided_capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
