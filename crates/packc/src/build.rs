@@ -844,6 +844,9 @@ fn build_flows(
 
 fn apply_summary_component_ids(flow: &mut Flow, summary: &FlowResolveSummaryV1) -> Result<()> {
     for (node_id, node) in flow.nodes.iter_mut() {
+        if is_builtin_component_id(node.component.id.as_str()) {
+            continue;
+        }
         let resolved = summary.nodes.get(node_id.as_str()).ok_or_else(|| {
             anyhow!(
                 "flow resolve summary missing node {} (expected component id for node)",
@@ -1864,7 +1867,7 @@ fn collect_flow_component_ids(flows: &[PackFlowEntry]) -> BTreeSet<String> {
     ids
 }
 
-fn is_builtin_component_id(id: &str) -> bool {
+pub(crate) fn is_builtin_component_id(id: &str) -> bool {
     matches!(id, "session.wait" | "flow.call" | "provider.invoke") || id.starts_with("emit.")
 }
 

@@ -21,6 +21,7 @@ use greentic_types::flow_resolve_summary::{
 use semver::Version;
 use sha2::{Digest, Sha256};
 
+use crate::build::is_builtin_component_id;
 use crate::config::FlowConfig;
 
 #[derive(Clone, Debug)]
@@ -188,12 +189,18 @@ pub fn enforce_sidecar_mappings(pack_dir: &Path, flow: &FlowConfig, compiled: &F
 }
 
 /// Compute which nodes in a flow lack resolve entries.
+///
+/// Runtime-resolved builtin nodes (`provider.invoke`, `flow.call`, `session.wait`,
+/// `emit.*`) are excluded — they have no local WASM component and are resolved by
+/// the capability registry at runtime, not at build time.
 pub fn missing_node_mappings(flow: &Flow, doc: &FlowResolveV1) -> Vec<String> {
     flow.nodes
-        .keys()
-        .filter_map(|node| {
-            let id = node.to_string();
-            if doc.nodes.contains_key(id.as_str()) {
+        .iter()
+        .filter_map(|(node_id, node)| {
+            let id = node_id.to_string();
+            if is_builtin_component_id(node.component.id.as_str())
+                || doc.nodes.contains_key(id.as_str())
+            {
                 None
             } else {
                 Some(id)
@@ -294,10 +301,12 @@ fn enforce_summary_mappings(
 
 fn missing_summary_node_mappings(flow: &Flow, doc: &FlowResolveSummaryV1) -> Vec<String> {
     flow.nodes
-        .keys()
-        .filter_map(|node| {
-            let id = node.to_string();
-            if doc.nodes.contains_key(id.as_str()) {
+        .iter()
+        .filter_map(|(node_id, node)| {
+            let id = node_id.to_string();
+            if is_builtin_component_id(node.component.id.as_str())
+                || doc.nodes.contains_key(id.as_str())
+            {
                 None
             } else {
                 Some(id)
