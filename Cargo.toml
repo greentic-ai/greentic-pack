@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.91"
-version = "0.4.124"
+version = "0.4.125"
 license = "MIT"
 
 [workspace.dependencies]
@@ -75,4 +75,3 @@ wit-bindgen = { version = "0.54", default-features = false, features = ["macros"
 indexmap = "2"
 sys-locale = "0.3"
 unic-langid = "0.9"
-criterion = "0.8"
