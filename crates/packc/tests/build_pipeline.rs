@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use greentic_distributor_client::{DistClient, DistOptions};
 use greentic_types::cbor::canonical;
 use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
 use greentic_types::schemas::component::v0_6_0::{
@@ -151,7 +152,10 @@ flows:
     )
     .unwrap();
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -252,7 +256,10 @@ nodes:
     )
     .unwrap();
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -391,19 +398,37 @@ flows:
     .unwrap();
 
     let cached_bytes = b"cached-component";
-    let digest = format!("sha256:{:x}", Sha256::digest(cached_bytes));
     let cache_dir = temp.path().join("cache");
-    let cached_component_dir = cache_dir.join(digest.trim_start_matches("sha256:"));
-    fs::create_dir_all(&cached_component_dir).unwrap();
-    let cached_wasm = cached_component_dir.join("component.wasm");
-    fs::write(&cached_wasm, cached_bytes).unwrap();
+    fs::create_dir_all(&cache_dir).unwrap();
+    let seed_path = cache_dir.join("seed-component.wasm");
+    fs::write(&seed_path, cached_bytes).unwrap();
+    let dist = DistClient::new(DistOptions {
+        cache_dir: cache_dir.clone(),
+        allow_tags: true,
+        offline: false,
+        allow_insecure_local_http: false,
+        ..DistOptions::default()
+    });
+    let source = dist
+        .parse_source(&format!("file://{}", seed_path.display()))
+        .unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let descriptor = rt
+        .block_on(dist.resolve(source, greentic_distributor_client::ResolvePolicy))
+        .unwrap();
+    let cached = rt
+        .block_on(dist.fetch(&descriptor, greentic_distributor_client::CachePolicy))
+        .unwrap();
+    let digest = cached.descriptor.digest.clone();
+    let cached_wasm = cached.cache_path.unwrap();
+    let cached_component_dir = cached_wasm.parent().unwrap();
     write_describe_sidecar(&cached_wasm, "remote.component", "0.1.0");
     let manifest = serde_json::json!({
         "id": "remote.component",
         "version": "0.1.0",
         "world": "greentic:component/component@0.5.0",
         "artifacts": {
-            "component_wasm": "component.wasm"
+            "component_wasm": "blob"
         }
     });
     fs::write(

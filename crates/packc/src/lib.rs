@@ -2,9 +2,12 @@
 
 pub mod build;
 pub mod cli;
+pub mod cli_i18n;
 pub mod component_host_stubs;
 pub mod config;
+pub mod extension_refs;
 pub mod extensions;
+pub mod external_tools;
 pub mod flow_resolve;
 pub mod new;
 pub mod pack_lock_doctor;

@@ -1,4 +1,9 @@
+# Canonical toolchain for Greentic WASM repos.
+# Source: greenticai/.github/toolchain/wasm/rust-toolchain.toml
+# Sync: ./sync-toolchain.sh (from workspace root)
+# Do not edit per-repo.
+
 [toolchain]
-channel = "1.90.0"
+channel = "1.94.0"
 components = ["clippy", "rustfmt"]
-profile = "minimal"
+targets = ["wasm32-wasip2"]

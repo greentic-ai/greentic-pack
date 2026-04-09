@@ -1,0 +1,740 @@
+{
+  "extension_types": [
+    {
+      "id": "messaging",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Messaging",
+      "description": "Messaging channels and connectors",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "messaging" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "messaging-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.messaging.provider.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "send" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "messaging-provider-v1",
+          "name": "Messaging provider scaffold",
+          "description": "Scaffold a capability-first messaging extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Messaging provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "messaging.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add messaging adapter assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "events",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Events",
+      "description": "Event producers and consumers",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "events" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "events-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.events.provider.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "emit" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "events-provider-v1",
+          "name": "Events provider scaffold",
+          "description": "Scaffold a capability-first events extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Events provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "events.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add event adapter assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "oauth",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "OAuth",
+      "description": "OAuth providers and auth flows",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "oauth" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "oauth-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.oauth.broker.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "get-access-token" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "oauth-provider-v1",
+          "name": "OAuth provider scaffold",
+          "description": "Scaffold a capability-first OAuth extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "OAuth provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "oauth.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add OAuth adapter assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "MCP",
+      "description": "MCP provider integrations",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "mcp" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "mcp-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.mcp.provider.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "invoke" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "mcp-provider-v1",
+          "name": "MCP provider scaffold",
+          "description": "Scaffold a capability-first MCP extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "MCP provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "mcp.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add MCP adapter assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "State",
+      "description": "State stores and persistence",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "state" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "state-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.state.provider.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "get" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "state-provider-v1",
+          "name": "State provider scaffold",
+          "description": "Scaffold a capability-first state extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "State provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "state.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add state adapter assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "telemetry",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Telemetry",
+      "description": "Observability and tracing",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "telemetry" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "telemetry-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.telemetry.provider.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "emit-span" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "telemetry-provider-v1",
+          "name": "Telemetry provider scaffold",
+          "description": "Scaffold a capability-first telemetry extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Telemetry provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "telemetry.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add telemetry adapter assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "secrets",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Secrets",
+      "description": "Secret providers and vault integrations",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "secrets" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "secrets-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.secrets.provider.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "get-secret" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "secrets-provider-v1",
+          "name": "Secrets provider scaffold",
+          "description": "Scaffold a capability-first secrets extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Secrets provider extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "secrets.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add secret provider assets here.\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Admin",
+      "description": "Admin API extensions and runtime admin helpers",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "admin" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "admin-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.admin.api.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "admin" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "invoke" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/admin-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "admin-basic",
+          "name": "Admin basic scaffold",
+          "description": "Scaffold a capability-first admin extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Admin extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "admin.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add admin API helper assets here.\n",
+                "qa/admin-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated provider scaffold for {{extension_type_name}}.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows: []\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "control",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Control",
+      "description": "Control plane extensions",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "control" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "control-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.control.chain.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "controller" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "apply" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/control-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "control-basic",
+          "name": "Control basic scaffold",
+          "description": "Scaffold a valid control extension pack with capabilities extension",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Routing ingress control chain" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "routing.ingress.control.chain" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nControl extension scaffold.\n",
+                "assets/README.md": "Add control policy/rules assets here.\n",
+                "qa/control-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated provider scaffold for {{extension_type_name}}.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows: []\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "observer",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Observer",
+      "description": "Observer and audit hooks",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "observer" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "observer-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.observer.hook.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "observer" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "observe" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/observer-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "before,after" }
+      ],
+      "templates": [
+        {
+          "id": "observer-provider-v1",
+          "name": "Observer scaffold",
+          "description": "Scaffold a capability-first observer extension pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Observer extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "observer.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "assets/README.md": "Add observer hook assets here.\n",
+                "qa/observer-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated provider scaffold for {{extension_type_name}}.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows: []\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deployer",
+      "canonical_extension_key": "greentic.deployer.v1",
+      "name": "Deployer",
+      "description": "Generic deployer extensions",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "deployer" },
+        { "id": "contract_id", "title_key": "wizard.qa.contract_id", "default": "greentic.deployer.example.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "deployer" },
+        { "id": "supported_ops", "title_key": "wizard.qa.supported_ops", "default": "generate,plan,apply,destroy,status,rollback" }
+      ],
+      "templates": [
+        {
+          "id": "deployer-basic",
+          "name": "Deployer basic scaffold",
+          "description": "Scaffold a generic deployer extension pack with placeholder flows and schemas",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Generic deployer extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "deployer.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/schemas", "assets/examples"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nGeneric deployer scaffold.\n\nContract ID: `{{edit.contract_id}}`\nSupported ops: `{{edit.supported_ops}}`\n\nUse this pack as a starting point for a deployer that produces plans and applies infrastructure changes.\n",
+                "assets/README.md": "Add deployer schemas, examples, and implementation assets here.\n",
+                "assets/schemas/deployer-input.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} input\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"target\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/schemas/deployer-plan.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} plan\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"steps\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\"\n      }\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/sample-input.json": "{\n  \"target\": \"example\"\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nPlaceholder deployer component for `{{edit.contract_id}}`.\n\nSupported ops: {{edit.supported_ops}}\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n",
+                "flows/generate.ygtc": "id: generate\ntype: messaging\nnodes: {}\n",
+                "flows/plan.ygtc": "id: plan\ntype: messaging\nnodes: {}\n",
+                "flows/apply.ygtc": "id: apply\ntype: messaging\nnodes: {}\n",
+                "flows/destroy.ygtc": "id: destroy\ntype: messaging\nnodes: {}\n",
+                "flows/status.ygtc": "id: status\ntype: messaging\nnodes: {}\n",
+                "flows/rollback.ygtc": "id: rollback\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime-capability",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Runtime Capability",
+      "description": "Capability runtime and execution packs",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "runtime" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "true" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "runtime-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.runtime.execution.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "runtime" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "run" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/runtime-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "runtime-capability-basic",
+          "name": "Runtime capability scaffold",
+          "description": "Scaffold a capability-first runtime pack with component, schemas, and example payloads",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Runtime capability extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "runtime.capability.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/runtime", "assets/schemas", "assets/examples", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nRuntime capability scaffold.\n\nCapability ID: `{{edit.cap_id}}`\nComponent: `{{edit.component_ref}}`\nOperation: `{{edit.op}}`\n",
+                "assets/README.md": "Add runtime adapters, policies, and deployment-specific assets here.\n",
+                "assets/runtime/README.md": "Runtime-specific hooks, templates, and policy assets go here.\n",
+                "assets/schemas/runtime-input.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} input\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"payload\": {\n      \"type\": \"object\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/schemas/runtime-output.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} output\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"status\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/runtime-input.json": "{\n  \"payload\": {\n    \"example\": true\n  }\n}\n",
+                "qa/runtime-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated runtime capability component scaffold.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows:\n- id: main\n  file: flows/main.ygtc\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contract",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Contract",
+      "description": "Contract definitions, rules, and policy packs",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "contract" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "contract-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.contract.bundle.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "contract-hook" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "validate" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/contract-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "contract-basic",
+          "name": "Contract scaffold",
+          "description": "Scaffold schemas, rules, and examples for a contract-oriented pack",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Contract extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "contract.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/contracts", "assets/schemas", "assets/examples", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nContract scaffold.\n\nUse this pack to hold schema, rule, and policy placeholders.\n",
+                "assets/README.md": "Add contract and policy assets here.\n",
+                "assets/contracts/README.md": "Store rule bundles, transition definitions, and policy material here.\n",
+                "assets/contracts/transitions.yaml": "version: 1\nstates:\n  - draft\n  - approved\ntransitions:\n  - from: draft\n    to: approved\n    rule: allow-approval\n",
+                "assets/contracts/rules.yaml": "version: 1\nrules:\n  - id: allow-approval\n    description: Placeholder approval rule\n",
+                "assets/schemas/contract.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} contract\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"id\": {\n      \"type\": \"string\"\n    },\n    \"version\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\"id\"],\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/contract.example.json": "{\n  \"id\": \"example-contract\",\n  \"version\": \"v1\"\n}\n",
+                "qa/contract-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nOptional contract hook scaffold.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows:\n- id: main\n  file: flows/main.ygtc\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ops",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Ops",
+      "description": "Ops metadata, schemas, and execution hooks",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "ops" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "true" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "ops-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.ops.execution.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "ops-provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "execute" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/ops-setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "before,after" }
+      ],
+      "templates": [
+        {
+          "id": "ops-basic",
+          "name": "Ops scaffold",
+          "description": "Scaffold an ops-oriented pack with schemas, metadata, and component hook",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Ops extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "ops.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets/ops", "assets/schemas", "assets/examples", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nOps scaffold.\n\nCapability ID: `{{edit.cap_id}}`\nOperation: `{{edit.op}}`\n",
+                "assets/README.md": "Add ops metadata, examples, and execution assets here.\n",
+                "assets/ops/ops.yaml": "version: 1\nops:\n  - id: {{edit.op}}\n    label: {{qa.display_name}}\n    stage: execute\n",
+                "assets/schemas/ops-input.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} op input\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"request\": {\n      \"type\": \"object\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/schemas/ops-output.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"{{qa.display_name}} op output\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": true\n}\n",
+                "assets/examples/ops-input.json": "{\n  \"request\": {\n    \"sample\": true\n  }\n}\n",
+                "qa/ops-setup.json": "{\n  \"id\": \"{{edit.offer_id}}-setup\",\n  \"version\": \"1.0.0\",\n  \"questions\": []\n}\n",
+                "components/{{edit.component_ref}}/README.md": "# {{edit.component_ref}}\n\nGenerated ops component scaffold.\n",
+                "components/{{edit.component_ref}}/component.manifest.json": "{\n  \"id\": \"{{edit.component_ref}}\",\n  \"version\": \"0.1.0\",\n  \"supports\": [],\n  \"world\": \"greentic:provider/schema-core@1.0.0\",\n  \"profiles\": {\n    \"default\": \"stateless\",\n    \"supported\": [\n      \"stateless\"\n    ]\n  },\n  \"capabilities\": {\n    \"wasi\": {},\n    \"host\": {}\n  },\n  \"operations\": [\n    {\n      \"name\": \"{{edit.op}}\",\n      \"input_schema\": {},\n      \"output_schema\": {}\n    }\n  ],\n  \"resources\": {},\n  \"dev_flows\": {}\n}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents:\n- id: {{edit.component_ref}}\n  version: 0.1.0\n  world: greentic:provider/schema-core@1.0.0\n  supports: []\n  profiles:\n    default: stateless\n    supported:\n    - stateless\n  capabilities:\n    wasi: {}\n    host: {}\n  wasm: components/{{edit.component_ref}}/component.wasm\n  operations:\n  - name: {{edit.op}}\n    input_schema: {}\n    output_schema: {}\nflows:\n- id: main\n  file: flows/main.ygtc\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            },
+            {
+              "type": "write_binary_files",
+              "files": {
+                "components/{{edit.component_ref}}/component.wasm": "AGFzbQEAAAA="
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "capability-offer",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Capability Offer",
+      "description": "Capability offers for other extensions",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "capability-offer" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "true" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "capability-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.example.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "run" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "capability-offer-v1",
+          "name": "Capability offer scaffold",
+          "description": "Scaffold for greentic.ext.capabilities.v1",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Capability offer extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "capability.offer.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n", "assets", "qa"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\nextensions:\n  greentic.ext.capabilities.v1:\n    kind: greentic.ext.capabilities.v1\n    version: 1.0.0\n    inline:\n      schema_version: 1\n      offers: []\n",
+                "qa/setup.json": "{\"id\":\"capability-setup\",\"version\":\"1.0.0\",\"questions\":[]}\n"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "custom-scaffold",
+      "canonical_extension_key": "greentic.ext.capabilities.v1",
+      "name": "Custom extension",
+      "description": "Scaffold only",
+      "edit_questions": [
+        { "id": "entry_label", "title_key": "wizard.update_extension_pack.edit.entry_label", "default": "custom" },
+        { "id": "create_offer", "title_key": "wizard.qa.create_offer", "kind": "boolean", "default": "false" },
+        { "id": "offer_id", "title_key": "wizard.qa.offer_id", "default": "custom-offer" },
+        { "id": "cap_id", "title_key": "wizard.qa.capability_id", "default": "greentic.cap.custom.v1" },
+        { "id": "component_ref", "title_key": "wizard.qa.component_ref", "default": "provider" },
+        { "id": "op", "title_key": "wizard.qa.operation", "default": "run" },
+        { "id": "version", "title_key": "wizard.qa.offer_version", "default": "v1" },
+        { "id": "priority", "title_key": "wizard.qa.priority", "kind": "integer", "default": "0" },
+        { "id": "requires_setup", "title_key": "wizard.qa.requires_setup", "kind": "boolean", "default": "false" },
+        { "id": "qa_ref", "title_key": "wizard.qa.qa_ref", "default": "qa/setup.json" },
+        { "id": "hook_op_names", "title_key": "wizard.qa.hook_op_names", "default": "" }
+      ],
+      "templates": [
+        {
+          "id": "custom-scaffold-template",
+          "name": "Custom scaffold template",
+          "description": "Create a minimal custom extension skeleton",
+          "qa_questions": [
+            { "id": "display_name", "title_key": "wizard.qa.display_name", "default": "Custom extension" },
+            { "id": "pack_id", "title_key": "wizard.qa.pack_id", "default": "custom.extension" }
+          ],
+          "plan": [
+            { "type": "ensure_dir", "paths": ["flows", "components", "i18n"] },
+            {
+              "type": "write_files",
+              "files": {
+                "README.md": "# {{qa.display_name}}\n\nCanonical key: {{canonical_extension_key}}\n",
+                "pack.yaml": "pack_id: {{qa.pack_id}}\nversion: 0.1.0\nkind: application\npublisher: Greentic\ncomponents: []\nflows: []\ndependencies: []\nassets: []\n",
+                "flows/main.ygtc": "id: main\ntype: messaging\nnodes: {}\n"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -155,6 +155,41 @@ fn write_describe_sidecars_from_pack(pack_dir: &Path) {
     }
 }
 
+fn add_static_routes_extension(pack_dir: &Path) {
+    let assets_dir = pack_dir.join("assets").join("webchat-gui");
+    fs::create_dir_all(&assets_dir).expect("create static route assets dir");
+    fs::write(assets_dir.join("index.html"), "<html>webchat</html>").expect("write index");
+
+    let pack_yaml_path = pack_dir.join("pack.yaml");
+    let mut pack_yaml = fs::read_to_string(&pack_yaml_path).expect("read pack.yaml");
+    pack_yaml.push_str(
+        r#"
+extensions:
+  greentic.static-routes.v1:
+    kind: greentic.static-routes.v1
+    version: 1.0.0
+    inline:
+      version: 1
+      routes:
+        - id: webchat-gui
+          public_path: /v1/web/webchat/{tenant}
+          source_root: assets/webchat-gui
+          scope:
+            tenant: true
+            team: false
+          index_file: index.html
+          spa_fallback: index.html
+          cache:
+            strategy: public-max-age
+            max_age_seconds: 3600
+          exports:
+            base_url: webchat_gui_base_url
+            entry_url: webchat_gui_entry_url
+"#,
+    );
+    fs::write(pack_yaml_path, pack_yaml).expect("write pack.yaml");
+}
+
 #[test]
 fn doctor_json_includes_validation() {
     let temp = tempfile::tempdir().expect("temp dir");
@@ -180,6 +215,62 @@ fn doctor_json_includes_validation() {
     assert!(
         payload.get("validation").is_some(),
         "doctor --json should include validation report"
+    );
+}
+
+#[test]
+fn doctor_json_reports_static_routes() {
+    let (_pack_temp, pack_dir) = copy_fixture_to_temp("valid-minimal");
+    add_static_routes_extension(&pack_dir);
+
+    let temp = tempfile::tempdir().expect("temp dir");
+    let pack_path = temp.path().join("static-routes.gtpack");
+    let build_output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
+        .env("GREENTIC_PACK_USE_DESCRIBE_CACHE", "1")
+        .args([
+            "build",
+            "--in",
+            pack_dir.to_str().unwrap(),
+            "--allow-pack-schema",
+            "--gtpack-out",
+            pack_path.to_str().unwrap(),
+            "--no-update",
+        ])
+        .output()
+        .expect("run build command");
+    assert!(build_output.status.success(), "building pack should work");
+
+    let doctor_output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
+        .env("GREENTIC_PACK_USE_DESCRIBE_CACHE", "1")
+        .args([
+            "doctor",
+            "--pack",
+            pack_path.to_str().unwrap(),
+            "--json",
+            "--no-flow-doctor",
+            "--no-component-doctor",
+        ])
+        .output()
+        .expect("run doctor command");
+    assert!(doctor_output.status.success(), "doctor should succeed");
+
+    let payload: Value = serde_json::from_slice(&doctor_output.stdout).expect("doctor JSON");
+    let static_routes = payload
+        .get("static_routes")
+        .and_then(|val| val.as_array())
+        .expect("static routes array present");
+    assert_eq!(static_routes.len(), 1);
+    assert_eq!(
+        static_routes[0].get("id").and_then(|val| val.as_str()),
+        Some("webchat-gui")
+    );
+    assert_eq!(
+        static_routes[0]
+            .get("public_path")
+            .and_then(|val| val.as_str()),
+        Some("/v1/web/webchat/{tenant}")
     );
 }
 

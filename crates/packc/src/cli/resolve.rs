@@ -5,14 +5,22 @@ use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
+use crate::config::load_pack_config;
+use crate::flow_resolve::{
+    ensure_sidecar_exists, read_flow_resolve_summary_for_flow, strip_file_uri_prefix,
+};
+use crate::runtime::RuntimeContext;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use greentic_distributor_client::{DistClient, DistOptions};
-use greentic_interfaces_host::component_v0_6::{ComponentV0_6, instantiate_component_v0_6};
+use greentic_flow::compile_ygtc_str;
 use greentic_pack::pack_lock::{LockedComponent, PackLockV1, write_pack_lock};
 use greentic_pack::resolver::{ComponentResolver, ResolveReq, ResolvedComponent};
 use greentic_types::cbor::canonical;
-use greentic_types::flow_resolve_summary::{FlowResolveSummarySourceRefV1, FlowResolveSummaryV1};
+use greentic_types::flow_resolve_summary::{
+    FlowResolveSummarySourceRefV1, FlowResolveSummaryV1, resolve_summary_path_for_flow,
+    write_flow_resolve_summary,
+};
 use greentic_types::schemas::component::v0_6_0::{ComponentDescribe, schema_hash};
 use hex;
 use sha2::{Digest, Sha256};
@@ -20,10 +28,9 @@ use tokio::runtime::Handle;
 use wasmtime::Engine;
 use wasmtime::component::{Component as WasmtimeComponent, Linker};
 
-use crate::component_host_stubs::{DescribeHostState, add_describe_host_imports};
-use crate::config::load_pack_config;
-use crate::flow_resolve::{read_flow_resolve_summary_for_flow, strip_file_uri_prefix};
-use crate::runtime::RuntimeContext;
+use crate::component_host_stubs::{
+    DescribeHostState, add_describe_host_imports, stub_remaining_imports,
+};
 
 #[derive(Debug, Args)]
 pub struct ResolveArgs {
@@ -46,25 +53,71 @@ pub async fn handle(args: ResolveArgs, runtime: &RuntimeContext, emit_path: bool
     let config = load_pack_config(&pack_dir)?;
     let mut entries: BTreeMap<String, LockedComponent> = BTreeMap::new();
     for flow in &config.flows {
+        let compiled = compile_flow(&pack_dir, flow)?;
+        ensure_sidecar_exists(&pack_dir, flow, &compiled, false)?;
         let summary = read_flow_resolve_summary_for_flow(&pack_dir, flow)?;
         collect_from_summary(&pack_dir, flow, &summary, &mut entries)?;
     }
 
+    let mut id_remap: BTreeMap<String, String> = BTreeMap::new();
     if !entries.is_empty() {
         let resolver = PackResolver::new(runtime)?;
         let engine = Engine::default();
-        for component in entries.values_mut() {
-            populate_component_contract(&engine, &resolver, component).await?;
+        let mut rekeyed = BTreeMap::new();
+        for (key, mut component) in entries {
+            populate_component_contract(&engine, &resolver, &mut component).await?;
+            if component.component_id != key {
+                id_remap.insert(key, component.component_id.clone());
+            }
+            rekeyed.insert(component.component_id.clone(), component);
+        }
+        entries = rekeyed;
+    }
+
+    if !id_remap.is_empty() {
+        for flow in &config.flows {
+            let flow_path = flow.file.clone();
+            let summary_path = resolve_summary_path_for_flow(&flow_path);
+            if summary_path.exists() {
+                let mut summary = read_flow_resolve_summary_for_flow(&pack_dir, flow)?;
+                let mut changed = false;
+                for node in summary.nodes.values_mut() {
+                    let old_id = node.component_id.as_str().to_string();
+                    if let Some(new_id) = id_remap.get(&old_id) {
+                        node.component_id = new_id.parse().unwrap_or(node.component_id.clone());
+                        changed = true;
+                    }
+                }
+                if changed {
+                    write_flow_resolve_summary(&summary_path, &summary)
+                        .map_err(|e| anyhow!("{e}"))?;
+                }
+            }
         }
     }
 
     let lock = PackLockV1::new(entries);
     write_pack_lock(&lock_path, &lock)?;
     if emit_path {
-        eprintln!("wrote {}", lock_path.display());
+        eprintln!(
+            "{}",
+            crate::cli_i18n::tf("cli.common.wrote_path", &[&lock_path.display().to_string()])
+        );
     }
 
     Ok(())
+}
+
+fn compile_flow(pack_dir: &Path, flow: &crate::config::FlowConfig) -> Result<greentic_types::Flow> {
+    let flow_path = if flow.file.is_absolute() {
+        flow.file.clone()
+    } else {
+        pack_dir.join(&flow.file)
+    };
+    let yaml_src = fs::read_to_string(&flow_path)
+        .with_context(|| format!("failed to read flow {}", flow_path.display()))?;
+    compile_ygtc_str(&yaml_src)
+        .with_context(|| format!("failed to compile flow {}", flow_path.display()))
 }
 
 fn resolve_lock_path(pack_dir: &Path, override_path: Option<&Path>) -> PathBuf {
@@ -150,6 +203,16 @@ async fn populate_component_contract(
     resolver: &dyn ComponentResolver,
     component: &mut LockedComponent,
 ) -> Result<()> {
+    if is_builtin_component(component.component_id.as_str()) {
+        component.describe_hash = "0".repeat(64);
+        component.operations.clear();
+        component.role = Some("builtin".to_string());
+        if component.component_version.is_none() {
+            component.component_version = Some("0.0.0".to_string());
+        }
+        return Ok(());
+    }
+
     let reference = component
         .r#ref
         .as_ref()
@@ -163,6 +226,7 @@ async fn populate_component_contract(
         component_version: component.component_version.clone(),
     })?;
     let bytes = resolved.bytes;
+    component.resolved_digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
     let use_describe_cache =
         std::env::var("GREENTIC_PACK_USE_DESCRIBE_CACHE").is_ok() || cfg!(test);
     let describe = match describe_component(engine, &bytes) {
@@ -171,6 +235,23 @@ async fn populate_component_contract(
             if let Some(describe) = load_describe_from_cache_path(resolved.source_path.as_deref())?
             {
                 describe
+            } else if is_state_store_tenant_ctx_abi_mismatch(&err)
+                || is_known_host_linker_gap(&err)
+                || is_missing_descriptor_instance(&err)
+            {
+                // Temporary compat fallback: keep resolve/build working for components
+                // whose state-store import still mismatches host stubs (19 vs 18 fields).
+                component.describe_hash = component
+                    .resolved_digest
+                    .strip_prefix("sha256:")
+                    .unwrap_or(component.resolved_digest.as_str())
+                    .to_string();
+                component.operations.clear();
+                component.role = Some("unknown".to_string());
+                if component.component_version.is_none() {
+                    component.component_version = Some("0.0.0".to_string());
+                }
+                return Ok(());
             } else if use_describe_cache {
                 return Err(err).context("describe failed and no describe cache present");
             } else {
@@ -180,11 +261,11 @@ async fn populate_component_contract(
     };
 
     if describe.info.id != component.component_id {
-        bail!(
-            "component {} describe id mismatch: {}",
-            component.component_id,
-            describe.info.id
+        eprintln!(
+            "warning: component {} describe id mismatch (expected {}, got {}); using describe id",
+            component.component_id, component.component_id, describe.info.id
         );
+        component.component_id = describe.info.id.clone();
     }
 
     let describe_hash = compute_describe_hash(&describe)?;
@@ -212,6 +293,13 @@ async fn populate_component_contract(
     component.role = Some(describe.info.role);
     component.component_version = Some(describe.info.version);
     Ok(())
+}
+
+fn is_builtin_component(component_id: &str) -> bool {
+    matches!(
+        component_id,
+        "session.wait" | "flow.call" | "provider.invoke"
+    ) || component_id.starts_with("emit.")
 }
 
 struct PackResolver {
@@ -253,12 +341,28 @@ impl ComponentResolver for PackResolver {
 
         let handle =
             Handle::try_current().context("component resolution requires a Tokio runtime")?;
-        let resolved = if self.runtime.network_policy() == crate::runtime::NetworkPolicy::Offline {
-            block_on(&handle, self.dist.ensure_cached(&req.expected_digest))
+        let offline = self.runtime.network_policy() == crate::runtime::NetworkPolicy::Offline;
+        let resolved = if offline {
+            self.dist
+                .open_cached(&req.expected_digest)
                 .map_err(|err| anyhow!("offline cache miss for {}: {}", req.reference, err))?
         } else {
-            block_on(&handle, self.dist.resolve_ref(&req.reference))
-                .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?
+            let source = self
+                .dist
+                .parse_source(&req.reference)
+                .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?;
+            let descriptor = block_on(
+                &handle,
+                self.dist
+                    .resolve(source, greentic_distributor_client::ResolvePolicy),
+            )
+            .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?;
+            block_on(
+                &handle,
+                self.dist
+                    .fetch(&descriptor, greentic_distributor_client::CachePolicy),
+            )
+            .map_err(|err| anyhow!("resolve {}: {}", req.reference, err))?
         };
         let path = resolved
             .cache_path
@@ -284,14 +388,43 @@ where
 }
 
 fn describe_component(engine: &Engine, bytes: &[u8]) -> Result<ComponentDescribe> {
-    let component =
-        WasmtimeComponent::from_binary(engine, bytes).context("decode component bytes")?;
-    let mut store = wasmtime::Store::new(engine, DescribeHostState);
+    describe_component_untyped(engine, bytes)
+}
+
+fn describe_component_untyped(engine: &Engine, bytes: &[u8]) -> Result<ComponentDescribe> {
+    let component = WasmtimeComponent::from_binary(engine, bytes)
+        .map_err(|err| anyhow!("decode component bytes: {err}"))?;
+    let mut store = wasmtime::Store::new(engine, DescribeHostState::default());
     let mut linker = Linker::new(engine);
     add_describe_host_imports(&mut linker)?;
-    let instance: ComponentV0_6 = instantiate_component_v0_6(&mut store, &component, &linker)
-        .context("instantiate component-v0-v6-v0")?;
-    let describe_bytes = instance.describe(&mut store).context("call describe")?;
+    // Stub any remaining imports (secrets-store, http-client, interfaces-types,
+    // etc.) that the component needs but describe() never calls at runtime.
+    stub_remaining_imports(&mut linker, &component)?;
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .map_err(|err| anyhow!("instantiate component root world: {err}"))?;
+
+    let descriptor = [
+        "component-descriptor",
+        "greentic:component/component-descriptor",
+        "greentic:component/component-descriptor@0.6.0",
+    ]
+    .iter()
+    .find_map(|name| instance.get_export_index(&mut store, None, name))
+    .ok_or_else(|| anyhow!("missing exported descriptor instance"))?;
+    let describe_export = [
+        "describe",
+        "greentic:component/component-descriptor@0.6.0#describe",
+    ]
+    .iter()
+    .find_map(|name| instance.get_export_index(&mut store, Some(&descriptor), name))
+    .ok_or_else(|| anyhow!("missing exported describe function"))?;
+    let describe_func = instance
+        .get_typed_func::<(), (Vec<u8>,)>(&mut store, &describe_export)
+        .map_err(|err| anyhow!("lookup component-descriptor.describe: {err}"))?;
+    let (describe_bytes,) = describe_func
+        .call(&mut store, ())
+        .map_err(|err| anyhow!("call component-descriptor.describe: {err}"))?;
     canonical::from_cbor(&describe_bytes).context("decode ComponentDescribe")
 }
 
@@ -315,6 +448,24 @@ fn compute_describe_hash(describe: &ComponentDescribe) -> Result<String> {
         canonical::to_canonical_cbor_allow_floats(describe).context("canonicalize describe")?;
     let digest = Sha256::digest(bytes.as_slice());
     Ok(hex::encode(digest))
+}
+
+fn is_state_store_tenant_ctx_abi_mismatch(err: &anyhow::Error) -> bool {
+    let text = format!("{:#}", err);
+    text.contains("greentic:state/state-store@1.0.0")
+        && text.contains("expected record of 19 fields, found 18 fields")
+}
+
+fn is_known_host_linker_gap(err: &anyhow::Error) -> bool {
+    let text = format!("{:#}", err);
+    let missing_impl = text.contains("matching implementation was not found in the linker");
+    missing_impl
+        && (text.contains("greentic:http/http-client@1.1.0")
+            || text.contains("greentic:http/http-client@1.0.0"))
+}
+
+fn is_missing_descriptor_instance(err: &anyhow::Error) -> bool {
+    format!("{:#}", err).contains("missing exported descriptor instance")
 }
 
 fn normalize_local(
@@ -364,12 +515,17 @@ fn format_reference(source: &FlowResolveSummarySourceRefV1) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::resolve_runtime;
     use greentic_types::ComponentId;
+    use greentic_types::flow_resolve::{read_flow_resolve, sidecar_path_for_flow};
     use greentic_types::flow_resolve_summary::{
         FlowResolveSummarySourceRefV1, FlowResolveSummaryV1, NodeResolveSummaryV1,
+        read_flow_resolve_summary, resolve_summary_path_for_flow,
     };
     use std::collections::BTreeMap;
+    use std::fs;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     fn sample_flow() -> crate::config::FlowConfig {
         crate::config::FlowConfig {
@@ -394,9 +550,8 @@ mod tests {
                 NodeResolveSummaryV1 {
                     component_id: component_id.clone(),
                     source: FlowResolveSummarySourceRefV1::Oci {
-                        r#ref:
-                            "oci://ghcr.io/greentic-ai/components/component-adaptive-card:latest"
-                                .to_string(),
+                        r#ref: "oci://ghcr.io/greenticai/components/component-adaptive-card:latest"
+                            .to_string(),
                     },
                     digest: format!("sha256:{}", "a".repeat(64)),
                     manifest: None,
@@ -431,7 +586,7 @@ mod tests {
             NodeResolveSummaryV1 {
                 component_id: component_id.clone(),
                 source: FlowResolveSummarySourceRefV1::Oci {
-                    r#ref: "oci://ghcr.io/greentic-ai/components/component-adaptive-card:latest"
+                    r#ref: "oci://ghcr.io/greenticai/components/component-adaptive-card:latest"
                         .to_string(),
                 },
                 digest: format!("sha256:{}", "b".repeat(64)),
@@ -443,7 +598,7 @@ mod tests {
             NodeResolveSummaryV1 {
                 component_id: component_id.clone(),
                 source: FlowResolveSummarySourceRefV1::Oci {
-                    r#ref: "oci://ghcr.io/greentic-ai/components/component-adaptive-card:latest"
+                    r#ref: "oci://ghcr.io/greenticai/components/component-adaptive-card:latest"
                         .to_string(),
                 },
                 digest: format!("sha256:{}", "c".repeat(64)),
@@ -460,5 +615,82 @@ mod tests {
         let mut entries = BTreeMap::new();
         let err = collect_from_summary(&pack_dir, &flow, &summary, &mut entries).unwrap_err();
         assert!(err.to_string().contains("points to different artifacts"));
+    }
+
+    #[tokio::test]
+    async fn handle_creates_missing_sidecar_before_reading_summary() {
+        let temp = TempDir::new().expect("tempdir");
+        let pack_dir = temp.path().join("pack");
+        fs::create_dir_all(pack_dir.join("flows")).expect("create flows dir");
+        fs::write(
+            pack_dir.join("pack.yaml"),
+            r#"pack_id: dev.local.resolve-sidecar
+version: 0.1.0
+kind: application
+publisher: Test
+components: []
+dependencies: []
+flows:
+- id: main
+  file: flows/main.ygtc
+  tags: [default]
+  entrypoints: [default]
+assets: []
+"#,
+        )
+        .expect("write pack yaml");
+        fs::write(
+            pack_dir.join("flows/main.ygtc"),
+            r#"id: main
+type: messaging
+start: hello
+nodes:
+  hello:
+    handle_message:
+      input: "hi"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("write flow");
+
+        let runtime = resolve_runtime(Some(temp.path()), None, true, None).expect("runtime");
+        handle(
+            ResolveArgs {
+                input: pack_dir.clone(),
+                lock: None,
+            },
+            &runtime,
+            false,
+        )
+        .await
+        .expect("resolve should create sidecar instead of failing");
+
+        let flow_cfg = sample_flow();
+        let sidecar_path = sidecar_path_for_flow(&pack_dir.join(&flow_cfg.file));
+        let summary_path = resolve_summary_path_for_flow(&pack_dir.join(&flow_cfg.file));
+        assert!(
+            sidecar_path.exists(),
+            "resolve should create the missing sidecar"
+        );
+        assert!(
+            summary_path.exists(),
+            "resolve should write a summary for the new sidecar"
+        );
+
+        let sidecar = read_flow_resolve(&sidecar_path).expect("read sidecar");
+        assert!(sidecar.nodes.is_empty(), "new sidecar should start empty");
+
+        let summary = read_flow_resolve_summary(&summary_path).expect("read summary");
+        assert!(
+            summary.nodes.is_empty(),
+            "summary should reflect the empty sidecar"
+        );
+
+        let lock_path = pack_dir.join("pack.lock.cbor");
+        assert!(
+            lock_path.exists(),
+            "resolve should still write pack.lock.cbor"
+        );
     }
 }

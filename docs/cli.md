@@ -3,6 +3,9 @@
 This document describes every `greentic-pack` command and flag, along with
 common usage patterns. The CLI is published as the `greentic-pack` binary.
 
+Compatibility-only aliases and migration switches are documented in
+`docs/vision/legacy.md`.
+
 ## Command structure
 
 ```
@@ -50,9 +53,7 @@ greentic-pack build --in <DIR> [options]
 Options:
 - `--in <DIR>`: pack root containing `pack.yaml`.
 - `--no-update`: skip the pre-build `update` sync.
-- `--out <FILE>`: write a stub Wasm component (legacy).
 - `--manifest <FILE>`: manifest output path (default: `dist/manifest.cbor`).
-- `--sbom <FILE>`: SBOM output path (legacy JSON stub).
 - `--gtpack-out <FILE>`: `.gtpack` output (default: `dist/<pack_dir>.gtpack`).
 - `--lock <FILE>`: pack.lock.cbor path (default: `<pack_dir>/pack.lock.cbor`).
 - `--bundle <cache|none>`: embed component artifacts (`cache`) or keep refs only (`none`).
@@ -61,7 +62,6 @@ Options:
 - `--default-secret-scope <ENV/TENANT[/TEAM]>`: fill missing secret scopes.
 - `--allow-oci-tags`: allow tag-based OCI refs in extensions.
 - `--no-extra-dirs`: only include `flows/`, `components/`, and `assets/` in the archive (skip extra directories and root files).
-- `--allow-pack-schema`: migration-only escape hatch that allows deriving component manifest/schema from `pack.yaml` when component manifests are missing (default is hard-error on 0.6 path).
 
 Example:
 
@@ -137,9 +137,6 @@ greentic-pack qa --pack <DIR> --mode <default|setup|update|remove> [options]
 Options:
 - `--pack <DIR>`: pack root (default: `.`).
 - `--mode <MODE>`: QA mode to run (default: `default`).
-  - `upgrade` is accepted as a deprecated alias for `update` and prints a warning.
-  - CLI output and persisted docs always normalize this to `update`.
-  - Alias removal is planned for a future `0.6.x/0.7` release (no fixed date/version yet).
 - `--answers <FILE_OR_DIR>`: override answers location (file or directory).
 - `--locale <BCP47>`: locale tag for i18n lookup (default: `en`).
 - `--non-interactive`: disable prompts; fail if required answers missing.
@@ -165,7 +162,7 @@ qa/pack/update.cbor
 qa/pack/remove.cbor
 ```
 
-### `doctor` (alias: `inspect`)
+### `doctor`
 
 Inspect a pack archive or source directory.
 
@@ -210,6 +207,9 @@ Options:
 
 Inspect or validate provider extensions.
 
+LEGACY TRACK: provider-extension/schema-core guidance is maintained for
+compatibility. For v0.6-first authoring, start from `docs/usage.md`.
+
 ```
 greentic-pack providers <subcommand> [options]
 ```
@@ -222,6 +222,9 @@ Subcommands:
 ### `add-extension provider`
 
 Add or amend the provider extension entry stored in `pack.yaml`.
+
+LEGACY TRACK: this command updates provider-extension/schema-core metadata used
+by existing deployments. For details, see `docs/vision/legacy.md`.
 
 ```
 greentic-pack add-extension provider [options]
@@ -243,6 +246,123 @@ greentic-pack add-extension provider --pack-dir examples/weather-demo \
   --id messaging.dummy --kind messaging --title "Dummy Messaging Provider"
 ```
 
+### `add-extension capability`
+
+Add or amend a capability offer in `extensions.greentic.ext.capabilities.v1`.
+
+```
+greentic-pack add-extension capability [options]
+```
+
+Options:
+- `--pack-dir <DIR>`: update a source directory containing `pack.yaml`.
+- `--dry-run`: show the updated `pack.yaml` without persisting changes.
+- `--offer-id <ID>`: stable capability offer id.
+- `--cap-id <CAP_ID>`: capability identifier (for example `greentic.cap.op_hook.pre`).
+- `--version <VERSION>`: capability contract version (default `v1`).
+- `--component-ref <COMPONENT_ID>`: provider component id from `components[].id`.
+- `--op <OP_ID>`: provider operation to invoke.
+- `--priority <INT>`: deterministic selection priority (ascending).
+- `--requires-setup`: mark offer as requiring setup.
+- `--qa-ref <PACK_REL_PATH>`: required with `--requires-setup`; must exist in pack sources.
+- `--hook-op-name <OP_NAME>`: repeatable exact operation names for hook applicability.
+
+Validation notes (`build`/`lint`):
+- `requires_setup=true` requires a non-empty `setup.qa_ref`.
+- `setup.qa_ref` must point to an existing file in the pack source.
+- `provider.component_ref` must reference an existing component id from `pack.yaml`.
+
+Example:
+
+```
+greentic-pack add-extension capability --pack-dir examples/weather-demo \
+  --offer-id policy.pre.10 \
+  --cap-id greentic.cap.op_hook.pre \
+  --component-ref policy.hook \
+  --op hook.evaluate \
+  --priority 10 \
+  --hook-op-name send
+```
+
+### `add-extension deployer`
+
+Add or amend a generic deployer extension in `extensions.greentic.deployer.v1`.
+
+```
+greentic-pack add-extension deployer [options]
+```
+
+Options:
+- `--pack-dir <DIR>`: update a source directory containing `pack.yaml`.
+- `--dry-run`: show the updated `pack.yaml` without persisting changes.
+- `--contract-id <ID>`: deployer contract identifier.
+- `--op <OP>`: supported deployer operation (repeatable). Defaults to
+  `generate`, `plan`, `apply`, `destroy`, `status`, `rollback`.
+- `--flow-ref <OP=PATH>`: optional explicit flow ref mapping written into
+  deployer metadata and used by validation.
+
+Validation notes (`build`/`lint`):
+- deployer metadata must include a non-empty `version`.
+- `provides[].capability`, `provides[].contract`, and at least one op are required.
+- any declared `flow_refs` must point to existing pack-relative files.
+
+Example:
+
+```
+greentic-pack add-extension deployer --pack-dir examples/weather-demo \
+  --contract-id greentic.deployer.v1 \
+  --op generate \
+  --flow-ref generate=flows/generate.ygtc
+```
+
+### `add-extension dependency`
+
+Add or update an external extension dependency ref in `pack.extensions.json`.
+
+```
+greentic-pack add-extension dependency [OPTIONS]
+```
+
+Options:
+- `--pack-dir <DIR>`: update a source directory containing `pack.yaml`.
+- `--dry-run`: show the updated `pack.extensions.json` without persisting changes.
+- `--id <ID>`: logical dependency id.
+- `--role <ROLE>`: logical dependency role such as `deployer`.
+- `--ref <REF>`: source reference such as `oci://...`, `file://...`, `repo://...`, or `store://...`.
+- `--allow-tags`: allow author-edited tag refs in the source file.
+
+Example:
+
+```
+greentic-pack add-extension dependency --pack-dir examples/weather-demo \
+  --id greentic.deployer.v1 \
+  --role deployer \
+  --ref oci://ghcr.io/greenticai/packs/deployer:0.6.0 \
+  --allow-tags
+```
+
+### `extensions-lock`
+
+Resolve `pack.extensions.json` refs and write `pack.extensions.lock.json`.
+
+```
+greentic-pack extensions-lock [OPTIONS] --in <DIR>
+```
+
+Options:
+- `--in <DIR>`: pack root containing `pack.extensions.json`.
+- `--file <FILE>`: override the source file path.
+- `--out <FILE>`: override the lock file path.
+
+Lock notes:
+- this command is separate from `resolve` and does not replace `pack.lock.cbor`
+- `pack.extensions.json` remains human-edited and may allow tag refs
+- `pack.extensions.lock.json` stores resolved digest-pinned refs plus media type and size when available
+- `lint` and `build` validate that the lock file still matches the current
+  `pack.extensions.json` entries
+- `doctor --in <DIR>` surfaces stale or incomplete extension lock state as
+  normal validation diagnostics
+
 ### `sign`
 
 Sign a manifest with an Ed25519 private key.
@@ -261,19 +381,107 @@ greentic-pack verify --pack <DIR> --key <FILE> [--manifest <FILE>]
 
 ### `wizard`
 
-Scaffold or amend packs.
+Run the interactive wizard.
 
 ```
-greentic-pack wizard new-app <PACK_ID> --out <DIR> [--locale <LOCALE>] [--name <NAME>]
-greentic-pack wizard new-extension <PACK_ID> --kind <KIND> --out <DIR> [--locale <LOCALE>] [--name <NAME>]
-greentic-pack wizard add-component <REF_OR_ID> --pack <DIR> [--use-describe-cache] [--force] [--dry-run]
+greentic-pack wizard
 ```
 
-Example:
+AnswerDocument modes:
 
 ```
-greentic-pack wizard add-component oci://ghcr.io/acme/components/demo:1.2.3 --pack ./demo-pack
+greentic-pack wizard run [--answers <FILE>] [--emit-answers <FILE>] [--schema-version <VER>] [--migrate] [--dry-run]
+greentic-pack wizard validate --answers <FILE> [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
+greentic-pack wizard apply --answers <FILE> [--emit-answers <FILE>] [--schema-version <VER>] [--migrate]
 ```
+
+- `run`:
+  - default interactive behavior when no subcommand is passed
+  - with `--answers`, runs non-interactive apply semantics
+  - with `--dry-run`, records choices and emits answers without executing side effects
+- `validate`:
+  - validates AnswerDocument content only (no side effects)
+- `apply`:
+  - executes side effects from AnswerDocument (`greentic-flow`, `greentic-component`, `doctor`, `build`, optional `sign`)
+- `--emit-answers` writes the normalized/migrated AnswerDocument envelope.
+- `--migrate` allows missing/older schema metadata to be normalized to the target schema version.
+
+Main menu:
+- Create application pack
+- Update application pack
+- Create extension pack
+- Update extension pack
+- Add extension to existing pack
+- Exit
+
+Navigation contract:
+- Main menu: `0) Exit`
+- Submenus: `0) Back`, `M) Main Menu`
+
+Create application pack flow:
+- asks pack id and pack dir (`./<pack-id>` default)
+- setup menu: `Edit flows`, `Add/edit components`, `Finalize`
+- delegates:
+  - `Edit flows` -> `greentic-flow wizard` (cwd = pack dir)
+  - `Add/edit components` -> `greentic-component wizard` (cwd = pack dir)
+- finalize pipeline:
+  - `greentic-pack doctor --in <DIR>`
+  - `greentic-pack build --in <DIR>`
+  - optional sign prompt (`greentic-pack sign --pack <DIR> --key <FILE>`)
+
+Update application pack flow:
+- asks pack dir (`.` default)
+- menu: `Edit flows`, `Add/edit components`, `Run update & validate`, `Sign`
+- `Run update & validate` executes `doctor --in <DIR>` then `build --in <DIR>` then optional sign
+- after successful delegate from flows/components, wizard auto-runs update & validate
+
+Create extension pack flow:
+- asks `Check for a new version [Y/n]`
+- `Enter` / `Y` opens a second prompt for catalog URL with default:
+  `https://github.com/greenticai/greentic-pack/blob/master/docs/extensions_capability_packs.catalog.v1.json`
+- `n` uses the bundled/local default catalog ref:
+  `file://docs/extensions_capability_packs.catalog.v1.json`
+- direct refs still work when pasted at the first prompt (`fixture://...`, `file://<path>`, `https://...`, `oci://...`)
+- if the default GitHub URL cannot be fetched, the wizard falls back to the bundled default catalog
+- choose extension type (with explanation), choose template, choose pack dir
+- records selected type, template, template QA answers, and edit answers in the AnswerDocument for replay
+- catalog labels can be provided via i18n keys in catalog (`name_key`, `description_key`)
+- creates a full base extension-pack scaffold before applying the selected template:
+  `flows/`, `components/`, `i18n/`, `assets/`, `qa/`, `extensions/`
+- seeds `assets/README.md` and `qa/README.md` when absent
+- catalog templates may interpolate `{{edit.*}}` placeholders in file paths and
+  contents, and may write binary scaffold artifacts with `write_binary_files`
+- the default catalog includes a `Deployer` type that scaffolds placeholder
+  deployer flows, schemas, examples, and a component bundle under
+  `components/{{edit.component_ref}}/`
+- deployer metadata is persisted under `extensions/deployer.json` and merged
+  into `pack.yaml -> extensions.greentic.deployer.v1`
+- deployer validation checks generic metadata and declared flow refs without
+  introducing target-specific deployer fields
+- the default catalog also includes:
+  - `Runtime Capability` for component-backed capability runtime packs
+  - `Contract` for schema/rules/policy-oriented packs
+  - `Ops` for ops metadata and execution-hook packs
+- these additional scaffold families remain capability-first and merge through
+  `pack.yaml -> extensions.greentic.ext.capabilities.v1`
+- applies scaffold plan, then runs finalize (`doctor --in`, `build --in`, optional sign)
+- includes a required `Custom extension` scaffold path
+- on catalog/template/delegate failures: localized error + `0) Back` / `M) Main Menu`
+
+Update extension pack flow:
+- asks pack dir + catalog ref
+- menu: `Edit extension entries`, `Edit flows`, `Add/edit components`, `Run update & validate`, `Sign`
+- `Run update & validate` executes `doctor --in <DIR>` then `build --in <DIR>` then optional sign
+- `Edit extension entries` writes catalog answers under `extensions/<type>.json`
+  and merges canonical extension data into `pack.yaml`
+  (`greentic.ext.capabilities.v1` for capability packs,
+  `greentic.deployer.v1` for deployer packs)
+
+Add extension to existing pack flow:
+- asks pack dir + the same catalog prompt flow used by create/update extension
+- chooses extension type and asks edit questions
+- writes catalog answers under `extensions/<type>.json` and merges canonical
+  extension data into `pack.yaml`
 
 ### `config`
 
@@ -325,3 +533,4 @@ greentic-pack gui loveable-convert --pack-kind layout \
 - `docs/pack-format.md` for `.gtpack` internals.
 - `docs/provider_extension.md` for provider metadata.
 - `docs/pack_extensions_components.md` for component source extensions.
+- `docs/vision/legacy.md` for deprecated aliases and migration-only switches.

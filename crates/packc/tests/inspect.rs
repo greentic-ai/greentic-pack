@@ -1,4 +1,5 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -179,6 +180,53 @@ fn doctor_warns_on_unsupported_manifest() {
     drop(temp_dir);
 }
 
+#[test]
+fn inspect_doctor_uses_dev_binary_overrides_for_flow_and_component_checks() {
+    let (temp_dir, pack_path, _adapter_name) = build_pack_with_messaging();
+    let flow_exe = temp_dir.path().join("greentic-flow-dev");
+    let component_exe = temp_dir.path().join("greentic-component-dev");
+    let flow_log = temp_dir.path().join("flow.log");
+    let component_log = temp_dir.path().join("component.log");
+
+    write_script(
+        &flow_exe,
+        &format!(
+            "#!/usr/bin/env bash\n\
+echo \"$*\" > \"{}\"\n\
+cat >/dev/null\n\
+printf '{{\"ok\":true}}\\n'\n\
+exit 0\n",
+            flow_log.display()
+        ),
+    );
+    write_script(
+        &component_exe,
+        &format!(
+            "#!/usr/bin/env bash\n\
+echo \"$*\" > \"{}\"\n\
+exit 0\n",
+            component_log.display()
+        ),
+    );
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
+        .env("GREENTIC_FLOW_DEV_BIN", &flow_exe)
+        .env("GREENTIC_COMPONENT_DEV_BIN", &component_exe)
+        .args(["doctor", "--pack", pack_path.to_str().unwrap(), "--json"])
+        .output()
+        .expect("run doctor");
+    assert!(output.status.success(), "doctor should succeed");
+
+    let flow_args = fs::read_to_string(&flow_log).expect("read flow log");
+    assert!(flow_args.contains("doctor --json --stdin"));
+    let component_args = fs::read_to_string(&component_log).expect("read component log");
+    assert!(component_args.contains("doctor"));
+    assert!(component_args.contains("--manifest"));
+
+    drop(temp_dir);
+}
+
 fn build_pack_with_messaging() -> (TempDir, PathBuf, String) {
     let adapter_name = "demo-adapter".to_string();
     let temp = TempDir::new().expect("temp dir");
@@ -241,7 +289,16 @@ fn build_pack_with_messaging() -> (TempDir, PathBuf, String) {
         version: Version::parse("1.0.0").unwrap(),
         wasm_path: wasm.clone(),
         schema_json: None,
-        manifest_json: None,
+        manifest_json: Some(
+            json!({
+                "name": "demo.component",
+                "artifacts": [],
+                "hashes": {},
+                "describe_export": true,
+                "config_schema": {}
+            })
+            .to_string(),
+        ),
         capabilities: None,
         world: Some("greentic:demo@1.0.0".into()),
         hash_blake3: None,
@@ -258,4 +315,11 @@ fn build_pack_with_messaging() -> (TempDir, PathBuf, String) {
     assert!(fs::read(&pack_path).is_ok());
 
     (temp, pack_path, adapter_name)
+}
+
+fn write_script(path: &std::path::Path, body: &str) {
+    fs::write(path, body).expect("write script");
+    let mut perms = fs::metadata(path).expect("metadata").permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(path, perms).expect("chmod");
 }

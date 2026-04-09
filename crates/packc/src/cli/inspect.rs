@@ -10,10 +10,11 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
+use greentic_pack::static_routes::{StaticRouteV1, parse_static_routes_extension};
 use greentic_pack::validate::{
-    ComponentReferencesExistValidator, ProviderReferencesExistValidator,
-    ReferencedFilesExistValidator, SbomConsistencyValidator, SecretRequirementsValidator,
-    ValidateCtx, run_validators,
+    ComponentReferencesExistValidator, OauthCapabilityRequirementsValidator,
+    ProviderReferencesExistValidator, ReferencedFilesExistValidator, SbomConsistencyValidator,
+    SecretRequirementsValidator, StaticRoutesValidator, ValidateCtx, run_validators,
 };
 use greentic_pack::{PackLoad, SigningPolicy, open_pack};
 use greentic_types::component_source::ComponentSourceRef;
@@ -32,6 +33,11 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::build;
+use crate::extension_refs::{
+    default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
+    read_extensions_lock_file, validate_extensions_lock_alignment,
+};
+use crate::extensions::DEPLOYER_EXTENSION_KEY;
 use crate::pack_lock_doctor::{PackLockDoctorInput, run_pack_lock_doctor};
 use crate::runtime::RuntimeContext;
 use crate::validator::{
@@ -149,7 +155,8 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
         }
     }
     let validation = if validate_enabled {
-        let mut output = run_pack_validation(&load, &args, runtime).await?;
+        let mut output =
+            run_pack_validation(&load, source_mode_pack_dir(&mode), &args, runtime).await?;
         let mut doctor_diagnostics = Vec::new();
         let mut doctor_errors = false;
         if args.component_doctor {
@@ -194,6 +201,7 @@ pub async fn handle(args: InspectArgs, json: bool, runtime: &RuntimeContext) -> 
                     "warnings": load.report.warnings,
                 },
                 "sbom": load.sbom,
+                "static_routes": load_static_routes(&load),
             });
             if let Some(report) = validation.as_ref() {
                 payload["validation"] = serde_json::to_value(report)?;
@@ -266,7 +274,9 @@ fn run_flow_doctors(
             continue;
         };
 
-        let mut command = Command::new("greentic-flow");
+        let flow_bin = crate::external_tools::resolve("greentic-flow")
+            .unwrap_or_else(|| PathBuf::from("greentic-flow"));
+        let mut command = Command::new(&flow_bin);
         command
             .args(["doctor", "--json", "--stdin"])
             .stdin(Stdio::piped())
@@ -285,7 +295,9 @@ fn run_flow_doctors(
                 });
                 return Ok(false);
             }
-            Err(err) => return Err(err).context("run greentic-flow doctor"),
+            Err(err) => {
+                return Err(err).with_context(|| format!("run {} doctor", flow_bin.display()));
+            }
         };
         if let Some(mut stdin) = child.stdin.take() {
             stdin
@@ -422,7 +434,9 @@ fn run_component_doctors(load: &PackLoad, diagnostics: &mut Vec<Diagnostic>) -> 
         fs::write(&wasm_path, wasm_bytes)?;
         fs::write(&manifest_path, manifest_bytes)?;
 
-        let output = match Command::new("greentic-component")
+        let component_bin = crate::external_tools::resolve("greentic-component")
+            .unwrap_or_else(|| PathBuf::from("greentic-component"));
+        let output = match Command::new(&component_bin)
             .args(["doctor"])
             .arg(&wasm_path)
             .args(["--manifest"])
@@ -444,7 +458,9 @@ fn run_component_doctors(load: &PackLoad, diagnostics: &mut Vec<Diagnostic>) -> 
                 });
                 return Ok(false);
             }
-            Err(err) => return Err(err).context("run greentic-component doctor"),
+            Err(err) => {
+                return Err(err).with_context(|| format!("run {} doctor", component_bin.display()));
+            }
         };
 
         if !output.status.success() {
@@ -604,6 +620,13 @@ fn resolve_mode(args: &InspectArgs) -> Result<InspectMode> {
     ))
 }
 
+fn source_mode_pack_dir(mode: &InspectMode) -> Option<&Path> {
+    match mode {
+        InspectMode::Source(path) => Some(path.as_path()),
+        InspectMode::Archive(_) => None,
+    }
+}
+
 async fn inspect_source_dir(
     dir: &Path,
     runtime: &RuntimeContext,
@@ -635,6 +658,7 @@ async fn inspect_source_dir(
         runtime: runtime.clone(),
         skip_update: false,
         allow_pack_schema: false,
+        validate_extension_refs: false,
     };
 
     build::run(&opts).await?;
@@ -747,6 +771,53 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
         println!("Providers: none");
     }
 
+    let static_routes = load_static_routes(load);
+    if static_routes.is_empty() {
+        println!("Static routes: none");
+    } else {
+        println!("Static routes:");
+        for route in &static_routes {
+            println!(
+                "  - {} -> {} [{}]",
+                route.id, route.public_path, route.source_root
+            );
+            println!(
+                "    scope: tenant={} team={}",
+                route.scope.tenant, route.scope.team
+            );
+            println!(
+                "    index_file: {}",
+                route.index_file.as_deref().unwrap_or("none")
+            );
+            println!(
+                "    spa_fallback: {}",
+                route.spa_fallback.as_deref().unwrap_or("none")
+            );
+            println!(
+                "    cache: {}",
+                route
+                    .cache
+                    .as_ref()
+                    .map(|cache| match cache.max_age_seconds {
+                        Some(max_age) => format!("{} ({max_age}s)", cache.strategy),
+                        None => cache.strategy.clone(),
+                    })
+                    .unwrap_or_else(|| "none".to_string())
+            );
+            if route.exports.is_empty() {
+                println!("    exports: none");
+            } else {
+                let exports = route
+                    .exports
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!("    exports: {exports}");
+            }
+        }
+    }
+
     if !report.warnings.is_empty() {
         println!("Warnings:");
         for warning in &report.warnings {
@@ -757,6 +828,18 @@ fn print_human(load: &PackLoad, validation: Option<&ValidationOutput>) {
     if let Some(report) = validation {
         print_validation(report);
     }
+}
+
+fn load_static_routes(load: &PackLoad) -> Vec<StaticRouteV1> {
+    load.gpack_manifest
+        .as_ref()
+        .and_then(|manifest| {
+            parse_static_routes_extension(&manifest.extensions)
+                .ok()
+                .flatten()
+        })
+        .map(|payload| payload.routes)
+        .unwrap_or_default()
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -775,6 +858,7 @@ fn has_error_diagnostics(diagnostics: &[Diagnostic]) -> bool {
 
 async fn run_pack_validation(
     load: &PackLoad,
+    source_pack_dir: Option<&Path>,
     args: &InspectArgs,
     runtime: &RuntimeContext,
 ) -> Result<ValidationOutput> {
@@ -784,7 +868,9 @@ async fn run_pack_validation(
         Box::new(SbomConsistencyValidator::new(ctx.clone())),
         Box::new(ProviderReferencesExistValidator::new(ctx.clone())),
         Box::new(SecretRequirementsValidator),
+        Box::new(StaticRoutesValidator::new(ctx.clone())),
         Box::new(ComponentReferencesExistValidator),
+        Box::new(OauthCapabilityRequirementsValidator),
     ];
 
     let mut report = if let Some(manifest) = load.gpack_manifest.as_ref() {
@@ -818,6 +904,11 @@ async fn run_pack_validation(
 
     let wasm_result = run_wasm_validators(load, &config, runtime).await?;
     report.diagnostics.extend(wasm_result.diagnostics);
+    if let Some(pack_dir) = source_pack_dir {
+        report
+            .diagnostics
+            .extend(collect_extension_dependency_diagnostics(pack_dir));
+    }
 
     let has_errors = has_error_diagnostics(&report.diagnostics) || wasm_result.missing_required;
 
@@ -826,6 +917,145 @@ async fn run_pack_validation(
         has_errors,
         sources: wasm_result.sources,
     })
+}
+
+fn collect_extension_dependency_diagnostics(pack_dir: &Path) -> Vec<Diagnostic> {
+    let source_path = default_extensions_file_path(pack_dir);
+    let lock_path = default_extensions_lock_file_path(pack_dir);
+    let mut diagnostics = Vec::new();
+
+    let source = if source_path.exists() {
+        match read_extensions_file(&source_path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_EXTENSION_DEPENDENCY_SOURCE_INVALID".to_string(),
+                    message: err.to_string(),
+                    path: Some(path_display(pack_dir, &source_path)),
+                    hint: Some("fix pack.extensions.json and rerun doctor".to_string()),
+                    data: Value::Null,
+                });
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let lock = if lock_path.exists() {
+        match read_extensions_lock_file(&lock_path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_INVALID".to_string(),
+                    message: err.to_string(),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>`".to_string()),
+                    data: Value::Null,
+                });
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    match (source.as_ref(), lock.as_ref()) {
+        (Some(_), None) => diagnostics.push(Diagnostic {
+            severity: Severity::Warn,
+            code: "PACK_EXTENSION_DEPENDENCY_LOCK_MISSING".to_string(),
+            message: "pack.extensions.json exists but pack.extensions.lock.json is missing"
+                .to_string(),
+            path: Some(path_display(pack_dir, &source_path)),
+            hint: Some("run `greentic-pack extensions-lock --in <DIR>`".to_string()),
+            data: Value::Null,
+        }),
+        (None, Some(_)) => diagnostics.push(Diagnostic {
+            severity: Severity::Warn,
+            code: "PACK_EXTENSION_DEPENDENCY_SOURCE_MISSING".to_string(),
+            message: "pack.extensions.lock.json exists but pack.extensions.json is missing"
+                .to_string(),
+            path: Some(path_display(pack_dir, &lock_path)),
+            hint: Some(
+                "restore pack.extensions.json or regenerate the lock from the intended source file"
+                    .to_string(),
+            ),
+            data: Value::Null,
+        }),
+        (Some(source), Some(lock)) => {
+            if let Err(err) = validate_extensions_lock_alignment(source, lock) {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_STALE".to_string(),
+                    message: err.to_string(),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>` after editing pack.extensions.json".to_string()),
+                    data: Value::Null,
+                });
+            }
+        }
+        (None, None) => {}
+    }
+
+    if let Some(source) = source.as_ref() {
+        for extension in &source.extensions {
+            if extension.id == DEPLOYER_EXTENSION_KEY && extension.role != "deployer" {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_DEPLOYER_EXTENSION_ROLE_INVALID".to_string(),
+                    message: format!(
+                        "extension `{}` must use role `deployer`, found `{}`",
+                        extension.id, extension.role
+                    ),
+                    path: Some(path_display(pack_dir, &source_path)),
+                    hint: Some("set the dependency role to `deployer`".to_string()),
+                    data: Value::Null,
+                });
+            }
+        }
+    }
+
+    if let Some(lock) = lock.as_ref() {
+        for extension in &lock.extensions {
+            if extension.media_type.is_none() {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Warn,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_MISSING_MEDIA_TYPE".to_string(),
+                    message: format!(
+                        "extension `{}` lock entry is missing media_type metadata",
+                        extension.id
+                    ),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>` with a resolver that reports content type".to_string()),
+                    data: Value::Null,
+                });
+            }
+            if extension.size_bytes.is_none() {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Warn,
+                    code: "PACK_EXTENSION_DEPENDENCY_LOCK_MISSING_SIZE".to_string(),
+                    message: format!(
+                        "extension `{}` lock entry is missing size metadata",
+                        extension.id
+                    ),
+                    path: Some(path_display(pack_dir, &lock_path)),
+                    hint: Some("rerun `greentic-pack extensions-lock --in <DIR>` with a resolver that reports content length".to_string()),
+                    data: Value::Null,
+                });
+            }
+        }
+    }
+
+    diagnostics
+}
+
+fn path_display(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 fn print_validation(report: &ValidationOutput) {
@@ -991,5 +1221,191 @@ fn format_component_artifact(artifact: &ArtifactLocationV1) -> String {
     match artifact {
         ArtifactLocationV1::Inline { wasm_path, .. } => format!("inline ({})", wasm_path),
         ArtifactLocationV1::Remote => "remote".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::os::unix::process::ExitStatusExt;
+    use std::path::PathBuf;
+
+    fn sample_args() -> InspectArgs {
+        InspectArgs {
+            path: None,
+            pack: None,
+            input: None,
+            archive: false,
+            source: false,
+            allow_oci_tags: false,
+            flow_doctor: true,
+            component_doctor: true,
+            format: InspectFormat::Human,
+            validate: true,
+            no_validate: false,
+            validators_root: PathBuf::from(".greentic/validators"),
+            validator_pack: Vec::new(),
+            validator_wasm: Vec::new(),
+            validator_allow: vec![DEFAULT_VALIDATOR_ALLOW.to_string()],
+            validator_cache_dir: PathBuf::from(".greentic/cache/validators"),
+            validator_policy: ValidatorPolicy::Optional,
+            online: false,
+            use_describe_cache: false,
+        }
+    }
+
+    #[test]
+    fn sort_json_orders_object_keys_recursively() {
+        let value = serde_json::json!({
+            "z": 1,
+            "a": { "b": 2, "a": 1 },
+            "list": [{ "d": 4, "c": 3 }]
+        });
+
+        let sorted = to_sorted_json(value).expect("json serialization should succeed");
+        let root_a = sorted.find("\"a\"").expect("root a key");
+        let root_z = sorted.find("\"z\"").expect("root z key");
+        let nested_a = sorted.find("\"a\": 1").expect("nested a key");
+        let nested_b = sorted.find("\"b\": 2").expect("nested b key");
+
+        assert!(root_a < root_z, "root keys should be sorted: {sorted}");
+        assert!(
+            nested_a < nested_b,
+            "nested keys should be sorted: {sorted}"
+        );
+    }
+
+    #[test]
+    fn flow_doctor_unsupported_detects_common_cli_errors() {
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(256),
+            stdout: Vec::new(),
+            stderr: b"error: unexpected argument '--stdin' found".to_vec(),
+        };
+
+        assert!(flow_doctor_unsupported(&output));
+    }
+
+    #[test]
+    fn sanitize_component_id_replaces_path_like_characters() {
+        assert_eq!(
+            sanitize_component_id("demo/component:beta@1"),
+            "demo_component_beta_1"
+        );
+    }
+
+    #[test]
+    fn forbidden_source_paths_match_dev_only_inputs() {
+        assert!(is_forbidden_source_path("pack.yaml"));
+        assert!(is_forbidden_source_path("flows/main.json"));
+        assert!(is_forbidden_source_path("flows/main.ygtc"));
+        assert!(is_forbidden_source_path("components/demo.manifest.json"));
+        assert!(!is_forbidden_source_path("gui/assets/index.html"));
+    }
+
+    #[test]
+    fn find_forbidden_source_paths_returns_only_matching_entries() {
+        let files = HashMap::from([
+            ("pack.yaml".to_string(), Vec::new()),
+            ("flows/main.ygtc".to_string(), Vec::new()),
+            ("gui/assets/index.html".to_string(), Vec::new()),
+        ]);
+
+        let forbidden = find_forbidden_source_paths(&files);
+        assert_eq!(forbidden.len(), 2);
+        assert!(forbidden.contains(&"pack.yaml".to_string()));
+        assert!(forbidden.contains(&"flows/main.ygtc".to_string()));
+    }
+
+    #[test]
+    fn resolve_mode_prefers_pack_and_input_flags() {
+        let pack_args = InspectArgs {
+            pack: Some(PathBuf::from("demo.gtpack")),
+            ..sample_args()
+        };
+        let source_args = InspectArgs {
+            input: Some(PathBuf::from("demo")),
+            ..sample_args()
+        };
+
+        assert!(matches!(
+            resolve_mode(&pack_args).expect("pack mode"),
+            InspectMode::Archive(path) if path.as_path() == std::path::Path::new("demo.gtpack")
+        ));
+        assert!(matches!(
+            resolve_mode(&source_args).expect("source mode"),
+            InspectMode::Source(path) if path.as_path() == std::path::Path::new("demo")
+        ));
+    }
+
+    #[test]
+    fn resolve_mode_auto_detects_dir_and_gtpack_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let dir = temp.path().join("pack");
+        let file = temp.path().join("pack.gtpack");
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(&file, b"stub").expect("file");
+
+        let dir_args = InspectArgs {
+            path: Some(dir.clone()),
+            ..sample_args()
+        };
+        let file_args = InspectArgs {
+            path: Some(file.clone()),
+            ..sample_args()
+        };
+
+        assert!(matches!(
+            resolve_mode(&dir_args).expect("dir mode"),
+            InspectMode::Source(path) if path == dir
+        ));
+        assert!(matches!(
+            resolve_mode(&file_args).expect("file mode"),
+            InspectMode::Archive(path) if path == file
+        ));
+    }
+
+    #[test]
+    fn parse_validator_wasm_args_rejects_missing_paths() {
+        let err = parse_validator_wasm_args(&["demo.component=".to_string()])
+            .expect_err("missing validator path should fail");
+        assert!(
+            err.to_string()
+                .contains("expected format COMPONENT_ID=FILE")
+        );
+    }
+
+    #[test]
+    fn parse_validator_wasm_args_parses_component_pairs() {
+        let validators = parse_validator_wasm_args(&[
+            "demo.component=validators/demo.wasm".to_string(),
+            "other.component = validators/other.wasm".to_string(),
+        ])
+        .expect("validator args should parse");
+
+        assert_eq!(validators.len(), 2);
+        assert_eq!(validators[0].component_id, "demo.component");
+        assert_eq!(validators[1].path, PathBuf::from("validators/other.wasm"));
+    }
+
+    #[test]
+    fn format_helpers_preserve_existing_schemes_and_inline_paths() {
+        assert_eq!(format_source_ref("oci", "oci://example"), "oci://example");
+        assert_eq!(
+            format_source_ref("file", "components/demo.wasm"),
+            "file://components/demo.wasm"
+        );
+        assert_eq!(
+            format_component_artifact(&ArtifactLocationV1::Inline {
+                wasm_path: "components/demo.wasm".to_string(),
+                manifest_path: None,
+            }),
+            "inline (components/demo.wasm)"
+        );
+        assert_eq!(
+            format_component_artifact(&ArtifactLocationV1::Remote),
+            "remote"
+        );
     }
 }

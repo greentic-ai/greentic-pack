@@ -10,11 +10,35 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use walkdir::WalkDir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_weather_demo() -> (tempfile::TempDir, PathBuf) {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let src = workspace_root().join("examples/weather-demo");
+    let dest = temp.path().join("weather-demo");
+    std::fs::create_dir_all(&dest).expect("create weather-demo dir");
+    for entry in WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).expect("create parent");
+            }
+            std::fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+    (temp, dest)
 }
 
 fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
@@ -79,22 +103,22 @@ fn write_weather_summary(pack_dir: &Path, _cache_dir: &Path) {
     let qa_path = pack_dir.join("components/qa.process/component.wasm");
     write_describe_sidecar(&qa_path, "qa.process", "0.1.0");
     let qa_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&qa_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(std::fs::read(&qa_path).unwrap()))
     );
 
     let mcp_path = pack_dir.join("components/mcp.exec/component.wasm");
     write_describe_sidecar(&mcp_path, "mcp.exec", "0.1.0");
     let mcp_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&mcp_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(std::fs::read(&mcp_path).unwrap()))
     );
 
     let templating_path = pack_dir.join("components/templating.handlebars/component.wasm");
     write_describe_sidecar(&templating_path, "templating.handlebars", "0.1.0");
     let templating_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(std::fs::read(&templating_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(std::fs::read(&templating_path).unwrap()))
     );
 
     let doc = json!({
@@ -123,7 +147,7 @@ fn write_weather_summary(pack_dir: &Path, _cache_dir: &Path) {
 
 #[test]
 fn readme_demo_build_and_doctor() {
-    let pack_dir = workspace_root().join("examples/weather-demo");
+    let (_pack_temp, pack_dir) = copy_weather_demo();
     let cache_dir = tempfile::tempdir().expect("cache dir");
     write_weather_summary(&pack_dir, cache_dir.path());
     let temp = tempfile::tempdir().expect("temp dir");
@@ -133,7 +157,7 @@ fn readme_demo_build_and_doctor() {
     build_cmd.current_dir(workspace_root()).args([
         "build",
         "--in",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--allow-pack-schema",
         "--offline",
         "--cache-dir",

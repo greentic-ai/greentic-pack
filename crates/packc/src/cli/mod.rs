@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::{convert::TryFrom, path::PathBuf};
+use std::{convert::TryFrom, ffi::OsString, path::PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -10,6 +10,7 @@ use tokio::runtime::Runtime;
 pub mod add_extension;
 pub mod components;
 pub mod config;
+pub mod extensions_lock;
 pub mod gui;
 pub mod input;
 pub mod inspect;
@@ -23,6 +24,9 @@ pub mod sign;
 pub mod update;
 pub mod verify;
 pub mod wizard;
+mod wizard_catalog;
+mod wizard_i18n;
+mod wizard_ui;
 
 use crate::telemetry::set_current_tenant_ctx;
 use crate::{build, new, runtime};
@@ -49,6 +53,10 @@ pub struct Cli {
     /// Emit machine-readable JSON output where applicable
     #[arg(long, global = true)]
     pub json: bool,
+
+    /// Locale used for CLI messages (fallback: LC_ALL/LC_MESSAGES/LANG/system/en)
+    #[arg(long, global = true)]
+    pub locale: Option<String>,
 
     #[command(subcommand)]
     pub command: Command,
@@ -92,9 +100,10 @@ pub enum Command {
     /// Add data to pack extensions (provider extension path is legacy/schema-core).
     #[command(subcommand)]
     AddExtension(self::add_extension::AddExtensionCommand),
-    /// Pack wizard helpers.
-    #[command(subcommand)]
-    Wizard(self::wizard::WizardCommand),
+    /// Resolve extension dependency refs into pack.extensions.lock.json
+    ExtensionsLock(self::extensions_lock::ExtensionsLockArgs),
+    /// Interactive pack wizard.
+    Wizard(self::wizard::WizardArgs),
     /// Resolve component references and write pack.lock.cbor
     Resolve(self::resolve::ResolveArgs),
 }
@@ -167,7 +176,125 @@ pub struct BuildArgs {
 }
 
 pub fn run() -> Result<()> {
-    Runtime::new()?.block_on(run_with_cli(Cli::parse(), false))
+    let cli = parse_cli_from_env();
+    Runtime::new()?.block_on(run_with_cli(cli, false))
+}
+
+pub fn parse_cli_from_env() -> Cli {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    parse_cli_from_args(args)
+}
+
+pub fn parse_cli_from_args(args: Vec<OsString>) -> Cli {
+    let (rewritten, wizard_schema_requested) = rewrite_wizard_schema_flags(args);
+    self::wizard::set_forced_schema_flag(wizard_schema_requested);
+    Cli::parse_from(rewritten)
+}
+
+fn rewrite_wizard_schema_flags(args: Vec<OsString>) -> (Vec<OsString>, bool) {
+    let mut saw_wizard = false;
+    let mut schema_requested = false;
+    let mut rewritten = Vec::with_capacity(args.len());
+
+    for arg in args {
+        if arg == "wizard" {
+            saw_wizard = true;
+            rewritten.push(arg);
+            continue;
+        }
+        if saw_wizard && arg == "--schema" {
+            schema_requested = true;
+            continue;
+        }
+        rewritten.push(arg);
+    }
+
+    (rewritten, schema_requested)
+}
+
+pub fn print_top_level_help() {
+    println!("{}", crate::cli_i18n::t("cli.help.title"));
+    println!();
+    println!("{}", crate::cli_i18n::t("cli.help.usage"));
+    println!();
+    println!("{}", crate::cli_i18n::t("cli.help.commands_header"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.build"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.lint"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.components"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.update"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.new"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.sign"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.verify"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.gui"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.doctor"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.inspect"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.inspect_lock"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.qa"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.config"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.plan"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.providers"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.add_extension"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.extensions_lock"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.wizard"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.resolve"));
+    println!("{}", crate::cli_i18n::t("cli.help.command.help"));
+    println!();
+    println!("{}", crate::cli_i18n::t("cli.help.options_header"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.log"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.offline"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.cache_dir"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.config_override"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.json"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.locale"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.help"));
+    println!("{}", crate::cli_i18n::t("cli.help.option.version"));
+}
+
+pub fn print_help_for_path(path: &[String]) -> bool {
+    let key = match path {
+        [] => "cli.help.page.root",
+        [a] if a == "build" => "cli.help.page.build",
+        [a] if a == "lint" => "cli.help.page.lint",
+        [a] if a == "components" => "cli.help.page.components",
+        [a] if a == "update" => "cli.help.page.update",
+        [a] if a == "new" => "cli.help.page.new",
+        [a] if a == "sign" => "cli.help.page.sign",
+        [a] if a == "verify" => "cli.help.page.verify",
+        [a] if a == "gui" => "cli.help.page.gui",
+        [a] if a == "doctor" => "cli.help.page.doctor",
+        [a] if a == "inspect" => "cli.help.page.inspect",
+        [a] if a == "inspect-lock" => "cli.help.page.inspect_lock",
+        [a] if a == "qa" => "cli.help.page.qa",
+        [a] if a == "config" => "cli.help.page.config",
+        [a] if a == "plan" => "cli.help.page.plan",
+        [a] if a == "providers" => "cli.help.page.providers",
+        [a] if a == "add-extension" => "cli.help.page.add_extension",
+        [a] if a == "extensions-lock" => "cli.help.page.extensions_lock",
+        [a] if a == "wizard" => "cli.help.page.wizard",
+        [a, b] if a == "wizard" && b == "run" => "cli.help.page.wizard_run",
+        [a, b] if a == "wizard" && b == "validate" => "cli.help.page.wizard_validate",
+        [a, b] if a == "wizard" && b == "apply" => "cli.help.page.wizard_apply",
+        [a] if a == "resolve" => "cli.help.page.resolve",
+        [a, b] if a == "gui" && b == "loveable-convert" => "cli.help.page.gui_loveable_convert",
+        [a, b] if a == "providers" && b == "list" => "cli.help.page.providers_list",
+        [a, b] if a == "providers" && b == "info" => "cli.help.page.providers_info",
+        [a, b] if a == "providers" && b == "validate" => "cli.help.page.providers_validate",
+        [a, b] if a == "add-extension" && b == "provider" => "cli.help.page.add_extension_provider",
+        [a, b] if a == "add-extension" && b == "capability" => {
+            "cli.help.page.add_extension_capability"
+        }
+        [a, b] if a == "add-extension" && b == "deployer" => "cli.help.page.add_extension_deployer",
+        [a, b] if a == "add-extension" && b == "dependency" => {
+            "cli.help.page.add_extension_dependency"
+        }
+        _ => return false,
+    };
+
+    if !crate::cli_i18n::has(key) {
+        return false;
+    }
+    println!("{}", crate::cli_i18n::t(key));
+    true
 }
 
 /// Resolve the logging filter to use for telemetry initialisation.
@@ -177,6 +304,9 @@ pub fn resolve_env_filter(cli: &Cli) -> String {
 
 /// Execute the CLI using a pre-parsed argument set.
 pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
+    let wizard_locale = cli.locale.clone();
+    crate::cli_i18n::init_locale(cli.locale.as_deref());
+
     let runtime = runtime::resolve_runtime(
         Some(std::env::current_dir()?.as_path()),
         cli.cache_dir.as_deref(),
@@ -205,7 +335,7 @@ pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
         Command::Gui(cmd) => self::gui::handle(cmd, cli.json, &runtime).await?,
         Command::Inspect(args) | Command::Doctor(args) => {
             if warn_inspect_alias {
-                eprintln!("WARNING: `inspect` is deprecated; use `doctor`.");
+                eprintln!("{}", crate::cli_i18n::t("cli.warn.inspect_deprecated"));
             }
             self::inspect::handle(args, cli.json, &runtime).await?
         }
@@ -215,9 +345,175 @@ pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
         Command::Plan(args) => self::plan::handle(&args)?,
         Command::Providers(cmd) => self::providers::run(cmd)?,
         Command::AddExtension(cmd) => self::add_extension::handle(cmd)?,
-        Command::Wizard(cmd) => self::wizard::handle(cmd, &runtime)?,
+        Command::ExtensionsLock(args) => {
+            self::extensions_lock::handle(args, &runtime, true).await?
+        }
+        Command::Wizard(args) => self::wizard::handle(args, &runtime, wizard_locale.as_deref())?,
         Command::Resolve(args) => self::resolve::handle(args, &runtime, true).await?,
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_parse_build_populates_defaults() {
+        let cli = Cli::parse_from(["greentic-pack", "build", "--in", "demo-pack"]);
+        assert_eq!(cli.verbosity, "info");
+        assert!(!cli.offline);
+        assert!(!cli.json);
+        assert!(matches!(
+            cli.command,
+            Command::Build(BuildArgs {
+                input,
+                no_update: false,
+                dry_run: false,
+                allow_oci_tags: false,
+                require_component_manifests: false,
+                no_extra_dirs: false,
+                dev: false,
+                allow_pack_schema: false,
+                ..
+            }) if input.as_path() == std::path::Path::new("demo-pack")
+        ));
+    }
+
+    #[test]
+    fn cli_parse_nested_subcommands_and_globals() {
+        let cli = Cli::parse_from([
+            "greentic-pack",
+            "--json",
+            "--offline",
+            "--locale",
+            "nl",
+            "providers",
+            "validate",
+        ]);
+        assert!(cli.json);
+        assert!(cli.offline);
+        assert_eq!(cli.locale.as_deref(), Some("nl"));
+        assert!(matches!(
+            cli.command,
+            Command::Providers(self::providers::ProvidersCommand::Validate(_))
+        ));
+    }
+
+    #[test]
+    fn print_help_for_known_paths_returns_true() {
+        crate::cli_i18n::init_locale(Some("en"));
+
+        assert!(print_help_for_path(&[]));
+        assert!(print_help_for_path(&["build".to_string()]));
+        assert!(print_help_for_path(&[
+            "wizard".to_string(),
+            "run".to_string()
+        ]));
+        assert!(print_help_for_path(&[
+            "providers".to_string(),
+            "validate".to_string()
+        ]));
+        assert!(print_help_for_path(&[
+            "add-extension".to_string(),
+            "dependency".to_string()
+        ]));
+    }
+
+    #[test]
+    fn print_help_for_unknown_paths_returns_false() {
+        crate::cli_i18n::init_locale(Some("en"));
+        assert!(!print_help_for_path(&["does-not-exist".to_string()]));
+        assert!(!print_help_for_path(&[
+            "wizard".to_string(),
+            "missing".to_string()
+        ]));
+    }
+
+    #[test]
+    fn localized_wizard_help_mentions_schema_option() {
+        let en_catalog: serde_json::Value =
+            serde_json::from_str(include_str!("../../i18n/en.json")).expect("valid English i18n");
+        let en_wizard = en_catalog["cli.help.page.wizard"]
+            .as_str()
+            .expect("English wizard help string");
+        let en_run = en_catalog["cli.help.page.wizard_run"]
+            .as_str()
+            .expect("English wizard run help string");
+        assert!(en_wizard.contains("--schema"));
+        assert!(en_run.contains("--schema"));
+
+        let nl_catalog: serde_json::Value =
+            serde_json::from_str(include_str!("../../i18n/nl.json")).expect("valid Dutch i18n");
+        let nl_wizard = nl_catalog["cli.help.page.wizard"]
+            .as_str()
+            .expect("Dutch wizard help string");
+        let nl_run = nl_catalog["cli.help.page.wizard_run"]
+            .as_str()
+            .expect("Dutch wizard run help string");
+        assert!(nl_wizard.contains("--schema"));
+        assert!(nl_run.contains("--schema"));
+        assert!(nl_wizard.contains("AnswerDocument-schema"));
+        assert!(nl_run.contains("AnswerDocument-schema"));
+    }
+
+    #[test]
+    fn print_top_level_help_does_not_panic() {
+        crate::cli_i18n::init_locale(Some("en"));
+        print_top_level_help();
+    }
+
+    #[test]
+    fn resolve_env_filter_uses_cli_verbosity_when_env_missing() {
+        let cli = Cli::parse_from(["greentic-pack", "--log", "debug", "build", "--in", "demo"]);
+        assert_eq!(resolve_env_filter(&cli), "debug");
+    }
+
+    #[test]
+    fn rewrite_wizard_schema_flags_strips_schema_after_wizard() {
+        let (rewritten, schema_requested) = rewrite_wizard_schema_flags(vec![
+            "greentic-pack".into(),
+            "--locale".into(),
+            "nl".into(),
+            "wizard".into(),
+            "run".into(),
+            "--schema".into(),
+            "--answers".into(),
+            "answers.json".into(),
+        ]);
+
+        assert!(schema_requested);
+        assert_eq!(
+            rewritten,
+            vec![
+                OsString::from("greentic-pack"),
+                OsString::from("--locale"),
+                OsString::from("nl"),
+                OsString::from("wizard"),
+                OsString::from("run"),
+                OsString::from("--answers"),
+                OsString::from("answers.json"),
+            ]
+        );
+    }
+
+    #[test]
+    fn rewrite_wizard_schema_flags_leaves_other_schema_flags_alone() {
+        let (rewritten, schema_requested) = rewrite_wizard_schema_flags(vec![
+            "greentic-pack".into(),
+            "build".into(),
+            "--schema".into(),
+        ]);
+
+        assert!(!schema_requested);
+        assert_eq!(
+            rewritten,
+            vec![
+                OsString::from("greentic-pack"),
+                OsString::from("build"),
+                OsString::from("--schema"),
+            ]
+        );
+    }
 }

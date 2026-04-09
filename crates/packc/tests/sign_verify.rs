@@ -13,11 +13,35 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
+use walkdir::WalkDir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_weather_demo() -> (tempfile::TempDir, PathBuf) {
+    let temp = tempdir().expect("temp dir");
+    let src = workspace_root().join("examples/weather-demo");
+    let dest = temp.path().join("weather-demo");
+    fs::create_dir_all(&dest).expect("create weather-demo dir");
+    for entry in WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(&src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).expect("create parent");
+            }
+            fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+    (temp, dest)
 }
 
 fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
@@ -81,17 +105,23 @@ fn write_weather_summary(pack_dir: &Path, _cache_dir: &Path) {
 
     let qa_path = pack_dir.join("components/qa.process/component.wasm");
     write_describe_sidecar(&qa_path, "qa.process", "0.1.0");
-    let qa_digest = format!("sha256:{:x}", Sha256::digest(fs::read(&qa_path).unwrap()));
+    let qa_digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&qa_path).unwrap()))
+    );
 
     let mcp_path = pack_dir.join("components/mcp.exec/component.wasm");
     write_describe_sidecar(&mcp_path, "mcp.exec", "0.1.0");
-    let mcp_digest = format!("sha256:{:x}", Sha256::digest(fs::read(&mcp_path).unwrap()));
+    let mcp_digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&mcp_path).unwrap()))
+    );
 
     let templating_path = pack_dir.join("components/templating.handlebars/component.wasm");
     write_describe_sidecar(&templating_path, "templating.handlebars", "0.1.0");
     let templating_digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(fs::read(&templating_path).unwrap())
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&templating_path).unwrap()))
     );
 
     let doc = serde_json::json!({
@@ -123,7 +153,7 @@ fn sign_and_verify_manifest() {
     let temp = tempdir().expect("temp dir");
     let manifest_out = temp.path().join("manifest.cbor");
     let cache_dir = temp.path().join("cache");
-    let pack_dir = workspace_root().join("examples/weather-demo");
+    let (_pack_temp, pack_dir) = copy_weather_demo();
     write_weather_summary(&pack_dir, &cache_dir);
 
     // Build manifest
@@ -133,7 +163,7 @@ fn sign_and_verify_manifest() {
     build.args([
         "build",
         "--in",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--allow-pack-schema",
         "--manifest",
         manifest_out.to_str().unwrap(),
@@ -146,7 +176,9 @@ fn sign_and_verify_manifest() {
     build.assert().success();
 
     // Generate keypair
-    let signing_key = SigningKey::generate(&mut rand_core_06::OsRng);
+    let mut secret = [0u8; 32];
+    getrandom::fill(&mut secret).expect("generate random signing key bytes");
+    let signing_key = SigningKey::from_bytes(&secret);
     let priv_pem = signing_key
         .to_pkcs8_pem(pkcs8::LineEnding::LF)
         .expect("priv pem");
@@ -166,7 +198,7 @@ fn sign_and_verify_manifest() {
     sign.args([
         "sign",
         "--pack",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--manifest",
         manifest_out.to_str().unwrap(),
         "--key",
@@ -182,7 +214,7 @@ fn sign_and_verify_manifest() {
     verify.args([
         "verify",
         "--pack",
-        "examples/weather-demo",
+        pack_dir.to_str().unwrap(),
         "--manifest",
         manifest_out.to_str().unwrap(),
         "--key",

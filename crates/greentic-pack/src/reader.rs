@@ -38,6 +38,10 @@ const MAX_FILE_BYTES: u64 = 64 * 1024;
 #[cfg(not(test))]
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
+fn fmt_mb(bytes: u64) -> String {
+    format!("{} MB", bytes / (1024 * 1024))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SigningPolicy {
     DevOk,
@@ -364,8 +368,10 @@ fn open_pack_inner(path: &Path, policy: SigningPolicy) -> Result<PackLoad> {
     let (files, total) = read_archive_entries(&mut archive)?;
     if total > MAX_ARCHIVE_BYTES {
         bail!(
-            "gtpack archive exceeds maximum allowed size ({} bytes)",
-            MAX_ARCHIVE_BYTES
+            "gtpack archive exceeds maximum allowed size ({}) — \
+             check that no build artifacts (e.g. .gtpack files, dist/ contents) \
+             were accidentally included",
+            fmt_mb(MAX_ARCHIVE_BYTES)
         );
     }
 
@@ -810,10 +816,17 @@ fn read_archive_entries<R: Read + Seek>(
 
         let size = entry.size();
         if size > MAX_FILE_BYTES {
+            let hint = if logical.ends_with(".gtpack") || logical.contains("/dist/") {
+                " (this looks like a build artifact that was accidentally included — \
+                 remove it from the pack source directory and rebuild)"
+            } else {
+                ""
+            };
             bail!(
-                "entry {} exceeds maximum allowed size of {} bytes",
+                "entry {} exceeds maximum allowed size of {}{}",
                 logical,
-                MAX_FILE_BYTES
+                fmt_mb(MAX_FILE_BYTES),
+                hint
             );
         }
 
@@ -922,7 +935,7 @@ fn media_type_for(path: &str) -> &'static str {
 fn sha256_prefixed(bytes: &[u8]) -> String {
     let mut sha = Sha256::new();
     sha.update(bytes);
-    format!("sha256:{:x}", sha.finalize())
+    format!("sha256:{}", hex::encode(sha.finalize()))
 }
 
 fn convert_gpack_manifest(

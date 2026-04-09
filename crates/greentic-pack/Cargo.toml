@@ -5,9 +5,9 @@ version.workspace = true
 license.workspace = true
 authors = ["Greentic <engineering@greentic.dev>"]
 description = "Greentic pack builder and reader"
-repository = "https://github.com/greentic-ai/greentic-pack"
+repository = "https://github.com/greenticai/greentic-pack"
 documentation = "https://docs.greentic.ai/"
-homepage = "https://github.com/greentic-ai/greentic-pack"
+homepage = "https://github.com/greenticai/greentic-pack"
 
 [lib]
 name = "greentic_pack"
@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 time = { workspace = true }
 zip = { workspace = true }
 pkcs8 = { workspace = true }
-rand_core_06 = { workspace = true }
+getrandom = { workspace = true }
 rustls-pki-types = { workspace = true }
 x509-parser = { workspace = true }
 clap = { workspace = true }
@@ -43,3 +43,8 @@ hex = { workspace = true }
 assert_cmd = { workspace = true }
 zip = { workspace = true }
 serde_json = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "perf"
+harness = false

@@ -1,15 +1,23 @@
 # Provider extension validation
 
+> LEGACY TRACK
+> This page documents the provider-extension/schema-core compatibility path.
+> For canonical component v0.6 guidance, start at `docs/usage.md` and
+> `docs/vision/README.md`.
+
 This document describes the legacy/provider-extension path. The default
 component 0.6 QA runner path does not depend on `schema-core`.
 Use legacy provider commands (`greentic-pack add-extension provider`, `greentic-pack providers ...`)
 for this track; do not route 0.6 QA runner flows through this schema-core world.
 
-`packc` supports generic pack extensions via `PackManifest.extensions`. The known provider extension is keyed by `greentic.ext.provider`.
+`packc` supports generic pack extensions via `PackManifest.extensions`. The
+legacy provider extension compatibility path uses
+`greentic.provider-extension.v1`, with support for the older nested
+`extensions.greentic.provider-extension.v1` layout during migration.
 
 ## Inline shape
 
-For `greentic.ext.provider`, an inline payload is required:
+For `greentic.provider-extension.v1`, an inline payload is required:
 
 ```json
 {

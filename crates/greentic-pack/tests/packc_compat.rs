@@ -88,8 +88,8 @@ fn open_pack_accepts_packc_gtpack() {
     write_stub_wasm(&wasm_path);
     write_describe_sidecar(&wasm_path, "demo.component");
     let digest = format!(
-        "sha256:{:x}",
-        Sha256::digest(fs::read(&wasm_path).expect("read wasm"))
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).expect("read wasm")))
     );
 
     let pack_yaml = r#"pack_id: demo.test

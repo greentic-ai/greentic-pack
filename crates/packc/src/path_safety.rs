@@ -52,3 +52,37 @@ pub fn normalize_under_root(root: &Path, candidate: &Path) -> Result<PathBuf> {
 
     Ok(normalized)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_under_root;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    #[test]
+    fn normalizes_relative_paths_with_parent_segments() {
+        let root = tempdir().expect("tempdir");
+        let path = normalize_under_root(root.path(), Path::new("a/b/../c.txt"))
+            .expect("path within root should work");
+
+        assert_eq!(path, root.path().join("a/c.txt"));
+    }
+
+    #[test]
+    fn rejects_absolute_paths() {
+        let root = tempdir().expect("tempdir");
+        let err = normalize_under_root(root.path(), Path::new("/tmp/file"))
+            .expect_err("absolute path should fail");
+
+        assert!(err.to_string().contains("absolute paths are not allowed"));
+    }
+
+    #[test]
+    fn rejects_paths_that_escape_root() {
+        let root = tempdir().expect("tempdir");
+        let err = normalize_under_root(root.path(), Path::new("../../file"))
+            .expect_err("escaping path should fail");
+
+        assert!(err.to_string().contains("path escapes root"));
+    }
+}

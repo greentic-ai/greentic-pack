@@ -121,7 +121,7 @@ flows:
     fs::write(pack_dir.join("pack.yaml"), pack_yaml).expect("pack.yaml");
 
     let wasm_bytes = fs::read(&wasm_path).expect("read stub wasm");
-    let digest = format!("sha256:{:x}", Sha256::digest(&wasm_bytes));
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(&wasm_bytes)));
 
     let flow = format!(
         r#"id: main

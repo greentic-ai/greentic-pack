@@ -16,7 +16,7 @@ registries, and compose packs into larger systems without rebuilding your app.
 - **Inspectable**: `greentic-pack doctor` surfaces flows, components, sources,
   providers, and SBOM state.
 - **Verifiable**: packs include checksums, SBOMs, and optional signatures.
-- **Extensible**: provider extensions let you add new capabilities without
+- **Extensible**: capability extensions let you add new capabilities without
   reworking the core runtime.
 
 ## Quickstart (try a demo pack)
@@ -48,12 +48,15 @@ greentic-pack new acme.weather --dir ./acme-weather
   user-facing experiences.
 - **Infrastructure packs**: operational configuration, telemetry, and deployment
   defaults for a platform team.
-- **Provider packs**: add new capabilities via provider extensions and
-  component-backed runtimes.
+- **Provider packs**: add new capabilities via
+  `extensions.greentic.ext.capabilities.v1` and component-backed runtimes.
 
 For the full taxonomy and rules, see:
 - `docs/repo-pack-types.md`
-- `docs/provider_extension.md`
+- `docs/pack_extensions_components.md`
+
+Full docs index:
+- `docs/README.md`
 
 ## How packs work (short version)
 
@@ -67,7 +70,13 @@ Deep dives:
 - `docs/pack-format.md`
 - `docs/usage.md`
 - `docs/pack_extensions_components.md`
-- `docs/events-provider-packs.md`
+- `docs/extension-provider-packs-howto.md`
+- `docs/internationalise-pack-howto.md`
+- `docs/vision/README.md`
+- `docs/vision/legacy.md`
+
+Capability extension validation note:
+- In `greentic-pack build`, capability offer `provider.component_ref` can target either `pack.yaml` component ids or lock-backed component ids from `pack.lock`.
 
 ## Example packs
 
@@ -79,6 +88,8 @@ Deep dives:
 ## CLI reference
 
 See `docs/cli.md` for a complete reference of commands, flags, and workflows.
+For compatibility-only aliases and migration switches, see
+`docs/vision/legacy.md`.
 
 ## Local checks & publishing
 

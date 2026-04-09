@@ -62,3 +62,59 @@ fn sort_json(value: Value) -> Value {
         other => other,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[test]
+    fn resolve_lock_path_defaults_under_pack_dir() {
+        let dir = tempdir().expect("tempdir");
+        assert_eq!(
+            resolve_lock_path(dir.path(), None),
+            dir.path().join("pack.lock.cbor")
+        );
+    }
+
+    #[test]
+    fn resolve_lock_path_joins_relative_override() {
+        let dir = tempdir().expect("tempdir");
+        assert_eq!(
+            resolve_lock_path(dir.path(), Some(Path::new("nested/pack.lock.cbor"))),
+            dir.path().join("nested/pack.lock.cbor")
+        );
+    }
+
+    #[test]
+    fn resolve_lock_path_keeps_absolute_override() {
+        let path = PathBuf::from("/tmp/pack.lock.cbor");
+        assert_eq!(
+            resolve_lock_path(Path::new("/repo"), Some(path.as_path())),
+            path
+        );
+    }
+
+    #[test]
+    fn to_sorted_json_sorts_nested_object_keys() {
+        let json = to_sorted_json(&json!({
+            "z": 1,
+            "a": { "d": true, "b": false },
+            "m": [ { "y": 2, "x": 1 } ]
+        }))
+        .expect("serialize");
+
+        let a_pos = json.find("\"a\"").expect("a");
+        let m_pos = json.find("\"m\"").expect("m");
+        let z_pos = json.find("\"z\"").expect("z");
+        assert!(
+            a_pos < m_pos && m_pos < z_pos,
+            "top-level keys should be sorted"
+        );
+
+        let b_pos = json.find("\"b\"").expect("b");
+        let d_pos = json.find("\"d\"").expect("d");
+        assert!(b_pos < d_pos, "nested keys should be sorted");
+    }
+}

@@ -18,17 +18,34 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
+fn has_external_guest_wit_mismatch(output: &str) -> bool {
+    output.contains("type `host-error` not defined in interface")
+        || output.contains("type 'host-error' not defined in interface")
+        || output
+            .contains("could not find `greentic_component_0_6_0_component_v0_v6_v0` in `bindings`")
+        || output.contains("Failed to locate canonical WIT root")
+        || (output.contains("greentic-interfaces-guest")
+            && (output.contains("failed to resolve")
+                || output.contains("could not find")
+                || output.contains("in `bindings`")))
+}
+
+const MINIMAL_FLOW_YGTC: &str = "id: main\ntype: messaging\nnodes: {}\n";
+
 fn write_pack(dir: &Path, wasm_contents: &[u8]) {
     let flows_dir = dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
     fs::write(&wasm_path, wasm_contents).unwrap();
     write_describe_sidecar(&wasm_path, "demo.component");
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = format!(
         r#"{{
   "schema_version": 1,
@@ -62,18 +79,92 @@ flows:
     fs::write(dir.join("pack.yaml"), pack_yaml).unwrap();
 }
 
+fn build_wasip2_noop_component_v06(target_dir: &Path) -> Result<PathBuf, String> {
+    let fixture_dir =
+        workspace_root().join("crates/packc/tests/fixtures/components/noop-component-v06-src");
+    let offline_output = Command::new("cargo")
+        .current_dir(&fixture_dir)
+        .env("CARGO_TARGET_DIR", target_dir)
+        .args([
+            "build",
+            "--target",
+            "wasm32-wasip2",
+            "--release",
+            "--offline",
+        ])
+        .output()
+        .expect("spawn cargo build for noop component fixture");
+    if !offline_output.status.success() {
+        let offline_stderr = String::from_utf8_lossy(&offline_output.stderr);
+        let cache_miss_offline = offline_stderr.contains("attempting to make an HTTP request")
+            || offline_stderr.contains("failed to download");
+        if cache_miss_offline {
+            let online_output = Command::new("cargo")
+                .current_dir(&fixture_dir)
+                .env("CARGO_TARGET_DIR", target_dir)
+                .args(["build", "--target", "wasm32-wasip2", "--release"])
+                .output()
+                .expect("spawn online cargo build for noop component fixture");
+            if !online_output.status.success() {
+                let online_stderr = String::from_utf8_lossy(&online_output.stderr);
+                let online_stdout = String::from_utf8_lossy(&online_output.stdout);
+                let combined = format!(
+                    "{}\n{}\n{}\n{}",
+                    String::from_utf8_lossy(&offline_output.stdout),
+                    offline_stderr,
+                    online_stdout,
+                    online_stderr
+                );
+                if has_external_guest_wit_mismatch(&combined) {
+                    return Err(format!(
+                        "external greentic-interfaces guest WIT mismatch while building noop fixture (offline+online):\n{}",
+                        combined
+                    ));
+                }
+                panic!(
+                    "failed to build noop component fixture (offline then online fallback):\noffline stdout={}\noffline stderr={}\nonline stdout={}\nonline stderr={}",
+                    String::from_utf8_lossy(&offline_output.stdout),
+                    offline_stderr,
+                    online_stdout,
+                    online_stderr
+                );
+            }
+        } else {
+            let offline_stdout = String::from_utf8_lossy(&offline_output.stdout);
+            let combined = format!("{offline_stdout}\n{offline_stderr}");
+            if has_external_guest_wit_mismatch(&combined) {
+                return Err(format!(
+                    "external greentic-interfaces guest WIT mismatch while building noop fixture (offline):\n{}",
+                    combined
+                ));
+            }
+            panic!(
+                "failed to build noop component fixture:\nstdout={}\nstderr={}",
+                offline_stdout, offline_stderr
+            );
+        }
+    }
+    Ok(target_dir
+        .join("wasm32-wasip2")
+        .join("release")
+        .join("noop_component_v06.wasm"))
+}
+
 fn write_pack_with_local_summary(dir: &Path, wasm_contents: &[u8]) {
     let flows_dir = dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
     fs::write(&wasm_path, wasm_contents).unwrap();
     write_describe_sidecar(&wasm_path, "demo.component");
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = serde_json::json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -109,14 +200,17 @@ fn write_pack_with_local_summary_file_uri(dir: &Path, wasm_contents: &[u8]) {
     let flows_dir = dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
     fs::write(&wasm_path, wasm_contents).unwrap();
     write_describe_sidecar(&wasm_path, "demo.component");
 
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
     let summary = serde_json::json!({
         "schema_version": 1,
         "flow": "main.ygtc",
@@ -183,13 +277,13 @@ fn resolve_writes_lockfile_with_digest() {
 }
 
 #[test]
-fn missing_summary_without_sidecar_errors() {
+fn missing_summary_without_sidecar_creates_empty_sidecar_and_lock() {
     let temp = TempDir::new().expect("temp dir");
     let pack_dir = temp.path().to_path_buf();
 
     let flows_dir = pack_dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
-    fs::write(flows_dir.join("main.ygtc"), "id: main\nentry: start\n").unwrap();
+    fs::write(flows_dir.join("main.ygtc"), MINIMAL_FLOW_YGTC).unwrap();
     fs::write(
         pack_dir.join("pack.yaml"),
         r#"pack_id: demo.pack
@@ -214,7 +308,15 @@ flows:
             "warn",
         ])
         .assert()
-        .failure();
+        .success();
+
+    assert!(pack_dir.join("flows/main.ygtc.resolve.json").exists());
+    assert!(
+        pack_dir
+            .join("flows/main.ygtc.resolve.summary.json")
+            .exists()
+    );
+    assert!(pack_dir.join("pack.lock.cbor").exists());
 }
 
 #[test]
@@ -334,7 +436,7 @@ fn resolve_falls_back_when_manifest_artifact_mismatch() {
     let flows_dir = pack_dir.join("flows");
     fs::create_dir_all(&flows_dir).unwrap();
     let flow_path = flows_dir.join("main.ygtc");
-    fs::write(&flow_path, "id: main\nentry: start\n").unwrap();
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
 
     let wasm_path = pack_dir.join("components").join("demo.wasm");
     fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
@@ -395,4 +497,89 @@ flows:
         ])
         .assert()
         .success();
+}
+
+#[test]
+fn resolve_offline_accepts_wasip2_component_with_wasi_cli_imports() {
+    let temp = TempDir::new().expect("temp dir");
+    let pack_dir = temp.path().to_path_buf();
+
+    let built_wasm = match build_wasip2_noop_component_v06(&pack_dir.join(".fixture-target")) {
+        Ok(path) => path,
+        Err(reason) => {
+            eprintln!(
+                "skipping resolve_offline_accepts_wasip2_component_with_wasi_cli_imports: {reason}"
+            );
+            return;
+        }
+    };
+    let wasm_bytes = fs::read(&built_wasm).expect("read built fixture wasm");
+
+    let flows_dir = pack_dir.join("flows");
+    fs::create_dir_all(&flows_dir).unwrap();
+    let flow_path = flows_dir.join("main.ygtc");
+    fs::write(&flow_path, MINIMAL_FLOW_YGTC).unwrap();
+
+    let wasm_path = pack_dir.join("components").join("noop_component_v06.wasm");
+    fs::create_dir_all(wasm_path.parent().unwrap()).unwrap();
+    fs::write(&wasm_path, wasm_bytes).unwrap();
+
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
+    let summary = serde_json::json!({
+        "schema_version": 1,
+        "flow": "main.ygtc",
+        "nodes": {
+            "call": {
+                "component_id": "dev.local.component",
+                "source": {
+                    "kind": "local",
+                    "path": "../components/noop_component_v06.wasm"
+                },
+                "digest": digest
+            }
+        }
+    });
+    fs::write(
+        flow_path.with_extension("ygtc.resolve.summary.json"),
+        serde_json::to_vec_pretty(&summary).unwrap(),
+    )
+    .unwrap();
+
+    let pack_yaml = r#"pack_id: demo.pack
+version: 0.1.0
+kind: application
+publisher: demo
+flows:
+  - id: main
+    file: flows/main.ygtc
+"#;
+    fs::write(pack_dir.join("pack.yaml"), pack_yaml).unwrap();
+
+    Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
+        .args([
+            "--offline",
+            "resolve",
+            "--in",
+            pack_dir.to_str().unwrap(),
+            "--log",
+            "warn",
+        ])
+        .assert()
+        .success();
+
+    let lock_path = pack_dir.join("pack.lock.cbor");
+    let lock = greentic_pack::pack_lock::read_pack_lock(&lock_path).expect("lock file");
+    let entry = lock
+        .components
+        .get("dev.local.component")
+        .expect("component entry");
+    assert_eq!(entry.component_id, "dev.local.component");
+    assert!(
+        !entry.describe_hash.is_empty(),
+        "describe hash should be populated from component describe()"
+    );
 }

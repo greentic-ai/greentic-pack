@@ -9,15 +9,18 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, ValueEnum};
 use greentic_distributor_client::{DistClient, DistOptions};
 use greentic_flow::schema_validate::{Severity, validate_value_against_schema};
-use greentic_interfaces_host::component_v0_6::{
-    ComponentV0_6, exports::greentic::component::component_qa::QaMode as HostQaMode,
-    instantiate_component_v0_6,
+use greentic_flow::wizard_ops::{
+    WizardAbi, WizardMode as FlowWizardMode, apply_wizard_answers, decode_component_qa_spec,
+    fetch_wizard_spec,
+};
+use greentic_interfaces_host::component_v0_6::exports::greentic::component::node::{
+    ComponentDescriptor, SchemaSource,
 };
 use greentic_pack::pack_lock::read_pack_lock;
 use greentic_types::cbor::canonical;
 use greentic_types::i18n_text::I18nText;
 use greentic_types::qa::QaSpecSource;
-use greentic_types::schemas::component::v0_6_0::ComponentDescribe;
+use greentic_types::schemas::common::schema_ir::SchemaIr;
 use greentic_types::schemas::component::v0_6_0::qa::{
     ComponentQaSpec, QaMode as SpecQaMode, Question, QuestionKind,
 };
@@ -29,10 +32,7 @@ use hex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::runtime::Handle;
-use wasmtime::Engine;
-use wasmtime::component::{Component as WasmtimeComponent, Linker};
 
-use crate::component_host_stubs::{DescribeHostState, add_describe_host_imports};
 use crate::config::PackConfig;
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 
@@ -95,12 +95,12 @@ impl QaModeLabel {
         }
     }
 
-    fn to_host_mode(self) -> HostQaMode {
+    fn to_flow_mode(self) -> FlowWizardMode {
         match self {
-            QaModeLabel::Default => HostQaMode::Default,
-            QaModeLabel::Setup => HostQaMode::Setup,
-            QaModeLabel::Update | QaModeLabel::Upgrade => HostQaMode::Upgrade,
-            QaModeLabel::Remove => HostQaMode::Remove,
+            QaModeLabel::Default => FlowWizardMode::Default,
+            QaModeLabel::Setup => FlowWizardMode::Setup,
+            QaModeLabel::Update | QaModeLabel::Upgrade => FlowWizardMode::Update,
+            QaModeLabel::Remove => FlowWizardMode::Remove,
         }
     }
 
@@ -121,13 +121,6 @@ impl QaModeLabel {
             QaModeLabel::Remove => PackQaMode::Remove,
         }
     }
-}
-
-#[derive(Debug, Serialize)]
-struct ValidationViolation<'a> {
-    code: &'a str,
-    path: &'a str,
-    message: &'a str,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -152,9 +145,7 @@ impl AnswersDoc {
 
 pub fn handle(args: QaArgs, runtime: &RuntimeContext) -> Result<()> {
     if matches!(args.mode, QaModeLabel::Upgrade) {
-        eprintln!(
-            "warning: --mode upgrade is deprecated; use --mode update (alias retained for compatibility)"
-        );
+        eprintln!("{}", crate::cli_i18n::t("cli.qa.warn.upgrade_deprecated"));
     }
     let pack_dir = args
         .pack_dir
@@ -162,7 +153,10 @@ pub fn handle(args: QaArgs, runtime: &RuntimeContext) -> Result<()> {
         .with_context(|| format!("failed to resolve pack dir {}", args.pack_dir.display()))?;
     let pack_yaml = pack_dir.join("pack.yaml");
     if args.pack_only && (args.all_locked || !args.components.is_empty()) {
-        bail!("--pack-only cannot be combined with --component or --all-locked");
+        bail!(
+            "{}",
+            crate::cli_i18n::t("cli.qa.error.pack_only_combination")
+        );
     }
 
     let config = read_pack_config(&pack_yaml)?;
@@ -183,7 +177,6 @@ pub fn handle(args: QaArgs, runtime: &RuntimeContext) -> Result<()> {
 
     let i18n_bundle = load_i18n_bundle(&pack_dir, &args.locale)?;
     let pack_qa_spec = load_pack_qa_spec(&pack_dir, args.mode.to_pack_mode(), args.pack_only)?;
-    let engine = Engine::default();
     let dist = DistClient::new(DistOptions {
         cache_dir: runtime.cache_dir(),
         allow_tags: true,
@@ -242,7 +235,7 @@ pub fn handle(args: QaArgs, runtime: &RuntimeContext) -> Result<()> {
         let resolved =
             resolve_component_bytes(&dist, runtime, &reference, Some(&locked.resolved_digest))?;
 
-        let spec = load_component_qa_spec(&engine, &resolved.bytes, args.mode.to_host_mode())
+        let spec = load_component_qa_spec(&resolved.bytes, args.mode.to_flow_mode())
             .with_context(|| format!("load QA spec for {}", component_id))?;
 
         if spec.mode != args.mode.to_spec_mode() {
@@ -265,8 +258,6 @@ pub fn handle(args: QaArgs, runtime: &RuntimeContext) -> Result<()> {
         )?;
         answers.components.insert(component_id.clone(), updated);
 
-        let describe = load_component_describe(&engine, &resolved.bytes)
-            .with_context(|| format!("load describe for {}", component_id))?;
         let component_answers = answers
             .components
             .get(&component_id)
@@ -277,19 +268,36 @@ pub fn handle(args: QaArgs, runtime: &RuntimeContext) -> Result<()> {
         let current_config = canonical::to_canonical_cbor_allow_floats(&serde_json::json!({}))
             .context("encode empty config cbor")?;
         let config_cbor = apply_component_answers(
-            &engine,
             &resolved.bytes,
-            args.mode.to_host_mode(),
+            args.mode.to_flow_mode(),
             &current_config,
             &answers_cbor,
         )
         .with_context(|| format!("apply-answers for {}", component_id))?;
-        validate_component_config_output(&component_id, &describe, &config_cbor)?;
+        let wizard_spec = fetch_wizard_spec(&resolved.bytes, args.mode.to_flow_mode())
+            .with_context(|| format!("load setup descriptor for {}", component_id))?;
+        validate_component_config_output(
+            &component_id,
+            wizard_spec.descriptor.as_ref(),
+            &config_cbor,
+        )?;
     }
 
     write_answers(&answers_json_path, &answers_cbor_path, &answers)?;
-    eprintln!("wrote {}", answers_json_path.display());
-    eprintln!("wrote {}", answers_cbor_path.display());
+    eprintln!(
+        "{}",
+        crate::cli_i18n::tf(
+            "cli.common.wrote_path",
+            &[&answers_json_path.display().to_string()]
+        )
+    );
+    eprintln!(
+        "{}",
+        crate::cli_i18n::tf(
+            "cli.common.wrote_path",
+            &[&answers_cbor_path.display().to_string()]
+        )
+    );
 
     Ok(())
 }
@@ -310,7 +318,7 @@ fn load_pack_qa_spec(
     let pack_cbor = pack_dir.join("pack.cbor");
     if !pack_cbor.exists() {
         if require {
-            bail!("pack.cbor not found (pack-level QA requires pack.cbor with metadata)");
+            bail!("{}", crate::cli_i18n::t("cli.qa.error.pack_cbor_required"));
         }
         return Ok(None);
     }
@@ -674,7 +682,7 @@ fn prompt_question(
                 return Ok(Some(default.clone()));
             }
             if question.required {
-                println!("Answer required.");
+                println!("{}", crate::cli_i18n::t("cli.qa.prompt.answer_required"));
                 continue;
             }
             return Ok(None);
@@ -688,24 +696,34 @@ fn prompt_question(
                         .ok_or_else(|| anyhow!("invalid numeric input"))?,
                 ),
                 Err(_) => {
-                    println!("Expected a number.");
+                    println!("{}", crate::cli_i18n::t("cli.qa.prompt.expected_number"));
                     continue;
                 }
             },
             QuestionKind::Bool => match parse_bool(input) {
                 Some(value) => serde_json::Value::Bool(value),
                 None => {
-                    println!("Expected yes/no.");
+                    println!("{}", crate::cli_i18n::t("cli.qa.prompt.expected_yes_no"));
                     continue;
                 }
             },
             QuestionKind::Choice { options } => match parse_choice(input, options, i18n_bundle) {
                 Some(value) => serde_json::Value::String(value),
                 None => {
-                    println!("Select one of the listed options.");
+                    println!("{}", crate::cli_i18n::t("cli.qa.prompt.select_option"));
                     continue;
                 }
             },
+            QuestionKind::InlineJson { .. } => {
+                match serde_json::from_str::<serde_json::Value>(input) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        println!("{}", crate::cli_i18n::t("cli.qa.prompt.invalid_json"));
+                        continue;
+                    }
+                }
+            }
+            QuestionKind::AssetRef { .. } => serde_json::Value::String(input.to_string()),
         };
 
         return Ok(Some(parsed));
@@ -734,7 +752,7 @@ fn prompt_pack_question(
                 return Ok(Some(default.clone()));
             }
             if question.required {
-                println!("Answer required.");
+                println!("{}", crate::cli_i18n::t("cli.qa.prompt.answer_required"));
                 continue;
             }
             return Ok(None);
@@ -748,14 +766,14 @@ fn prompt_pack_question(
                         .ok_or_else(|| anyhow!("invalid numeric input"))?,
                 ),
                 Err(_) => {
-                    println!("Expected a number.");
+                    println!("{}", crate::cli_i18n::t("cli.qa.prompt.expected_number"));
                     continue;
                 }
             },
             PackQuestionKind::Bool => match parse_bool(input) {
                 Some(value) => serde_json::Value::Bool(value),
                 None => {
-                    println!("Expected yes/no.");
+                    println!("{}", crate::cli_i18n::t("cli.qa.prompt.expected_yes_no"));
                     continue;
                 }
             },
@@ -763,7 +781,7 @@ fn prompt_pack_question(
                 match parse_pack_choice(input, options, i18n_bundle) {
                     Some(value) => serde_json::Value::String(value),
                     None => {
-                        println!("Select one of the listed options.");
+                        println!("{}", crate::cli_i18n::t("cli.qa.prompt.select_option"));
                         continue;
                     }
                 }
@@ -916,12 +934,35 @@ fn resolve_component_bytes(
     }
 
     let handle = Handle::try_current().context("component resolution requires a Tokio runtime")?;
-    let resolved = if runtime.network_policy() == NetworkPolicy::Offline {
-        block_on(&handle, dist.ensure_cached(reference))
-            .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
+    let source = dist
+        .parse_source(reference)
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?;
+    let offline = runtime.network_policy() == NetworkPolicy::Offline;
+    let descriptor = if offline {
+        block_on(
+            &handle,
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy),
+        )
+        .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
     } else {
-        block_on(&handle, dist.resolve_ref(reference))
-            .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
+        block_on(
+            &handle,
+            dist.resolve(source, greentic_distributor_client::ResolvePolicy),
+        )
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
+    };
+    let resolved = if offline {
+        block_on(
+            &handle,
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
+        )
+        .map_err(|err| anyhow!("offline cache miss for {}: {}", reference, err))?
+    } else {
+        block_on(
+            &handle,
+            dist.fetch(&descriptor, greentic_distributor_client::CachePolicy),
+        )
+        .map_err(|err| anyhow!("resolve {}: {}", reference, err))?
     };
     let path = resolved
         .cache_path
@@ -962,61 +1003,43 @@ where
     tokio::task::block_in_place(|| handle.block_on(fut))
 }
 
-fn load_component_qa_spec(
-    engine: &Engine,
-    bytes: &[u8],
-    mode: HostQaMode,
-) -> Result<ComponentQaSpec> {
-    let component =
-        WasmtimeComponent::from_binary(engine, bytes).context("decode component bytes")?;
-    let mut store = wasmtime::Store::new(engine, DescribeHostState);
-    let mut linker = Linker::new(engine);
-    add_describe_host_imports(&mut linker)?;
-    let instance: ComponentV0_6 = instantiate_component_v0_6(&mut store, &component, &linker)
-        .context("instantiate component-v0-v6-v0")?;
-    let qa_bytes = instance.qa_spec(&mut store, mode).context("call qa_spec")?;
-    canonical::from_cbor(&qa_bytes).context("decode ComponentQaSpec")
-}
-
-fn load_component_describe(engine: &Engine, bytes: &[u8]) -> Result<ComponentDescribe> {
-    let component =
-        WasmtimeComponent::from_binary(engine, bytes).context("decode component bytes")?;
-    let mut store = wasmtime::Store::new(engine, DescribeHostState);
-    let mut linker = Linker::new(engine);
-    add_describe_host_imports(&mut linker)?;
-    let instance: ComponentV0_6 = instantiate_component_v0_6(&mut store, &component, &linker)
-        .context("instantiate component-v0-v6-v0")?;
-    let describe_bytes = instance.describe(&mut store).context("call describe")?;
-    canonical::from_cbor(&describe_bytes).context("decode ComponentDescribe")
+fn load_component_qa_spec(bytes: &[u8], mode: FlowWizardMode) -> Result<ComponentQaSpec> {
+    let spec = fetch_wizard_spec(bytes, mode).context("fetch wizard spec from component")?;
+    decode_component_qa_spec(&spec.qa_spec_cbor, mode).context("decode wizard qa-spec")
 }
 
 fn apply_component_answers(
-    engine: &Engine,
     bytes: &[u8],
-    mode: HostQaMode,
+    mode: FlowWizardMode,
     current_config: &[u8],
     answers: &[u8],
 ) -> Result<Vec<u8>> {
-    let component =
-        WasmtimeComponent::from_binary(engine, bytes).context("decode component bytes")?;
-    let mut store = wasmtime::Store::new(engine, DescribeHostState);
-    let mut linker = Linker::new(engine);
-    add_describe_host_imports(&mut linker)?;
-    let instance: ComponentV0_6 = instantiate_component_v0_6(&mut store, &component, &linker)
-        .context("instantiate component-v0-v6-v0")?;
-    instance
-        .apply_answers(&mut store, mode, current_config, answers)
-        .context("call apply_answers")
+    apply_wizard_answers(bytes, WizardAbi::V6, mode, current_config, answers)
+        .context("invoke setup.apply_answers")
 }
 
 fn validate_component_config_output(
     component_id: &str,
-    describe: &ComponentDescribe,
+    descriptor: Option<&ComponentDescriptor>,
     config_cbor: &[u8],
 ) -> Result<()> {
+    canonical::ensure_canonical(config_cbor)
+        .context("apply-answers output must be canonical CBOR")?;
+
     let value: ciborium::value::Value =
         ciborium::de::from_reader(config_cbor).context("decode apply-answers output as CBOR")?;
-    let diags = validate_value_against_schema(&describe.config_schema, &value);
+
+    let schema = match descriptor {
+        Some(descriptor) => setup_apply_answers_output_schema(descriptor).with_context(|| {
+            format!("decode setup.apply_answers output schema for {component_id}")
+        })?,
+        None => None,
+    };
+    let Some(schema) = schema else {
+        return Ok(());
+    };
+
+    let diags = validate_value_against_schema(&schema, &value);
     let errors: Vec<_> = diags
         .iter()
         .filter(|diag| diag.severity == Severity::Error)
@@ -1025,27 +1048,35 @@ fn validate_component_config_output(
         return Ok(());
     }
 
-    let violations: Vec<_> = errors
-        .iter()
-        .map(|diag| ValidationViolation {
-            code: diag.code,
-            path: diag.path.as_str(),
-            message: diag.message.as_str(),
-        })
-        .collect();
-    let structured = serde_json::to_string_pretty(&violations).unwrap_or_else(|_| "[]".to_string());
     let summary = errors
         .iter()
         .map(|diag| format!("{}: {}", diag.path, diag.message))
         .collect::<Vec<_>>()
         .join("; ");
     bail!(
-        "component {} apply-answers output failed strict schema validation ({} violations): {}\nviolations_json={}",
+        "component {} apply-answers output failed schema validation ({} violations): {}",
         component_id,
         errors.len(),
-        summary,
-        structured
+        summary
     );
+}
+
+fn setup_apply_answers_output_schema(descriptor: &ComponentDescriptor) -> Result<Option<SchemaIr>> {
+    let Some(op) = descriptor
+        .ops
+        .iter()
+        .find(|op| op.name == "setup.apply_answers")
+    else {
+        return Ok(None);
+    };
+    match &op.output.schema {
+        SchemaSource::InlineCbor(bytes) => {
+            let schema: SchemaIr =
+                canonical::from_cbor(bytes).context("decode inline output schema")?;
+            Ok(Some(schema))
+        }
+        _ => Ok(None),
+    }
 }
 
 #[cfg(test)]
@@ -1053,10 +1084,12 @@ mod tests {
     use super::*;
     use crate::config::{ComponentConfig, FlowKindLabel};
     use clap::ValueEnum;
+    use greentic_interfaces_host::component_v0_6::exports::greentic::component::node::{
+        ComponentDescriptor, IoSchema, Op, SchemaSource,
+    };
     use greentic_pack::pack_lock::PackLockV1;
     use greentic_types::cbor_bytes::CborBytes;
     use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
-    use greentic_types::schemas::component::v0_6_0::ComponentInfo;
     use greentic_types::{ComponentCapabilities, ComponentProfiles};
     use tempfile::TempDir;
 
@@ -1100,6 +1133,7 @@ mod tests {
             kind: "application".to_string(),
             publisher: "Greentic".to_string(),
             name: None,
+            display_name: None,
             bootstrap: None,
             components: vec![ComponentConfig {
                 id: "demo.component".to_string(),
@@ -1233,32 +1267,461 @@ mod tests {
 
     #[test]
     fn validation_error_includes_paths_and_structured_violations() {
-        let describe = ComponentDescribe {
-            info: ComponentInfo {
-                id: "demo.component".to_string(),
-                version: "0.1.0".to_string(),
-                role: "tool".to_string(),
-                display_name: None,
-            },
-            provided_capabilities: Vec::new(),
-            required_capabilities: Vec::new(),
-            metadata: BTreeMap::new(),
-            operations: Vec::new(),
-            config_schema: SchemaIr::Object {
-                properties: BTreeMap::from([("enabled".to_string(), SchemaIr::Bool)]),
-                required: vec!["enabled".to_string()],
-                additional: AdditionalProperties::Forbid,
-            },
+        let output_schema = SchemaIr::Object {
+            properties: BTreeMap::from([("enabled".to_string(), SchemaIr::Bool)]),
+            required: vec!["enabled".to_string()],
+            additional: AdditionalProperties::Forbid,
+        };
+        let output_schema_cbor =
+            canonical::to_canonical_cbor_allow_floats(&output_schema).expect("schema cbor");
+        let describe = ComponentDescriptor {
+            name: "demo.component".to_string(),
+            version: "0.1.0".to_string(),
+            summary: None,
+            capabilities: Vec::new(),
+            ops: vec![Op {
+                name: "setup.apply_answers".to_string(),
+                summary: None,
+                input: IoSchema {
+                    schema: SchemaSource::InlineCbor(vec![0xa0]),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                output: IoSchema {
+                    schema: SchemaSource::InlineCbor(output_schema_cbor),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                examples: Vec::new(),
+            }],
+            schemas: Vec::new(),
+            setup: None,
         };
         let config_cbor = canonical::to_canonical_cbor_allow_floats(&serde_json::json!({}))
             .expect("encode config");
-        let err = validate_component_config_output("demo.component", &describe, &config_cbor)
+        let err = validate_component_config_output("demo.component", Some(&describe), &config_cbor)
             .expect_err("missing required field must fail");
         let msg = format!("{err:#}");
         assert!(msg.contains("$.enabled"), "missing path in: {msg}");
         assert!(
-            msg.contains("violations_json"),
-            "missing structured payload in: {msg}"
+            msg.contains("schema validation"),
+            "missing validation text in: {msg}"
         );
+    }
+
+    #[test]
+    fn select_target_components_rejects_unknown_component_without_all_locked() {
+        let cfg = PackConfig {
+            pack_id: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "Greentic".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            components: vec![ComponentConfig {
+                id: "demo.component".to_string(),
+                version: "0.1.0".to_string(),
+                world: "greentic:component/stub".to_string(),
+                supports: vec![FlowKindLabel::Messaging],
+                profiles: ComponentProfiles::default(),
+                capabilities: ComponentCapabilities::default(),
+                wasm: PathBuf::from("components/demo.wasm"),
+                operations: Vec::new(),
+                config_schema: None,
+                resources: None,
+                configurators: None,
+            }],
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+        };
+        let lock = PackLockV1::new(BTreeMap::new());
+        let args = QaArgs {
+            pack_dir: PathBuf::from("."),
+            mode: QaModeLabel::Default,
+            answers: None,
+            locale: "en".to_string(),
+            non_interactive: false,
+            reask: false,
+            components: vec!["missing.component".to_string()],
+            all_locked: false,
+            pack_only: false,
+        };
+
+        let err = select_target_components(&cfg, &lock, &args).expect_err("should reject unknown");
+        assert!(err.to_string().contains("not found in pack.yaml"));
+    }
+
+    #[test]
+    fn parse_bool_accepts_common_true_false_spellings() {
+        assert_eq!(parse_bool("YES"), Some(true));
+        assert_eq!(parse_bool("0"), Some(false));
+        assert_eq!(parse_bool("maybe"), None);
+    }
+
+    #[test]
+    fn parse_choice_matches_index_value_and_localized_label() {
+        let bundle = BTreeMap::from([("choice.label".to_string(), "Friendly".to_string())]);
+        let options = vec![
+            greentic_types::schemas::component::v0_6_0::qa::ChoiceOption {
+                value: "internal".to_string(),
+                label: I18nText::new("choice.label", Some("Fallback".to_string())),
+            },
+        ];
+
+        assert_eq!(
+            parse_choice("1", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_choice("internal", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_choice("Friendly", &options, &bundle),
+            Some("internal".to_string())
+        );
+    }
+
+    #[test]
+    fn collect_answers_for_pack_uses_defaults_in_non_interactive_mode() {
+        let spec = sample_pack_qa_spec(PackQaMode::Default);
+        let err = collect_answers_for_pack(&spec, None, &BTreeMap::new(), true, false)
+            .expect_err("required unanswered question should fail");
+        assert!(err.to_string().contains("missing required pack answer"));
+
+        let mut spec_with_default = spec.clone();
+        spec_with_default.defaults.insert(
+            "region".to_string(),
+            ciborium::value::Value::Text("eu-west".to_string()),
+        );
+        let answers =
+            collect_answers_for_pack(&spec_with_default, None, &BTreeMap::new(), true, false)
+                .expect("answers");
+
+        assert_eq!(answers.get("region"), Some(&serde_json::json!("eu-west")));
+    }
+
+    #[test]
+    fn load_answers_normalizes_mode_without_dropping_content() {
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("answers.json");
+        fs::write(
+            &path,
+            r#"{
+                "schema_version": 1,
+                "mode": "setup",
+                "pack": {"region": "us-east"},
+                "components": {}
+            }"#,
+        )
+        .expect("answers file");
+
+        let answers = load_answers(&path, false, &QaModeLabel::Default).expect("load answers");
+        assert_eq!(answers.mode, "default");
+        assert_eq!(
+            answers.pack.get("region"),
+            Some(&serde_json::json!("us-east"))
+        );
+    }
+
+    #[test]
+    fn render_text_prefers_i18n_then_fallback_then_key() {
+        let bundle = BTreeMap::from([("known.key".to_string(), "Localized".to_string())]);
+        assert_eq!(
+            render_text(
+                &I18nText::new("known.key", Some("Fallback".to_string())),
+                &bundle
+            ),
+            "Localized"
+        );
+        assert_eq!(
+            render_text(
+                &I18nText::new("missing.key", Some("Fallback".to_string())),
+                &bundle
+            ),
+            "Fallback"
+        );
+        assert_eq!(
+            render_text(&I18nText::new("missing.key", None), &bundle),
+            "missing.key"
+        );
+    }
+
+    #[test]
+    fn answers_paths_for_unknown_extension_append_answers_suffixes() {
+        let temp = TempDir::new().expect("temp dir");
+        let custom = temp.path().join("answers.custom");
+        let (json_path, cbor_path) =
+            resolve_answers_paths(temp.path(), Some(custom.as_path()), "setup").expect("paths");
+        assert!(json_path.ends_with("answers.answers.json"));
+        assert!(cbor_path.ends_with("answers.answers.cbor"));
+    }
+
+    #[test]
+    fn select_target_components_all_locked_returns_sorted_lock_entries() {
+        let cfg = PackConfig {
+            pack_id: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "Greentic".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            components: Vec::new(),
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+        };
+        let lock = PackLockV1::new(BTreeMap::from([
+            (
+                "z.component".to_string(),
+                greentic_pack::pack_lock::LockedComponent {
+                    component_id: "z.component".to_string(),
+                    abi_version: "0.6.0".to_string(),
+                    describe_hash: "describe-z".to_string(),
+                    resolved_digest: "sha256:z".to_string(),
+                    operations: Vec::new(),
+                    world: None,
+                    component_version: None,
+                    role: None,
+                    r#ref: None,
+                },
+            ),
+            (
+                "a.component".to_string(),
+                greentic_pack::pack_lock::LockedComponent {
+                    component_id: "a.component".to_string(),
+                    abi_version: "0.6.0".to_string(),
+                    describe_hash: "describe-a".to_string(),
+                    resolved_digest: "sha256:a".to_string(),
+                    operations: Vec::new(),
+                    world: None,
+                    component_version: None,
+                    role: None,
+                    r#ref: None,
+                },
+            ),
+        ]));
+        let args = QaArgs {
+            pack_dir: PathBuf::from("."),
+            mode: QaModeLabel::Default,
+            answers: None,
+            locale: "en".to_string(),
+            non_interactive: false,
+            reask: false,
+            components: Vec::new(),
+            all_locked: true,
+            pack_only: false,
+        };
+
+        let targets = select_target_components(&cfg, &lock, &args).expect("targets");
+        assert_eq!(
+            targets,
+            vec!["a.component".to_string(), "z.component".to_string()]
+        );
+    }
+
+    #[test]
+    fn load_i18n_bundle_ignores_non_string_values() {
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("assets/i18n");
+        fs::create_dir_all(&path).expect("i18n dir");
+        fs::write(
+            path.join("en.json"),
+            r#"{"title":"Hello","count":3,"nested":{"x":1}}"#,
+        )
+        .expect("bundle");
+
+        let bundle = load_i18n_bundle(temp.path(), "en").expect("bundle load");
+        assert_eq!(bundle.get("title").map(String::as_str), Some("Hello"));
+        assert!(!bundle.contains_key("count"));
+        assert!(!bundle.contains_key("nested"));
+    }
+
+    #[test]
+    fn decode_qa_spec_source_round_trips_inline_cbor() {
+        let source = QaSpecSource::InlineCbor(CborBytes::new(vec![0xa1, 0x01, 0x02]));
+        let bytes = canonical::to_canonical_cbor_allow_floats(&source).expect("source bytes");
+        let value: ciborium::value::Value = canonical::from_cbor(&bytes).expect("value");
+
+        let decoded = decode_qa_spec_source(&value).expect("decode");
+        assert_eq!(decoded, source);
+    }
+
+    #[test]
+    fn index_component_paths_resolves_relative_and_absolute_wasm_paths() {
+        let cfg = PackConfig {
+            pack_id: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "Greentic".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            components: vec![
+                ComponentConfig {
+                    id: "relative.component".to_string(),
+                    version: "0.1.0".to_string(),
+                    world: "greentic:component/stub".to_string(),
+                    supports: vec![FlowKindLabel::Messaging],
+                    profiles: ComponentProfiles::default(),
+                    capabilities: ComponentCapabilities::default(),
+                    wasm: PathBuf::from("components/relative.wasm"),
+                    operations: Vec::new(),
+                    config_schema: None,
+                    resources: None,
+                    configurators: None,
+                },
+                ComponentConfig {
+                    id: "absolute.component".to_string(),
+                    version: "0.1.0".to_string(),
+                    world: "greentic:component/stub".to_string(),
+                    supports: vec![FlowKindLabel::Messaging],
+                    profiles: ComponentProfiles::default(),
+                    capabilities: ComponentCapabilities::default(),
+                    wasm: PathBuf::from("/tmp/absolute.wasm"),
+                    operations: Vec::new(),
+                    config_schema: None,
+                    resources: None,
+                    configurators: None,
+                },
+            ],
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+        };
+
+        let map = index_component_paths(&cfg, Path::new("/work/demo"));
+        assert_eq!(
+            map.get("relative.component"),
+            Some(&PathBuf::from("/work/demo/components/relative.wasm"))
+        );
+        assert_eq!(
+            map.get("absolute.component"),
+            Some(&PathBuf::from("/tmp/absolute.wasm"))
+        );
+    }
+
+    #[test]
+    fn cbor_value_to_json_formats_bytes_tags_and_maps() {
+        let tagged = ciborium::value::Value::Tag(
+            42,
+            Box::new(ciborium::value::Value::Bytes(vec![0xde, 0xad])),
+        );
+        let mapped = ciborium::value::Value::Map(vec![
+            (
+                ciborium::value::Value::Integer(1.into()),
+                ciborium::value::Value::Text("one".to_string()),
+            ),
+            (
+                ciborium::value::Value::Text("two".to_string()),
+                ciborium::value::Value::Bool(true),
+            ),
+        ]);
+
+        assert_eq!(cbor_value_to_json(&tagged), serde_json::json!("dead"));
+        assert_eq!(
+            cbor_value_to_json(&mapped),
+            serde_json::json!({"1":"one","two":true})
+        );
+    }
+
+    #[test]
+    fn parse_pack_choice_matches_index_value_and_localized_label() {
+        let bundle = BTreeMap::from([("pack.choice".to_string(), "Localized".to_string())]);
+        let options = vec![greentic_types::schemas::pack::v0_6_0::qa::ChoiceOption {
+            value: "internal".to_string(),
+            label: I18nText::new("pack.choice", Some("Fallback".to_string())),
+        }];
+
+        assert_eq!(
+            parse_pack_choice("1", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_pack_choice("internal", &options, &bundle),
+            Some("internal".to_string())
+        );
+        assert_eq!(
+            parse_pack_choice("Localized", &options, &bundle),
+            Some("internal".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_component_bytes_validates_file_digest() {
+        let temp = TempDir::new().expect("temp dir");
+        let wasm = temp.path().join("component.wasm");
+        fs::write(&wasm, b"demo-bytes").expect("wasm");
+        let digest = digest_for_bytes(b"demo-bytes");
+
+        let runtime =
+            crate::runtime::resolve_runtime(Some(temp.path()), None, true, None).expect("runtime");
+        let dist = DistClient::new(DistOptions {
+            cache_dir: runtime.cache_dir(),
+            allow_tags: true,
+            offline: true,
+            allow_insecure_local_http: false,
+            ..DistOptions::default()
+        });
+
+        let resolved = resolve_component_bytes(
+            &dist,
+            &runtime,
+            &format!("file://{}", wasm.display()),
+            Some(&digest),
+        )
+        .expect("resolve");
+        assert_eq!(resolved.bytes, b"demo-bytes");
+
+        let err = resolve_component_bytes(
+            &dist,
+            &runtime,
+            &format!("file://{}", wasm.display()),
+            Some("sha256:deadbeef"),
+        )
+        .err()
+        .expect("digest mismatch should fail");
+        assert!(err.to_string().contains("digest mismatch"));
+    }
+
+    #[test]
+    fn validate_component_config_output_accepts_missing_descriptor_or_schema() {
+        let config_cbor =
+            canonical::to_canonical_cbor_allow_floats(&serde_json::json!({"ok": true}))
+                .expect("config");
+        validate_component_config_output("demo.component", None, &config_cbor)
+            .expect("no descriptor should skip validation");
+
+        let descriptor = ComponentDescriptor {
+            name: "demo.component".to_string(),
+            version: "0.1.0".to_string(),
+            summary: None,
+            capabilities: Vec::new(),
+            ops: vec![Op {
+                name: "not-setup".to_string(),
+                summary: None,
+                input: IoSchema {
+                    schema: SchemaSource::InlineCbor(vec![0xa0]),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                output: IoSchema {
+                    schema: SchemaSource::InlineCbor(vec![0xa0]),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                examples: Vec::new(),
+            }],
+            schemas: Vec::new(),
+            setup: None,
+        };
+        validate_component_config_output("demo.component", Some(&descriptor), &config_cbor)
+            .expect("missing setup.apply_answers op should skip validation");
     }
 }

@@ -155,3 +155,72 @@ impl fmt::Display for OrderingKind {
         f.write_str(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_provider() -> EventProviderSpec {
+        EventProviderSpec {
+            name: "orders".to_string(),
+            kind: EventProviderKind::Broker,
+            component: "broker.component".to_string(),
+            default_flow: Some("flow.default".to_string()),
+            custom_flow: None,
+            capabilities: EventProviderCapabilities {
+                transport: Some(TransportKind::Kafka),
+                reliability: Some(ReliabilityKind::AtLeastOnce),
+                ordering: Some(OrderingKind::PerKey),
+                topics: vec!["orders.created".to_string()],
+            },
+        }
+    }
+
+    #[test]
+    fn validate_accepts_unique_provider_with_topics() {
+        let section = EventsSection {
+            providers: vec![valid_provider()],
+        };
+
+        section.validate().expect("valid events section");
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_provider_names() {
+        let provider = valid_provider();
+        let section = EventsSection {
+            providers: vec![provider.clone(), provider],
+        };
+
+        let err = section.validate().expect_err("duplicate names should fail");
+        assert!(err.to_string().contains("duplicate events provider name"));
+    }
+
+    #[test]
+    fn validate_rejects_blank_topic_entries() {
+        let mut provider = valid_provider();
+        provider.capabilities.topics.push("   ".to_string());
+
+        let err = EventsSection {
+            providers: vec![provider],
+        }
+        .validate()
+        .expect_err("blank topics should fail");
+
+        assert!(
+            err.to_string()
+                .contains("topics may not contain empty entries")
+        );
+    }
+
+    #[test]
+    fn display_formats_enum_values() {
+        assert_eq!(EventProviderKind::Sink.to_string(), "sink");
+        assert_eq!(TransportKind::Other("sns".to_string()).to_string(), "sns");
+        assert_eq!(
+            ReliabilityKind::EffectivelyOnce.to_string(),
+            "effectively_once"
+        );
+        assert_eq!(OrderingKind::Global.to_string(), "global");
+    }
+}

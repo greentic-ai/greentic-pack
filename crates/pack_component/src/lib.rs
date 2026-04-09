@@ -237,3 +237,76 @@ unsafe fn slice_to_str<'a>(ptr: *const u8, len: usize) -> &'a str {
     let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
     core::str::from_utf8(bytes).expect("flow id is valid utf-8")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_manifest_and_assets_are_exposed() {
+        assert!(
+            !manifest_cbor().is_empty(),
+            "manifest bytes should be embedded"
+        );
+        assert!(!flows().is_empty(), "example fixture should embed one flow");
+        assert_eq!(
+            template_by_path("templates/greeting.txt"),
+            Some(b"Hello there! Ask me about the weather in your city.\n".as_slice())
+        );
+
+        let manifest = manifest_value();
+        assert_eq!(manifest["pack_id"], "greentic.weather.demo");
+    }
+
+    #[test]
+    fn component_methods_report_known_and_unknown_flows() {
+        let component = component();
+
+        let flow = component
+            .get_flow_schema("weather_bot")
+            .expect("known flow should have a schema");
+        assert_eq!(flow.flow_id, "weather_bot");
+
+        let ok = component.prepare_flow("weather_bot");
+        assert_eq!(ok.status, "ok");
+        assert!(ok.error.is_none());
+
+        let err = component.prepare_flow("missing");
+        assert_eq!(err.status, "error");
+        assert!(err.error.expect("error").contains("unknown flow"));
+    }
+
+    #[test]
+    fn run_flow_echoes_input_for_known_flow() {
+        let component = component();
+        let result = component.run_flow("weather_bot", serde_json::json!({"city": "Paris"}));
+
+        assert_eq!(result.status, "ok");
+        let output = result.output.expect("output");
+        assert_eq!(output["flow_id"], "weather_bot");
+        assert_eq!(output["input_echo"]["city"], "Paris");
+    }
+
+    #[test]
+    fn c_abi_helpers_report_required_buffer_size_and_write_json() {
+        let needed = greentic_pack_export__list_flows(core::ptr::null_mut(), 0);
+        assert!(needed > 0);
+
+        let mut buffer = vec![0u8; needed];
+        let written = greentic_pack_export__list_flows(buffer.as_mut_ptr(), buffer.len());
+        assert_eq!(written, needed);
+        let json = String::from_utf8(buffer).expect("utf8");
+        assert!(json.contains("\"weather_bot\""));
+
+        let flow_id = b"missing";
+        let needed = unsafe {
+            greentic_pack_export__prepare_flow(
+                flow_id.as_ptr(),
+                flow_id.len(),
+                core::ptr::null_mut(),
+                0,
+            )
+        };
+        assert!(needed > 0);
+    }
+}

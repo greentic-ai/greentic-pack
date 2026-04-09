@@ -84,11 +84,14 @@ pub fn list(args: &ListArgs) -> Result<()> {
     }
 
     if providers.is_empty() {
-        println!("No providers declared.");
+        println!(
+            "{}",
+            crate::cli_i18n::t("cli.providers.no_providers_declared")
+        );
         return Ok(());
     }
 
-    println!("{:<24} {:<28} {:<16} DETAILS", "ID", "RUNTIME", "KIND");
+    println!("{}", crate::cli_i18n::t("cli.providers.table_header"));
     for provider in providers {
         let runtime = format!(
             "{}::{}",
@@ -109,14 +112,23 @@ pub fn info(args: &InfoArgs) -> Result<()> {
     let pack = load_pack(args.pack.as_deref())?;
     let inline = match pack.manifest.provider_extension_inline() {
         Some(value) => value,
-        None => bail!("provider extension not present"),
+        None => bail!(
+            "{}",
+            crate::cli_i18n::t("cli.providers.error.extension_not_present")
+        ),
     };
     let Some(provider) = inline
         .providers
         .iter()
         .find(|p| p.provider_type == args.provider_id)
     else {
-        bail!("provider `{}` not found", args.provider_id);
+        bail!(
+            "{}",
+            crate::cli_i18n::tf(
+                "cli.providers.error.provider_not_found",
+                &[&args.provider_id]
+            )
+        );
     };
 
     if args.json {
@@ -136,13 +148,16 @@ pub fn validate(args: &ValidateArgs) -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "status": "ok",
+                    "status": crate::cli_i18n::t("cli.status.ok"),
                     "providers_present": false,
                     "warnings": [],
                 }))?
             );
         } else {
-            println!("providers valid (extension not present)");
+            println!(
+                "{}",
+                crate::cli_i18n::t("cli.providers.valid_extension_not_present")
+            );
         }
         return Ok(());
     };
@@ -161,17 +176,23 @@ pub fn validate(args: &ValidateArgs) -> Result<()> {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "status": "ok",
+                "status": crate::cli_i18n::t("cli.status.ok"),
                 "providers_present": true,
                 "warnings": warnings,
             }))?
         );
     } else if warnings.is_empty() {
-        println!("providers valid");
+        println!("{}", crate::cli_i18n::t("cli.providers.valid"));
     } else {
-        println!("providers valid with warnings:");
+        println!(
+            "{}",
+            crate::cli_i18n::t("cli.providers.valid_with_warnings")
+        );
         for warning in warnings {
-            println!("  - {warning}");
+            println!(
+                "{}",
+                crate::cli_i18n::tf("cli.providers.warning_item", &[&warning])
+            );
         }
     }
 
@@ -340,8 +361,114 @@ fn ref_exists(value: &str, pack: &LoadedPack) -> bool {
 fn normalize_entry(value: &str) -> String {
     value
         .split(std::path::MAIN_SEPARATOR)
-        .flat_map(|part| part.split('/'))
+        .flat_map(|part| part.split(['/', '\\']))
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use greentic_types::pack_manifest::{ExtensionInline, ExtensionRef};
+    use greentic_types::provider::{PROVIDER_EXTENSION_ID, ProviderRuntimeRef};
+    use semver::Version;
+
+    fn provider(provider_type: &str) -> ProviderDecl {
+        ProviderDecl {
+            provider_type: provider_type.to_string(),
+            capabilities: vec!["send".to_string(), "receive".to_string()],
+            ops: vec!["send".to_string()],
+            config_schema_ref: "schemas/provider.json".to_string(),
+            state_schema_ref: Some("schemas/state.json".to_string()),
+            runtime: ProviderRuntimeRef {
+                component_ref: "provider.component".to_string(),
+                export: "provider".to_string(),
+                world: "greentic:provider/schema-core@1.0.0".to_string(),
+            },
+            docs_ref: Some("docs/provider.md".to_string()),
+        }
+    }
+
+    fn manifest_with_providers(providers: Vec<ProviderDecl>) -> PackManifest {
+        PackManifest {
+            schema_version: "pack-v1".to_string(),
+            pack_id: PackId::new("dev.local.providers").expect("pack id"),
+            name: Some("providers".to_string()),
+            version: Version::parse("0.1.0").expect("version"),
+            kind: PackKind::Application,
+            publisher: "test".to_string(),
+            components: Vec::new(),
+            flows: Vec::new(),
+            dependencies: Vec::new(),
+            capabilities: Vec::new(),
+            secret_requirements: Vec::new(),
+            signatures: PackSignatures::default(),
+            bootstrap: None,
+            extensions: Some(std::collections::BTreeMap::from([(
+                PROVIDER_EXTENSION_ID.to_string(),
+                ExtensionRef {
+                    kind: PROVIDER_EXTENSION_ID.to_string(),
+                    version: "1.0.0".to_string(),
+                    digest: None,
+                    location: None,
+                    inline: Some(ExtensionInline::Provider(ProviderExtensionInline {
+                        providers,
+                        additional_fields: Default::default(),
+                    })),
+                },
+            )])),
+        }
+    }
+
+    #[test]
+    fn providers_from_manifest_returns_sorted_entries() {
+        let manifest = manifest_with_providers(vec![provider("zeta"), provider("alpha")]);
+        let sorted = providers_from_manifest(&manifest);
+        assert_eq!(sorted[0].provider_type, "alpha");
+        assert_eq!(sorted[1].provider_type, "zeta");
+    }
+
+    #[test]
+    fn provider_helpers_summarize_runtime_and_docs() {
+        let provider = provider("messaging.demo");
+        assert_eq!(provider_kind(&provider), "greentic:provider/schema-core");
+
+        let summary = summarize_provider(&provider);
+        assert!(summary.contains("caps:2"));
+        assert!(summary.contains("ops:1"));
+        assert!(summary.contains("docs:docs/provider.md"));
+    }
+
+    #[test]
+    fn validate_local_refs_reports_missing_local_files_only() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(temp.path().join("schemas")).expect("create schemas dir");
+        std::fs::write(temp.path().join("schemas/provider.json"), "{}").expect("write schema");
+        let inline = ProviderExtensionInline {
+            providers: vec![provider("messaging.demo")],
+            additional_fields: Default::default(),
+        };
+        let pack = LoadedPack {
+            manifest: manifest_with_providers(Vec::new()),
+            root_dir: Some(temp.path().to_path_buf()),
+            entries: HashSet::from(["docs/provider.md".to_string()]),
+            _temp: None,
+        };
+
+        let warnings = validate_local_refs(&inline, &pack);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("state_schema_ref"));
+        assert!(warnings[0].contains("schemas/state.json"));
+    }
+
+    #[test]
+    fn normalize_entry_and_is_local_ref_handle_mixed_paths() {
+        assert_eq!(
+            normalize_entry("schemas\\\\provider.json"),
+            "schemas/provider.json"
+        );
+        assert!(is_local_ref("docs/provider.md"));
+        assert!(!is_local_ref("oci://registry/provider"));
+    }
 }

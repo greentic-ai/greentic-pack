@@ -2,7 +2,14 @@ use crate::cli::resolve::{self, ResolveArgs};
 use crate::config::{
     AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackConfig,
 };
-use crate::extensions::validate_components_extension;
+use crate::extension_refs::{
+    default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
+    read_extensions_lock_file, validate_extensions_lock_alignment,
+};
+use crate::extensions::{
+    validate_capabilities_extension, validate_components_extension, validate_deployer_extension,
+    validate_static_routes_extension,
+};
 use crate::flow_resolve::load_flow_resolve_summary;
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 use anyhow::{Context, Result, anyhow};
@@ -80,6 +87,7 @@ pub struct BuildOptions {
     pub runtime: RuntimeContext,
     pub skip_update: bool,
     pub allow_pack_schema: bool,
+    pub validate_extension_refs: bool,
 }
 
 impl BuildOptions {
@@ -134,6 +142,7 @@ impl BuildOptions {
             runtime: runtime.clone(),
             skip_update: args.no_update,
             allow_pack_schema: args.allow_pack_schema,
+            validate_extension_refs: true,
         })
     }
 }
@@ -166,6 +175,22 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         .await?;
     }
 
+    if opts.validate_extension_refs {
+        let extensions_file = default_extensions_file_path(&opts.pack_dir);
+        let source_extensions = if extensions_file.exists() {
+            Some(read_extensions_file(&extensions_file)?)
+        } else {
+            None
+        };
+        let extensions_lock = default_extensions_lock_file_path(&opts.pack_dir);
+        if extensions_lock.exists() {
+            let lock = read_extensions_lock_file(&extensions_lock)?;
+            if let Some(source) = source_extensions.as_ref() {
+                validate_extensions_lock_alignment(source, &lock)?;
+            }
+        }
+    }
+
     let config = crate::config::load_pack_config(&opts.pack_dir)?;
     info!(
         id = %config.pack_id,
@@ -177,15 +202,8 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         "loaded pack.yaml"
     );
     validate_components_extension(&config.extensions, opts.allow_oci_tags)?;
-
-    let secret_requirements_override =
-        resolve_secret_requirements_override(&opts.pack_dir, opts.secrets_req.as_ref());
-    let secret_requirements = aggregate_secret_requirements(
-        &config.components,
-        secret_requirements_override.as_deref(),
-        opts.default_secret_scope.as_deref(),
-    )?;
-
+    validate_deployer_extension(&config.extensions, &opts.pack_dir)?;
+    validate_static_routes_extension(&config.extensions, &opts.pack_dir)?;
     if !opts.lock_path.exists() {
         anyhow::bail!(
             "pack.lock.cbor is required (run `greentic-pack resolve`); missing: {}",
@@ -198,6 +216,22 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
             opts.lock_path.display()
         )
     })?;
+    let mut known_component_ids = config
+        .components
+        .iter()
+        .map(|component| component.id.clone())
+        .collect::<BTreeSet<_>>();
+    known_component_ids.extend(pack_lock.components.keys().cloned());
+    let known_component_ids = known_component_ids.into_iter().collect::<Vec<_>>();
+    validate_capabilities_extension(&config.extensions, &opts.pack_dir, &known_component_ids)?;
+
+    let secret_requirements_override =
+        resolve_secret_requirements_override(&opts.pack_dir, opts.secrets_req.as_ref());
+    let secret_requirements = aggregate_secret_requirements(
+        &config.components,
+        secret_requirements_override.as_deref(),
+        opts.default_secret_scope.as_deref(),
+    )?;
 
     let mut build = assemble_manifest(
         &config,
@@ -357,7 +391,7 @@ fn assemble_manifest(
     let mut manifest = PackManifest {
         schema_version: "pack-v1".to_string(),
         pack_id: PackId::new(config.pack_id.clone()).context("invalid pack_id")?,
-        name: config.name.clone(),
+        name: config.display_name.clone().or(config.name.clone()),
         version: Version::parse(&config.version)
             .context("invalid pack version (expected semver)")?,
         kind: map_kind(&config.kind)?,
@@ -410,7 +444,11 @@ fn build_components(
 
     for cfg in configs {
         if !seen.insert(cfg.id.clone()) {
-            anyhow::bail!("duplicate component id {}", cfg.id);
+            warn!(
+                id = %cfg.id,
+                "duplicate component id in pack.yaml; keeping first entry and skipping duplicate"
+            );
+            continue;
         }
 
         info!(id = %cfg.id, wasm = %cfg.wasm.display(), "adding component");
@@ -446,7 +484,7 @@ fn resolve_component_artifacts(
             );
         }
         from_disk
-    } else if allow_pack_schema {
+    } else if allow_pack_schema || is_legacy_pack_schema_component(&cfg.id) {
         warn!(
             id = %cfg.id,
             "migration-only path enabled: deriving component manifest/schema from pack.yaml (--allow-pack-schema)"
@@ -472,7 +510,7 @@ fn resolve_component_artifacts(
         .context("encode component manifest to canonical cbor")?;
     let mut sha = Sha256::new();
     sha.update(&manifest_bytes);
-    let manifest_hash_sha256 = format!("sha256:{:x}", sha.finalize());
+    let manifest_hash_sha256 = format!("sha256:{}", hex::encode(sha.finalize()));
     let manifest_path = format!("components/{}.manifest.cbor", cfg.id);
 
     let binary = ComponentBinary {
@@ -484,6 +522,13 @@ fn resolve_component_artifacts(
     };
 
     Ok((manifest, binary))
+}
+
+fn is_legacy_pack_schema_component(component_id: &str) -> bool {
+    matches!(
+        component_id,
+        "ai.greentic.component-provision" | "ai.greentic.component-questions"
+    )
 }
 
 fn manifest_from_config(cfg: &ComponentConfig) -> Result<ComponentManifest> {
@@ -595,10 +640,10 @@ fn load_component_manifest_from_disk(
     };
     let id_manifest_suffix = format!("{component_id}.manifest");
 
-    // Search near the wasm artifact first, then walk up parent directories.
-    // This supports components built into nested target/*/release paths where
-    // component.manifest.json lives at the component root.
-    for dir in std::iter::successors(Some(manifest_dir.as_path()), |d| d.parent()) {
+    // Search near the wasm artifact and, for nested target builds, walk up only
+    // until the component root (parent of `target`). This avoids picking up
+    // unrelated manifests from shared ancestor directories.
+    for dir in manifest_search_dirs(&manifest_dir) {
         let candidates = [
             dir.join("component.manifest.cbor"),
             dir.join("component.manifest.json"),
@@ -617,6 +662,31 @@ fn load_component_manifest_from_disk(
     }
 
     Ok(None)
+}
+
+fn manifest_search_dirs(manifest_dir: &Path) -> Vec<PathBuf> {
+    let has_target_ancestor = std::iter::successors(Some(manifest_dir), |d| d.parent())
+        .any(|dir| dir.file_name().is_some_and(|name| name == "target"));
+    if !has_target_ancestor {
+        return vec![manifest_dir.to_path_buf()];
+    }
+
+    let mut dirs = Vec::new();
+    let mut current = Some(manifest_dir.to_path_buf());
+    let mut saw_target = false;
+
+    while let Some(dir) = current {
+        dirs.push(dir.clone());
+        if dir.file_name().is_some_and(|name| name == "target") {
+            saw_target = true;
+        } else if saw_target {
+            // Parent of `target`: likely component root.
+            break;
+        }
+        current = dir.parent().map(Path::to_path_buf);
+    }
+
+    dirs
 }
 
 fn operation_from_config(cfg: &ComponentOperationConfig) -> Result<ComponentOperation> {
@@ -877,7 +947,15 @@ fn collect_assets(configs: &[AssetConfig], pack_root: &Path) -> Result<Vec<Asset
 }
 
 fn is_reserved_extra_file(logical_path: &str) -> bool {
-    matches!(logical_path, "sbom.cbor" | "sbom.json")
+    if matches!(logical_path, "sbom.cbor" | "sbom.json") {
+        return true;
+    }
+    if let Some(name) = logical_path.rsplit('/').next()
+        && name.ends_with(".gtpack")
+    {
+        return true;
+    }
+    false
 }
 
 fn collect_extra_dir_files(pack_root: &Path) -> Result<Vec<ExtraFile>> {
@@ -923,7 +1001,10 @@ fn collect_extra_dir_files(pack_root: &Path) -> Result<Vec<ExtraFile>> {
         let root = entry.path();
         for sub in WalkDir::new(&root)
             .into_iter()
-            .filter_entry(|walk| !walk.file_name().to_string_lossy().starts_with('.'))
+            .filter_entry(|walk| {
+                let name = walk.file_name().to_string_lossy();
+                !name.starts_with('.')
+            })
             .filter_map(Result::ok)
         {
             if !sub.file_type().is_file() {
@@ -1481,19 +1562,24 @@ async fn collect_lock_component_artifacts(
 
         let resolved = if is_tag {
             let item = if runtime.network_policy() == NetworkPolicy::Offline {
-                dist.ensure_cached(&comp.resolved_digest)
-                    .await
-                    .map_err(|err| {
-                        anyhow!(
-                            "tag ref {} must be bundled but cache is missing ({})",
-                            reference,
-                            err
-                        )
-                    })?
+                dist.open_cached(&comp.resolved_digest).map_err(|err| {
+                    anyhow!(
+                        "tag ref {} must be bundled but cache is missing ({})",
+                        reference,
+                        err
+                    )
+                })?
             } else {
-                dist.resolve_ref(reference)
+                let source = dist
+                    .parse_source(reference)
+                    .map_err(|err| anyhow!("failed to parse {}: {}", reference, err))?;
+                let descriptor = dist
+                    .resolve(source, greentic_distributor_client::ResolvePolicy)
                     .await
-                    .map_err(|err| anyhow!("failed to resolve {}: {}", reference, err))?
+                    .map_err(|err| anyhow!("failed to resolve {}: {}", reference, err))?;
+                dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                    .await
+                    .map_err(|err| anyhow!("failed to fetch {}: {}", reference, err))?
             };
             let cache_path = item.cache_path.clone().ok_or_else(|| {
                 anyhow!("tag ref {} resolved but cache path is missing", reference)
@@ -1501,8 +1587,7 @@ async fn collect_lock_component_artifacts(
             ResolvedLockItem { cache_path }
         } else {
             let mut resolved = dist
-                .ensure_cached(&comp.resolved_digest)
-                .await
+                .open_cached(&comp.resolved_digest)
                 .ok()
                 .and_then(|item| item.cache_path.clone().map(|path| (item, path)));
             if resolved.is_none()
@@ -1510,10 +1595,17 @@ async fn collect_lock_component_artifacts(
                 && !allow_missing
                 && reference.starts_with("oci://")
             {
-                let item = dist
-                    .resolve_ref(reference)
+                let source = dist
+                    .parse_source(reference)
+                    .map_err(|err| anyhow!("failed to parse {}: {}", reference, err))?;
+                let descriptor = dist
+                    .resolve(source, greentic_distributor_client::ResolvePolicy)
                     .await
                     .map_err(|err| anyhow!("failed to resolve {}: {}", reference, err))?;
+                let item = dist
+                    .fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                    .await
+                    .map_err(|err| anyhow!("failed to fetch {}: {}", reference, err))?;
                 if let Some(path) = item.cache_path.clone() {
                     resolved = Some((item, path));
                 }
@@ -1545,7 +1637,7 @@ async fn collect_lock_component_artifacts(
         let cache_path = resolved.cache_path;
         let bytes = fs::read(&cache_path)
             .with_context(|| format!("failed to read cached component {}", cache_path.display()))?;
-        let wasm_sha256 = format!("{:x}", Sha256::digest(&bytes));
+        let wasm_sha256 = hex::encode(Sha256::digest(&bytes));
         let logical_path = if is_tag {
             format!("blobs/sha256/{}.wasm", wasm_sha256)
         } else {
@@ -1686,7 +1778,7 @@ fn materialize_flow_components(
                 );
             }
             eprintln!(
-                "warning: component {} is not bundled; pack will emit PACK_COMPONENT_NOT_EXPLICIT",
+                "warning: component {} resolved via lock but not bundled locally",
                 lock_entry.component_id
             );
             continue;
@@ -1696,7 +1788,16 @@ fn materialize_flow_components(
             load_component_manifest_for_lock(pack_dir, &lock_entry.component_id, bundled_source)?;
 
         let Some(manifest) = manifest else {
-            handle_missing_component_manifest(&component_id, None, require_component_manifests)?;
+            if require_component_manifests {
+                anyhow::bail!(
+                    "component manifest metadata missing for {} (supply component.manifest.json or use --require-component-manifests=false)",
+                    component_id
+                );
+            }
+            eprintln!(
+                "warning: component manifest metadata missing for {}; component will not appear in manifest.components",
+                component_id
+            );
             continue;
         };
 
@@ -1743,12 +1844,16 @@ fn collect_flow_component_ids(flows: &[PackFlowEntry]) -> BTreeSet<String> {
                 continue;
             }
             let id = node.component.id.as_str();
-            if !id.is_empty() {
+            if !id.is_empty() && !is_builtin_component_id(id) {
                 ids.insert(id.to_string());
             }
         }
     }
     ids
+}
+
+fn is_builtin_component_id(id: &str) -> bool {
+    matches!(id, "session.wait" | "flow.call" | "provider.invoke") || id.starts_with("emit.")
 }
 
 fn load_component_manifest_for_lock(
@@ -1817,7 +1922,7 @@ fn component_manifest_file_from_manifest(
         .context("encode component manifest to canonical cbor")?;
     let mut sha = Sha256::new();
     sha.update(&manifest_bytes);
-    let manifest_hash_sha256 = format!("sha256:{:x}", sha.finalize());
+    let manifest_hash_sha256 = format!("sha256:{}", hex::encode(sha.finalize()));
     let manifest_path = format!("components/{}.manifest.cbor", manifest.id.as_str());
 
     Ok(ComponentManifestFile {
@@ -2225,6 +2330,25 @@ mod tests {
     }
 
     #[test]
+    fn load_component_manifest_from_disk_does_not_pick_unrelated_parent_manifest() {
+        let temp = tempdir().expect("temp dir");
+        let parent_manifest = temp.path().join("component.manifest.cbor");
+        write_sample_manifest(&parent_manifest, "wrong.parent.component");
+
+        let isolated = temp.path().join("isolated");
+        fs::create_dir_all(&isolated).expect("create isolated dir");
+        let wasm = isolated.join("component.wasm");
+        fs::write(&wasm, b"wasm").expect("write wasm");
+
+        let manifest =
+            load_component_manifest_from_disk(&wasm, "expected.component").expect("load manifest");
+        assert!(
+            manifest.is_none(),
+            "must not read unrelated parent manifest"
+        );
+    }
+
+    #[test]
     fn resolve_component_artifacts_requires_manifest_unless_migration_flag_set() {
         let temp = tempdir().expect("temp dir");
         let wasm = temp.path().join("component.wasm");
@@ -2395,7 +2519,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2453,7 +2577,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2513,7 +2637,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2569,7 +2693,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2626,7 +2750,7 @@ mod tests {
                 manifest_hash_sha256: {
                     let mut sha = Sha256::new();
                     sha.update(serde_cbor::to_vec(&component).expect("component cbor"));
-                    format!("sha256:{:x}", sha.finalize())
+                    format!("sha256:{}", hex::encode(sha.finalize()))
                 },
             }],
             lock_components: Vec::new(),
@@ -2835,12 +2959,28 @@ nodes:
 
             let cache_dir = temp.path().join("cache");
             let cached_bytes = b"cached-component";
-            let digest = format!("sha256:{:x}", Sha256::digest(cached_bytes));
-            let cache_path = cache_dir
-                .join(digest.trim_start_matches("sha256:"))
-                .join("component.wasm");
-            fs::create_dir_all(cache_path.parent().expect("cache parent")).expect("cache dir");
-            fs::write(&cache_path, cached_bytes).expect("write cached");
+            let seed_path = temp.path().join("cached-component.wasm");
+            fs::write(&seed_path, cached_bytes).expect("write seed");
+            let dist = DistClient::new(DistOptions {
+                cache_dir: cache_dir.clone(),
+                allow_tags: true,
+                offline: false,
+                allow_insecure_local_http: false,
+                ..DistOptions::default()
+            });
+            let source = dist
+                .parse_source(&format!("file://{}", seed_path.display()))
+                .expect("parse source");
+            let descriptor = dist
+                .resolve(source, greentic_distributor_client::ResolvePolicy)
+                .await
+                .expect("resolve source");
+            let cached = dist
+                .fetch(&descriptor, greentic_distributor_client::CachePolicy)
+                .await
+                .expect("seed cache");
+            let digest = cached.descriptor.digest.clone();
+            let cache_path = cached.cache_path.expect("cache path");
             write_describe_sidecar(&cache_path, "dummy.component");
 
             let summary = serde_json::json!({
@@ -2917,6 +3057,7 @@ flows:
                 runtime,
                 skip_update: false,
                 allow_pack_schema: true,
+                validate_extension_refs: true,
             };
 
             run(&opts).await.expect("build");
@@ -2963,8 +3104,7 @@ nodes:
             )
             .expect("write flow");
 
-            let digest =
-                "sha256:0904bee6ecd737506265e3f38f3e4fe6b185c20fd1b0e7c06ce03cdeedc00340";
+            let digest = "sha256:0904bee6ecd737506265e3f38f3e4fe6b185c20fd1b0e7c06ce03cdeedc00340";
             let summary = serde_json::json!({
                 "schema_version": 1,
                 "flow": "main.ygtc",
@@ -2973,7 +3113,7 @@ nodes:
                         "component_id": "dummy.component",
                         "source": {
                             "kind": "oci",
-                            "ref": format!("oci://ghcr.io/greentic-ai/components/templates@{digest}")
+                            "ref": format!("oci://ghcr.io/greenticai/components/templates@{digest}")
                         },
                         "digest": digest
                     }
@@ -3040,18 +3180,16 @@ flows:
                 runtime,
                 skip_update: false,
                 allow_pack_schema: true,
+                validate_extension_refs: true,
             };
 
             run(&opts).await.expect("build");
 
             let gtpack_path = opts.gtpack_out.expect("gtpack path");
-            let mut archive =
-                ZipArchive::new(File::open(&gtpack_path).expect("open gtpack"))
-                    .expect("read gtpack");
+            let mut archive = ZipArchive::new(File::open(&gtpack_path).expect("open gtpack"))
+                .expect("read gtpack");
             assert!(
-                archive
-                    .by_name("components/dummy.component.wasm")
-                    .is_ok(),
+                archive.by_name("components/dummy.component.wasm").is_ok(),
                 "missing lock component artifact in gtpack"
             );
         });
@@ -3131,6 +3269,7 @@ flows:
             kind: "application".to_string(),
             publisher: "demo".to_string(),
             name: None,
+            display_name: None,
             bootstrap: Some(bootstrap),
             components: Vec::new(),
             dependencies: Vec::new(),

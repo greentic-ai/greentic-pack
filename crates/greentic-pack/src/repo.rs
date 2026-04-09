@@ -760,3 +760,172 @@ fn expected_capability_key(kind: &RepoPackKind) -> &'static str {
         RepoPackKind::RecommendationProvider => "reco",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding() -> RepoBinding {
+        RepoBinding {
+            package: "greentic:scanner".to_string(),
+            world: "scan".to_string(),
+            version: "0.1.0".to_string(),
+            component: "scanner.component".to_string(),
+            entrypoint: "scan".to_string(),
+            profile: Some("default".to_string()),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_matching_kind_capabilities_and_bindings() {
+        let section = RepoPackSection {
+            kind: RepoPackKind::Scanner,
+            capabilities: RepoCapabilities {
+                scan: vec!["repos".to_string()],
+                ..Default::default()
+            },
+            bindings: RepoBindings {
+                scan: vec![binding()],
+                ..Default::default()
+            },
+        };
+
+        section
+            .validate()
+            .expect("matching scanner config should pass");
+    }
+
+    #[test]
+    fn validate_rejects_unexpected_capability_key_for_kind() {
+        let section = RepoPackSection {
+            kind: RepoPackKind::Scanner,
+            capabilities: RepoCapabilities {
+                source: vec!["git".to_string()],
+                scan: vec!["repos".to_string()],
+                ..Default::default()
+            },
+            bindings: RepoBindings {
+                scan: vec![binding()],
+                ..Default::default()
+            },
+        };
+
+        let err = section
+            .validate()
+            .expect_err("source capabilities should be invalid for scanner");
+
+        assert!(err.to_string().contains("may not include `source`"));
+    }
+
+    #[test]
+    fn binding_validation_rejects_blank_optional_profile() {
+        let mut binding = binding();
+        binding.profile = Some(" ".to_string());
+
+        let err = binding
+            .validate("scan")
+            .expect_err("blank profile should fail");
+
+        assert!(err.to_string().contains("profile must not be empty"));
+    }
+
+    #[test]
+    fn display_uses_kebab_case_names() {
+        assert_eq!(RepoPackKind::PolicyEngine.to_string(), "policy-engine");
+        assert_eq!(
+            RepoPackKind::RecommendationProvider.to_string(),
+            "recommendation-provider"
+        );
+    }
+
+    fn all_kinds() -> Vec<(RepoPackKind, &'static str)> {
+        vec![
+            (RepoPackKind::SourceProvider, "source"),
+            (RepoPackKind::Scanner, "scan"),
+            (RepoPackKind::Signing, "signing"),
+            (RepoPackKind::Attestation, "attestation"),
+            (RepoPackKind::PolicyEngine, "policy"),
+            (RepoPackKind::OciProvider, "oci"),
+            (RepoPackKind::BillingProvider, "billing"),
+            (RepoPackKind::SearchProvider, "search"),
+            (RepoPackKind::RecommendationProvider, "reco"),
+        ]
+    }
+
+    fn capabilities_for(key: &str) -> RepoCapabilities {
+        let mut caps = RepoCapabilities::default();
+        match key {
+            "source" => caps.source.push("git".to_string()),
+            "scan" => caps.scan.push("repos".to_string()),
+            "signing" => caps.signing.push("sign".to_string()),
+            "attestation" => caps.attestation.push("attest".to_string()),
+            "policy" => caps.policy.push("enforce".to_string()),
+            "oci" => caps.oci.push("push".to_string()),
+            "billing" => caps.billing.push("invoice".to_string()),
+            "search" => caps.search.push("query".to_string()),
+            "reco" => caps.reco.push("recommend".to_string()),
+            other => panic!("unexpected capability key {other}"),
+        }
+        caps
+    }
+
+    fn bindings_for(key: &str) -> RepoBindings {
+        let mut bindings = RepoBindings::default();
+        match key {
+            "source" => bindings.source.push(binding()),
+            "scan" => bindings.scan.push(binding()),
+            "signing" => bindings.signing.push(binding()),
+            "attestation" => bindings.attestation.push(binding()),
+            "policy" => bindings.policy.push(binding()),
+            "oci" => bindings.oci.push(binding()),
+            "billing" => bindings.billing.push(binding()),
+            "search" => bindings.search.push(binding()),
+            "reco" => bindings.reco.push(binding()),
+            other => panic!("unexpected binding key {other}"),
+        }
+        bindings
+    }
+
+    #[test]
+    fn validate_accepts_all_supported_repo_kinds() {
+        for (kind, key) in all_kinds() {
+            RepoPackSection {
+                kind,
+                capabilities: capabilities_for(key),
+                bindings: bindings_for(key),
+            }
+            .validate()
+            .unwrap_or_else(|err| panic!("kind {key} should validate: {err}"));
+        }
+    }
+
+    #[test]
+    fn validate_requires_capabilities_for_selected_kind() {
+        for (kind, key) in all_kinds() {
+            let err = RepoPackSection {
+                kind,
+                capabilities: RepoCapabilities::default(),
+                bindings: bindings_for(key),
+            }
+            .validate()
+            .expect_err("missing capabilities should fail");
+
+            assert!(err.to_string().contains("must include at least one entry"));
+        }
+    }
+
+    #[test]
+    fn validate_requires_bindings_for_selected_kind() {
+        for (kind, key) in all_kinds() {
+            let err = RepoPackSection {
+                kind,
+                capabilities: capabilities_for(key),
+                bindings: RepoBindings::default(),
+            }
+            .validate()
+            .expect_err("missing bindings should fail");
+
+            assert!(err.to_string().contains("must include at least one entry"));
+        }
+    }
+}

@@ -90,9 +90,11 @@ pub fn validate_pack_lock(lock: &PackLockV1) -> Result<()> {
                 component.component_id
             );
         }
-        let mut sorted = component.operations.clone();
-        sorted.sort_by(|a, b| a.operation_id.cmp(&b.operation_id));
-        if component.operations != sorted {
+        if component
+            .operations
+            .windows(2)
+            .any(|pair| pair[0].operation_id > pair[1].operation_id)
+        {
             anyhow::bail!(
                 "pack.lock component {} operations must be sorted by operation_id",
                 component.component_id
@@ -133,7 +135,7 @@ pub fn validate_pack_lock(lock: &PackLockV1) -> Result<()> {
 }
 
 fn is_hex_64(value: &str) -> bool {
-    value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
+    value.len() == 64 && value.as_bytes().iter().all(u8::is_ascii_hexdigit)
 }
 
 /// Read a pack.lock.cbor file from disk.

@@ -89,7 +89,10 @@ fn component_exec_operation_reaches_manifest() {
     let wasm_path = pack_dir.join("components/hello-world.wasm");
     write_stub_wasm(&wasm_path);
     write_describe_sidecar(&wasm_path, COMPONENT_ID, "0.1.0");
-    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(&wasm_path).unwrap()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(fs::read(&wasm_path).unwrap()))
+    );
 
     let pack_yaml = format!(
         r#"pack_id: dev.local.component-exec

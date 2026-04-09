@@ -8,8 +8,11 @@ use greentic_types::pack::extensions::component_manifests::{
 use greentic_types::pack::extensions::component_sources::{
     ComponentSourcesV1, EXT_COMPONENT_SOURCES_V1,
 };
-use greentic_types::pack_manifest::{ExtensionInline, PackManifest};
+use greentic_types::pack_manifest::{ExtensionInline, PackDependency, PackManifest};
 const EXT_BUILD_MODE_ID: &str = "greentic.pack-mode.v1";
+const CAP_OAUTH_BROKER_V1: &str = "greentic.cap.oauth.broker.v1";
+const CAP_OAUTH_CARD_V1: &str = "greentic.cap.oauth.card.v1";
+const CAP_OAUTH_TOKEN_VALIDATION_V1: &str = "greentic.cap.oauth.token_validation.v1";
 use greentic_types::provider::ProviderDecl;
 use greentic_types::validate::{
     Diagnostic, PackValidator, Severity, ValidationReport, validate_pack_manifest_core,
@@ -17,6 +20,7 @@ use greentic_types::validate::{
 use serde_json::Value;
 
 use crate::PackLoad;
+use crate::static_routes::{parse_static_routes_extension, validate_static_routes_payload};
 
 #[derive(Clone, Debug, Default)]
 pub struct ValidateCtx {
@@ -310,6 +314,70 @@ impl PackValidator for SecretRequirementsValidator {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct StaticRoutesValidator {
+    ctx: ValidateCtx,
+}
+
+impl StaticRoutesValidator {
+    pub fn new(ctx: ValidateCtx) -> Self {
+        Self { ctx }
+    }
+}
+
+impl PackValidator for StaticRoutesValidator {
+    fn id(&self) -> &'static str {
+        "pack.static-routes-invalid"
+    }
+
+    fn applies(&self, manifest: &PackManifest) -> bool {
+        parse_static_routes_extension(&manifest.extensions)
+            .map(|payload| payload.is_some())
+            .unwrap_or(false)
+    }
+
+    fn validate(&self, manifest: &PackManifest) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        let payload = match parse_static_routes_extension(&manifest.extensions) {
+            Ok(Some(payload)) => payload,
+            Ok(None) => return diagnostics,
+            Err(err) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    code: "PACK_STATIC_ROUTES_INVALID".to_string(),
+                    message: err.to_string(),
+                    path: Some("extensions.greentic.static-routes.v1".to_string()),
+                    hint: Some("Fix the static routes extension payload and rebuild.".to_string()),
+                    data: Value::Null,
+                });
+                return diagnostics;
+            }
+        };
+
+        if let Err(err) = validate_static_routes_payload(&payload, |logical| {
+            if self.ctx.pack_paths.contains(logical) {
+                return true;
+            }
+            let prefix = format!("{logical}/");
+            self.ctx
+                .pack_paths
+                .iter()
+                .any(|path| path.starts_with(&prefix))
+        }) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                code: "PACK_STATIC_ROUTES_INVALID".to_string(),
+                message: err.to_string(),
+                path: Some("extensions.greentic.static-routes.v1".to_string()),
+                hint: Some("Fix the static routes extension metadata and rebuild.".to_string()),
+                data: Value::Null,
+            });
+        }
+
+        diagnostics
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ComponentReferencesExistValidator;
 
@@ -381,6 +449,116 @@ impl PackValidator for ComponentReferencesExistValidator {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct OauthCapabilityRequirementsValidator;
+
+impl PackValidator for OauthCapabilityRequirementsValidator {
+    fn id(&self) -> &'static str {
+        "pack.oauth-capability-requirements"
+    }
+
+    fn applies(&self, _manifest: &PackManifest) -> bool {
+        true
+    }
+
+    fn validate(&self, manifest: &PackManifest) -> Vec<Diagnostic> {
+        let required_capabilities = dependency_required_capabilities(&manifest.dependencies);
+        let mut diagnostics = Vec::new();
+        for flow in &manifest.flows {
+            diagnostics.extend(oauth_capability_requirement_diagnostics_for_flow(
+                flow.id.as_str(),
+                &flow.flow,
+                &required_capabilities,
+            ));
+        }
+        diagnostics
+    }
+}
+
+pub fn oauth_capability_requirement_diagnostics_for_flow(
+    flow_id: &str,
+    flow: &greentic_types::Flow,
+    required_capabilities: &BTreeSet<String>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    for (node_id, node) in &flow.nodes {
+        let operation = node.component.operation.as_deref().unwrap_or_default();
+        let uses_card = operation.starts_with("oauth.card.")
+            || value_contains_substring(&node.input.mapping, "oauth.card.")
+            || value_contains_substring(&node.input.mapping, CAP_OAUTH_CARD_V1);
+        if uses_card && !required_capabilities.contains(CAP_OAUTH_CARD_V1) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                code: "PACK_OAUTH_CARD_CAPABILITY_REQUIRED".to_string(),
+                message: format!(
+                    "flow node uses OAuth card features but dependencies do not require `{CAP_OAUTH_CARD_V1}`"
+                ),
+                path: Some(oauth_usage_path(
+                    flow_id,
+                    node_id.as_str(),
+                    operation.starts_with("oauth.card."),
+                )),
+                hint: Some(
+                    "Add `greentic.cap.oauth.card.v1` to dependencies[].required_capabilities."
+                        .to_string(),
+                ),
+                data: Value::Null,
+            });
+        }
+
+        let calls_get_access_token = operation == "oauth.get_access_token"
+            || value_contains_substring(&node.input.mapping, "oauth.get_access_token");
+        if calls_get_access_token && !required_capabilities.contains(CAP_OAUTH_BROKER_V1) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                code: "PACK_OAUTH_BROKER_CAPABILITY_REQUIRED".to_string(),
+                message: format!(
+                    "flow node calls oauth.get_access_token but dependencies do not require `{CAP_OAUTH_BROKER_V1}`"
+                ),
+                path: Some(oauth_usage_path(
+                    flow_id,
+                    node_id.as_str(),
+                    operation == "oauth.get_access_token",
+                )),
+                hint: Some(
+                    "Add `greentic.cap.oauth.broker.v1` to dependencies[].required_capabilities."
+                        .to_string(),
+                ),
+                data: Value::Null,
+            });
+        }
+
+        let uses_token_validation = operation.starts_with("oauth.validate")
+            || operation.contains("token_validation")
+            || value_contains_substring(&node.input.mapping, "oauth.validate")
+            || value_contains_substring(&node.input.mapping, "token_validation")
+            || value_contains_substring(&node.input.mapping, CAP_OAUTH_TOKEN_VALIDATION_V1);
+        if uses_token_validation && !required_capabilities.contains(CAP_OAUTH_TOKEN_VALIDATION_V1) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                code: "PACK_OAUTH_TOKEN_VALIDATION_CAPABILITY_REQUIRED".to_string(),
+                message: format!(
+                    "flow node uses OAuth token validation but dependencies do not require `{CAP_OAUTH_TOKEN_VALIDATION_V1}`"
+                ),
+                path: Some(oauth_usage_path(
+                    flow_id,
+                    node_id.as_str(),
+                    operation.starts_with("oauth.validate")
+                        || operation.contains("token_validation"),
+                )),
+                hint: Some(
+                    "Add `greentic.cap.oauth.token_validation.v1` to dependencies[].required_capabilities."
+                        .to_string(),
+                ),
+                data: Value::Null,
+            });
+        }
+    }
+
+    diagnostics
+}
+
 fn providers_from_manifest(manifest: &PackManifest) -> Vec<ProviderDecl> {
     let mut providers = manifest
         .provider_extension_inline()
@@ -431,6 +609,40 @@ fn is_production_pack(load: &PackLoad) -> bool {
     !load.files.keys().any(|path| path.ends_with(".ygtc"))
 }
 
+fn dependency_required_capabilities(dependencies: &[PackDependency]) -> BTreeSet<String> {
+    let mut required = BTreeSet::new();
+    for dep in dependencies {
+        for capability in &dep.required_capabilities {
+            let trimmed = capability.trim();
+            if !trimmed.is_empty() {
+                required.insert(trimmed.to_string());
+            }
+        }
+    }
+    required
+}
+
+fn value_contains_substring(value: &Value, needle: &str) -> bool {
+    match value {
+        Value::String(text) => text.contains(needle),
+        Value::Array(items) => items
+            .iter()
+            .any(|item| value_contains_substring(item, needle)),
+        Value::Object(map) => map
+            .values()
+            .any(|item| value_contains_substring(item, needle)),
+        _ => false,
+    }
+}
+
+fn oauth_usage_path(flow_id: &str, node_id: &str, operation_match: bool) -> String {
+    if operation_match {
+        format!("flows.{flow_id}.nodes.{node_id}.component.operation")
+    } else {
+        format!("flows.{flow_id}.nodes.{node_id}.input.mapping")
+    }
+}
+
 fn missing_file_diagnostic(code: &str, message: &str, path: Option<String>) -> Diagnostic {
     Diagnostic {
         severity: Severity::Error,
@@ -439,5 +651,123 @@ fn missing_file_diagnostic(code: &str, message: &str, path: Option<String>) -> D
         path,
         hint: None,
         data: Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CAP_OAUTH_BROKER_V1, CAP_OAUTH_CARD_V1, oauth_capability_requirement_diagnostics_for_flow,
+    };
+    use std::collections::BTreeSet;
+
+    use greentic_flow::compile_ygtc_str;
+
+    #[test]
+    fn oauth_card_usage_requires_card_capability() {
+        let flow = compile_ygtc_str(
+            r#"
+id: auth
+type: messaging
+start: step
+nodes:
+  step:
+    oauth.card.render:
+      title: "Sign in"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("compile flow");
+
+        let required = BTreeSet::new();
+        let diagnostics =
+            oauth_capability_requirement_diagnostics_for_flow("auth", &flow, &required);
+        assert!(diagnostics.iter().any(|diag| {
+            diag.code == "PACK_OAUTH_CARD_CAPABILITY_REQUIRED"
+                && diag.path.as_deref() == Some("flows.auth.nodes.step.component.operation")
+        }));
+    }
+
+    #[test]
+    fn oauth_get_access_token_requires_broker_capability() {
+        let flow = compile_ygtc_str(
+            r#"
+id: auth
+type: messaging
+start: step
+nodes:
+  step:
+    oauth.get_access_token:
+      tenant: "demo"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("compile flow");
+
+        let required = BTreeSet::new();
+        let diagnostics =
+            oauth_capability_requirement_diagnostics_for_flow("auth", &flow, &required);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.code == "PACK_OAUTH_BROKER_CAPABILITY_REQUIRED")
+        );
+    }
+
+    #[test]
+    fn oauth_usage_passes_when_dependency_capabilities_are_declared() {
+        let flow = compile_ygtc_str(
+            r#"
+id: auth
+type: messaging
+start: step
+nodes:
+  step:
+    oauth.get_access_token:
+      tenant: "demo"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("compile flow");
+
+        let required = BTreeSet::from([
+            CAP_OAUTH_BROKER_V1.to_string(),
+            CAP_OAUTH_CARD_V1.to_string(),
+        ]);
+        let diagnostics =
+            oauth_capability_requirement_diagnostics_for_flow("auth", &flow, &required);
+        assert!(
+            diagnostics.is_empty(),
+            "expected no oauth requirement diagnostics, got: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn oauth_key_name_does_not_trigger_capability_requirements() {
+        let flow = compile_ygtc_str(
+            r#"
+id: auth
+type: messaging
+start: step
+nodes:
+  step:
+    echo:
+      oauth.get_access_token: "not an operation"
+    routing:
+      - out: true
+"#,
+        )
+        .expect("compile flow");
+
+        let required = BTreeSet::new();
+        let diagnostics =
+            oauth_capability_requirement_diagnostics_for_flow("auth", &flow, &required);
+        assert!(
+            diagnostics.is_empty(),
+            "expected key-only mapping references to be ignored, got: {diagnostics:?}"
+        );
     }
 }

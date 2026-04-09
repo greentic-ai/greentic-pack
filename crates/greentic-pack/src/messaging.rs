@@ -92,3 +92,62 @@ impl MessagingAdapterCapabilities {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_adapter() -> MessagingAdapter {
+        MessagingAdapter {
+            name: "inbox".to_string(),
+            kind: MessagingAdapterKind::Ingress,
+            component: "component.messaging".to_string(),
+            default_flow: Some("flow.main".to_string()),
+            custom_flow: None,
+            capabilities: Some(MessagingAdapterCapabilities {
+                direction: vec!["ingress".to_string()],
+                features: vec!["retry".to_string()],
+            }),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_unique_adapter() {
+        MessagingSection {
+            adapters: Some(vec![valid_adapter()]),
+        }
+        .validate()
+        .expect("valid adapter should pass");
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_adapter_names() {
+        let adapter = valid_adapter();
+        let err = MessagingSection {
+            adapters: Some(vec![adapter.clone(), adapter]),
+        }
+        .validate()
+        .expect_err("duplicate names should fail");
+
+        assert!(err.to_string().contains("duplicate messaging adapter name"));
+    }
+
+    #[test]
+    fn validate_rejects_blank_feature_entry() {
+        let mut adapter = valid_adapter();
+        adapter
+            .capabilities
+            .as_mut()
+            .expect("caps")
+            .features
+            .push(" ".to_string());
+
+        let err = MessagingSection {
+            adapters: Some(vec![adapter]),
+        }
+        .validate()
+        .expect_err("blank feature should fail");
+
+        assert!(err.to_string().contains("capabilities.features"));
+    }
+}

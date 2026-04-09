@@ -25,7 +25,7 @@ const PACK_VALIDATOR_WORLDS: [&str; 2] = [
     "greentic:pack-validate@0.1.0/pack-validator",
     "greentic:pack-validate/pack-validator@0.1.0",
 ];
-pub const DEFAULT_VALIDATOR_ALLOW: &str = "oci://ghcr.io/greentic-ai/validators/";
+pub const DEFAULT_VALIDATOR_ALLOW: &str = "oci://ghcr.io/greenticai/validators/";
 const DEFAULT_TIMEOUT_SECS: u64 = 2;
 const DEFAULT_MAX_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 
@@ -272,7 +272,7 @@ fn build_engine() -> Result<Engine> {
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.epoch_interruption(true);
-    Engine::new(&config)
+    Ok(Engine::new(&config)?)
 }
 
 fn run_component_validator(
@@ -282,14 +282,14 @@ fn run_component_validator(
     inputs: &PackInputs,
 ) -> Result<Vec<Diagnostic>> {
     let component = Component::from_binary(engine, &component.wasm)
-        .context("failed to load validator component")?;
+        .map_err(|err| anyhow!("failed to load validator component: {err}"))?;
 
     let mut store = Store::new(engine, ValidatorCtx::new());
     store.limiter(|ctx| &mut ctx.limits);
     store.set_epoch_deadline(1);
 
     let validator = PackValidator::instantiate(&mut store, &component, linker)
-        .context("failed to instantiate validator component")?;
+        .map_err(|err| anyhow!("failed to instantiate validator component: {err}"))?;
     let guest = validator.greentic_pack_validate_validator();
 
     let engine = engine.clone();
@@ -301,14 +301,14 @@ fn run_component_validator(
 
     let applies = guest
         .call_applies(&mut store, inputs)
-        .context("validator applies call failed")?;
+        .map_err(|err| anyhow!("validator applies call failed: {err}"))?;
     if !applies {
         return Ok(Vec::new());
     }
 
     let diags = guest
         .call_validate(&mut store, inputs)
-        .context("validator validate call failed")?;
+        .map_err(|err| anyhow!("validator validate call failed: {err}"))?;
     Ok(convert_diagnostics(diags))
 }
 
@@ -635,12 +635,25 @@ async fn load_validator_components_from_oci(
         ..DistOptions::default()
     });
 
-    let resolved = if runtime.network_policy() == NetworkPolicy::Offline {
-        dist.ensure_cached(&validator_ref.reference)
+    let offline = runtime.network_policy() == NetworkPolicy::Offline;
+    let source = dist
+        .parse_source(&validator_ref.reference)
+        .context("failed to parse validator ref")?;
+    let descriptor = if offline {
+        dist.resolve(source, greentic_distributor_client::ResolvePolicy)
             .await
             .context("validator ref not cached")?
     } else {
-        dist.resolve_ref(&validator_ref.reference)
+        dist.resolve(source, greentic_distributor_client::ResolvePolicy)
+            .await
+            .context("failed to fetch validator ref")?
+    };
+    let resolved = if offline {
+        dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
+            .await
+            .context("validator ref not cached")?
+    } else {
+        dist.fetch(&descriptor, greentic_distributor_client::CachePolicy)
             .await
             .context("failed to fetch validator ref")?
     };
@@ -809,5 +822,145 @@ mod tests {
         assert_eq!(components.len(), 1);
         assert_eq!(components[0].component_id, "messaging-validator");
         assert_eq!(components[0].wasm, wasm_bytes);
+    }
+
+    #[test]
+    fn convert_diagnostics_maps_known_and_unknown_severities() {
+        let diagnostics = convert_diagnostics(vec![
+            WasmDiagnostic {
+                severity: "info".to_string(),
+                code: "I1".to_string(),
+                message: "ok".to_string(),
+                path: None,
+                hint: None,
+            },
+            WasmDiagnostic {
+                severity: "mystery".to_string(),
+                code: "W1".to_string(),
+                message: "warn".to_string(),
+                path: Some("pack.yaml".to_string()),
+                hint: Some("check this".to_string()),
+            },
+        ]);
+
+        assert_eq!(diagnostics[0].severity, Severity::Info);
+        assert_eq!(diagnostics[1].severity, Severity::Warn);
+        assert_eq!(diagnostics[1].path.as_deref(), Some("pack.yaml"));
+    }
+
+    #[test]
+    fn validator_refs_from_manifest_collects_top_level_and_provider_refs() {
+        let manifest = PackManifest {
+            schema_version: "pack-v1".to_string(),
+            pack_id: PackId::new("dev.local.validator-refs").expect("pack id"),
+            name: None,
+            version: Version::parse("0.1.0").expect("version"),
+            kind: PackKind::Application,
+            publisher: "test".to_string(),
+            components: Vec::new(),
+            flows: Vec::new(),
+            dependencies: Vec::new(),
+            capabilities: Vec::new(),
+            secret_requirements: Vec::new(),
+            signatures: PackSignatures::default(),
+            bootstrap: None,
+            extensions: Some(BTreeMap::from([(
+                PROVIDER_EXTENSION_ID.to_string(),
+                greentic_types::pack_manifest::ExtensionRef {
+                    kind: PROVIDER_EXTENSION_ID.to_string(),
+                    version: "1.0.0".to_string(),
+                    digest: None,
+                    location: None,
+                    inline: Some(ExtensionInline::Other(serde_json::json!({
+                        "validator_ref": "oci://validators/top",
+                        "validator_digest": "sha256:top",
+                        "validator_refs": ["oci://validators/extra"],
+                        "providers": [{
+                            "validator_ref": "oci://validators/provider",
+                            "validator_digest": "sha256:provider"
+                        }]
+                    }))),
+                },
+            )])),
+        };
+
+        let refs = validator_refs_from_manifest(&manifest);
+        assert_eq!(refs.len(), 3);
+        assert!(
+            refs.iter().any(|r| r.reference == "oci://validators/top"
+                && r.digest.as_deref() == Some("sha256:top"))
+        );
+        assert!(refs.iter().any(|r| r.reference == "oci://validators/extra"));
+        assert!(
+            refs.iter()
+                .any(|r| r.reference == "oci://validators/provider"
+                    && r.digest.as_deref() == Some("sha256:provider"))
+        );
+    }
+
+    #[test]
+    fn validator_refs_from_annotations_collects_string_and_object_forms() {
+        let mut load = PackLoad {
+            manifest: greentic_pack::builder::PackManifest {
+                meta: greentic_pack::builder::PackMeta {
+                    pack_version: greentic_pack::builder::PACK_VERSION,
+                    pack_id: "dev.local.annotations".to_string(),
+                    version: Version::parse("0.1.0").expect("version"),
+                    name: "annotations".to_string(),
+                    kind: None,
+                    description: None,
+                    authors: Vec::new(),
+                    license: None,
+                    homepage: None,
+                    support: None,
+                    vendor: None,
+                    imports: Vec::new(),
+                    entry_flows: vec!["main".to_string()],
+                    created_at_utc: "2025-01-01T00:00:00Z".to_string(),
+                    events: None,
+                    repo: None,
+                    messaging: None,
+                    interfaces: Vec::new(),
+                    annotations: serde_json::Map::from_iter([(
+                        "greentic.validators".to_string(),
+                        serde_json::json!([
+                            "oci://validators/a",
+                            {"ref": "oci://validators/b", "digest": "sha256:b"}
+                        ]),
+                    )]),
+                    distribution: None,
+                    components: Vec::new(),
+                },
+                components: Vec::new(),
+                flows: Vec::new(),
+                distribution: None,
+                component_descriptors: Vec::new(),
+            },
+            report: greentic_pack::reader::VerifyReport::default(),
+            gpack_manifest: None,
+            files: std::collections::HashMap::new(),
+            sbom: Vec::new(),
+        };
+
+        let refs = validator_refs_from_annotations(&load);
+        assert_eq!(refs.len(), 2);
+        assert!(refs.iter().any(|r| r.reference == "oci://validators/a"));
+        assert!(refs.iter().any(
+            |r| r.reference == "oci://validators/b" && r.digest.as_deref() == Some("sha256:b")
+        ));
+
+        load.manifest.meta.annotations.insert(
+            "greentic.validators".to_string(),
+            serde_json::json!("oci://validators/single"),
+        );
+        let refs = validator_refs_from_annotations(&load);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].reference, "oci://validators/single");
+    }
+
+    #[test]
+    fn is_zip_archive_detects_magic_header() {
+        assert!(is_zip_archive(b"PK\x03\x04rest"));
+        assert!(!is_zip_archive(b"not-a-zip"));
     }
 }

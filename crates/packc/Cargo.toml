@@ -4,13 +4,26 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 authors = ["Greentic <engineering@greentic.ai"]
-repository = "https://github.com/greentic-ai/greentic-pack"
+repository = "https://github.com/greenticai/greentic-pack"
 description = "Greentic pack builder CLI"
 readme = "README.md"
 keywords = ["greentic", "cli", "pack", "wasm"]
 categories = ["development-tools"]
 documentation = "https://docs.greentic.ai/"
-homepage = "https://github.com/greentic-ai/greentic-pack"
+homepage = "https://github.com/greenticai/greentic-pack"
+include = [
+    "Cargo.toml",
+    "README.md",
+    "bin/**",
+    "src/**",
+    "tests/fixtures/wizard/extensions.json",
+    "assets/*.wasm",
+    "assets/*.json",
+    "i18n/**/*.json",
+]
+
+[package.metadata.cargo-semver-checks.lints]
+struct_marked_non_exhaustive = "allow"
 
 [features]
 default = []
@@ -26,6 +39,7 @@ ed25519-dalek = { workspace = true }
 greentic-flow = { workspace = true }
 greentic-types = { workspace = true }
 greentic-interfaces-host = { workspace = true }
+greentic-interfaces-wasmtime = { workspace = true }
 greentic-telemetry = { workspace = true }
 hex = { workspace = true }
 ignore = { workspace = true }
@@ -42,22 +56,29 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
-rand_core_06 = { workspace = true }
+getrandom = { workspace = true }
 greentic-pack = { workspace = true }
 greentic-config = { workspace = true }
 greentic-config-types = { workspace = true }
+greentic-qa-lib = { workspace = true }
+greentic-i18n-lib = { workspace = true }
 semver = { workspace = true }
 schemars = { workspace = true }
 zip = { workspace = true }
 regex = { workspace = true }
+reqwest = { workspace = true }
 tempfile = { workspace = true }
 wit-component = { workspace = true }
 greentic-distributor-client = { workspace = true, default-features = false, features = ["reqwest", "dist-client"] }
 pack_component_template = { workspace = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
+wasmtime-wasi-http = { workspace = true }
+wasmtime-wasi-tls = { workspace = true }
 indexmap = { workspace = true }
 ciborium = { workspace = true }
+sys-locale = { workspace = true }
+unic-langid = { workspace = true }
 
 [lib]
 name = "packc"

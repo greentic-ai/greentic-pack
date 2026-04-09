@@ -1,3 +1,4 @@
+use greentic_distributor_client::{DistClient, DistOptions};
 use greentic_types::cbor::canonical;
 use greentic_types::pack::extensions::component_sources::EXT_COMPONENT_SOURCES_V1;
 use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
@@ -6,7 +7,7 @@ use greentic_types::schemas::component::v0_6_0::{
     schema_hash,
 };
 use greentic_types::{PackManifest, decode_pack_manifest, encode_pack_manifest};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -54,7 +55,7 @@ nodes:
                 "component_id": "ai.greentic.component-templates",
                 "source": {
                     "kind": "oci",
-                    "ref": "oci://ghcr.io/greentic-ai/components/templates@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    "ref": "oci://ghcr.io/greenticai/components/templates@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                 },
                 "digest": digest
             }
@@ -132,11 +133,81 @@ fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
 }
 
 fn cache_component(cache_dir: &Path, digest: &str) {
-    let dir = cache_dir.join(digest.trim_start_matches("sha256:"));
-    fs::create_dir_all(&dir).expect("cache dir");
-    let wasm_path = dir.join("component.wasm");
-    fs::write(&wasm_path, b"cached-component").expect("write wasm");
-    write_describe_sidecar(&wasm_path, "ai.greentic.component-templates", "0.1.0");
+    let wasm_bytes = b"cached-component";
+    let seed_path = cache_dir.join("seed-component.wasm");
+    fs::create_dir_all(cache_dir).expect("cache root");
+    fs::write(&seed_path, wasm_bytes).expect("write seed wasm");
+
+    let dist = DistClient::new(DistOptions {
+        cache_dir: cache_dir.to_path_buf(),
+        allow_tags: true,
+        offline: false,
+        allow_insecure_local_http: false,
+        ..DistOptions::default()
+    });
+    let source = dist
+        .parse_source(&format!("file://{}", seed_path.display()))
+        .expect("parse source");
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let descriptor = rt
+        .block_on(dist.resolve(source, greentic_distributor_client::ResolvePolicy))
+        .expect("resolve source");
+    let cached = rt
+        .block_on(dist.fetch(&descriptor, greentic_distributor_client::CachePolicy))
+        .expect("seed cache");
+
+    let actual_digest = cached.descriptor.digest.clone();
+    let actual_wasm_path = cached.cache_path.expect("cache path");
+    write_describe_sidecar(
+        &actual_wasm_path,
+        "ai.greentic.component-templates",
+        "0.1.0",
+    );
+
+    if digest != actual_digest {
+        let alias_dir = cache_dir.join(digest.trim_start_matches("sha256:"));
+        fs::create_dir_all(&alias_dir).expect("alias cache dir");
+        let alias_wasm_path = alias_dir.join("component.wasm");
+        fs::write(&alias_wasm_path, wasm_bytes).expect("write alias wasm");
+        write_describe_sidecar(&alias_wasm_path, "ai.greentic.component-templates", "0.1.0");
+
+        let actual_entry_path = component_cache_entry_path(cache_dir, &actual_digest);
+        let actual_entry_bytes = fs::read(&actual_entry_path).expect("read actual cache entry");
+        let mut alias_entry: Value =
+            serde_json::from_slice(&actual_entry_bytes).expect("parse actual cache entry");
+        alias_entry["cache_key"] = Value::String(digest.to_string());
+        alias_entry["digest"] = Value::String(digest.to_string());
+        alias_entry["local_path"] = Value::String(alias_wasm_path.display().to_string());
+        alias_entry["raw_ref"] = Value::String(format!("file://{}", alias_wasm_path.display()));
+        alias_entry["canonical_ref"] =
+            Value::String(format!("file://{}@{}", alias_wasm_path.display(), digest));
+        alias_entry["source_snapshot"]["raw_ref"] =
+            Value::String(format!("file://{}", alias_wasm_path.display()));
+        alias_entry["source_snapshot"]["canonical_ref"] =
+            Value::String(format!("file://{}@{}", alias_wasm_path.display(), digest));
+
+        let alias_entry_path = component_cache_entry_path(cache_dir, digest);
+        if let Some(parent) = alias_entry_path.parent() {
+            fs::create_dir_all(parent).expect("alias entry parent");
+        }
+        fs::write(
+            alias_entry_path,
+            serde_json::to_vec_pretty(&alias_entry).expect("alias entry json"),
+        )
+        .expect("write alias cache entry");
+    }
+}
+
+fn component_cache_entry_path(cache_dir: &Path, digest: &str) -> PathBuf {
+    let normalized = digest.trim_start_matches("sha256:");
+    let prefix_len = normalized.len().min(2);
+    let (prefix, rest) = normalized.split_at(prefix_len);
+    cache_dir
+        .join("artifacts")
+        .join("sha256")
+        .join(prefix)
+        .join(rest)
+        .join("entry.json")
 }
 
 fn rewrite_manifest_without_component_sources(src: &Path, dest: &Path) {

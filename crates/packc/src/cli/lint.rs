@@ -1,13 +1,19 @@
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Parser;
 use greentic_flow::compile_ygtc_str;
+use greentic_pack::validate::oauth_capability_requirement_diagnostics_for_flow;
 use tracing::info;
 
 use crate::config::load_pack_config;
+use crate::extension_refs::{
+    default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
+    read_extensions_lock_file, validate_extensions_lock_alignment,
+};
 
 #[derive(Debug, Parser)]
 pub struct LintArgs {
@@ -24,21 +30,66 @@ pub fn handle(args: LintArgs, json: bool) -> Result<()> {
     let pack_dir = normalize(args.input);
     info!(path = %pack_dir.display(), "linting pack");
 
+    let extensions_file = default_extensions_file_path(&pack_dir);
+    let source_extensions = if extensions_file.exists() {
+        Some(read_extensions_file(&extensions_file)?)
+    } else {
+        None
+    };
+    let extensions_lock = default_extensions_lock_file_path(&pack_dir);
+    if extensions_lock.exists() {
+        let lock = read_extensions_lock_file(&extensions_lock)?;
+        if let Some(source) = source_extensions.as_ref() {
+            validate_extensions_lock_alignment(source, &lock)?;
+        }
+    }
+
     let cfg = load_pack_config(&pack_dir)?;
     crate::extensions::validate_components_extension(&cfg.extensions, args.allow_oci_tags)?;
+    crate::extensions::validate_deployer_extension(&cfg.extensions, &pack_dir)?;
+    crate::extensions::validate_static_routes_extension(&cfg.extensions, &pack_dir)?;
+
+    let required_capabilities: BTreeSet<String> = cfg
+        .dependencies
+        .iter()
+        .flat_map(|dep| dep.required_capabilities.iter())
+        .map(|cap| cap.trim().to_string())
+        .filter(|cap| !cap.is_empty())
+        .collect();
 
     let mut compiled = 0usize;
+    let mut oauth_diagnostics = Vec::new();
     for flow in &cfg.flows {
         let src = std::fs::read_to_string(&flow.file)?;
-        compile_ygtc_str(&src)?;
+        let compiled_flow = compile_ygtc_str(&src)?;
+        oauth_diagnostics.extend(oauth_capability_requirement_diagnostics_for_flow(
+            flow.id.as_str(),
+            &compiled_flow,
+            &required_capabilities,
+        ));
         compiled += 1;
+    }
+
+    if !oauth_diagnostics.is_empty() {
+        let mut message = String::from("OAuth capability requirement checks failed during lint:\n");
+        for diag in oauth_diagnostics {
+            if let Some(path) = diag.path.as_deref() {
+                message.push_str(&format!("- [{}] {}: {}\n", diag.code, path, diag.message));
+            } else {
+                message.push_str(&format!("- [{}] {}\n", diag.code, diag.message));
+            }
+            if let Some(hint) = diag.hint.as_deref() {
+                message.push_str(&format!("  hint: {hint}\n"));
+            }
+        }
+        bail!(message.trim_end().to_string());
     }
 
     if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "status": "ok",
+                "status": crate::cli_i18n::t("cli.status.ok"),
                 "pack_id": cfg.pack_id,
                 "version": cfg.version,
                 "flows": compiled,
@@ -47,13 +98,25 @@ pub fn handle(args: LintArgs, json: bool) -> Result<()> {
             }))?
         );
     } else {
+        println!("{}", crate::cli_i18n::t("cli.lint.ok_header"));
         println!(
-            "lint ok\n  pack: {}@{}\n  flows: {}\n  components: {}\n  dependencies: {}",
-            cfg.pack_id,
-            cfg.version,
-            compiled,
-            cfg.components.len(),
-            cfg.dependencies.len()
+            "{}",
+            crate::cli_i18n::tf("cli.lint.pack", &[&cfg.pack_id, &cfg.version.to_string()])
+        );
+        println!(
+            "{}",
+            crate::cli_i18n::tf("cli.lint.flows", &[&compiled.to_string()])
+        );
+        println!(
+            "{}",
+            crate::cli_i18n::tf("cli.lint.components", &[&cfg.components.len().to_string()])
+        );
+        println!(
+            "{}",
+            crate::cli_i18n::tf(
+                "cli.lint.dependencies",
+                &[&cfg.dependencies.len().to_string()]
+            )
         );
     }
 

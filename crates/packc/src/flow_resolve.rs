@@ -471,7 +471,7 @@ fn compute_sha256(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| format!("read wasm at {}", path.display()))?;
     let mut sha = Sha256::new();
     sha.update(bytes);
-    Ok(format!("sha256:{:x}", sha.finalize()))
+    Ok(format!("sha256:{}", hex::encode(sha.finalize())))
 }
 
 #[cfg(test)]

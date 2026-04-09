@@ -28,3 +28,24 @@ impl PackKind {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PackKind;
+
+    #[test]
+    fn validate_allowed_accepts_supported_kind() {
+        PackKind::Application
+            .validate_allowed()
+            .expect("application should be allowed");
+    }
+
+    #[test]
+    fn validate_allowed_rejects_reserved_kind() {
+        let err = PackKind::RolloutStrategy
+            .validate_allowed()
+            .expect_err("reserved kind should fail");
+
+        assert!(err.to_string().contains("rollout-strategy"));
+    }
+}
