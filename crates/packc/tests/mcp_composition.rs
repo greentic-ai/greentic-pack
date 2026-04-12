@@ -86,22 +86,19 @@ impl WasiView for Ctx {
     }
 }
 
+fn wasm_tools_available() -> bool {
+    Command::new("wasm-tools")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 fn compose_adapter_and_router(
     adapter: &std::path::Path,
     router: &std::path::Path,
     out: &std::path::Path,
 ) {
-    // Prefer wasm-tools if available; otherwise skip to avoid noisy failures in minimal environments.
-    let has_wasm_tools = Command::new("wasm-tools")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !has_wasm_tools {
-        eprintln!("skipping mcp composition test: wasm-tools not installed");
-        return;
-    }
-
     let output = Command::new("wasm-tools")
         .args([
             "compose",
@@ -137,6 +134,10 @@ fn inspect_exports(component: &std::path::Path) -> String {
 
 #[test]
 fn composed_component_exports_greentic_world_and_imports_router() {
+    if !wasm_tools_available() {
+        eprintln!("skipping mcp composition test: wasm-tools not installed");
+        return;
+    }
     let temp = TempDir::new().unwrap();
     let out = temp.path().join("composed.component.wasm");
     let adapter = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -163,6 +164,10 @@ fn composed_component_exports_greentic_world_and_imports_router() {
 
 #[test]
 fn composed_component_invokes_router_echo() {
+    if !wasm_tools_available() {
+        eprintln!("skipping mcp composition test: wasm-tools not installed");
+        return;
+    }
     let temp = TempDir::new().unwrap();
     let out = temp.path().join("composed.component.wasm");
     let adapter = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
