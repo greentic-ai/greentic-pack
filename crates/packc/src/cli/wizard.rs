@@ -1299,6 +1299,7 @@ fn execution_plan_from_answers(
     let sign_key_path = if sign { sign_key_path } else { None };
     let extension_operation = parse_extension_operation_record(answers)?;
     let asset_staging = parse_asset_staging_entries(answers, answers_base_dir, &pack_root)?;
+    validate_scaffold_asset_staging_conflicts(create_pack_scaffold, &pack_root, &asset_staging)?;
     Ok(WizardExecutionPlan {
         pack_dir,
         pack_root,
@@ -1405,6 +1406,38 @@ fn parse_asset_staging_entries(
         });
     }
     Ok(resolved)
+}
+
+fn validate_scaffold_asset_staging_conflicts(
+    create_pack_scaffold: bool,
+    pack_root: &Path,
+    entries: &[ResolvedAssetStagingEntry],
+) -> Result<()> {
+    if !create_pack_scaffold {
+        return Ok(());
+    }
+
+    let reserved_paths = [
+        pack_root.join("pack.yaml"),
+        pack_root.join("flows/main.ygtc"),
+    ];
+
+    for entry in entries {
+        if entry.overwrite || entry.kind != AssetStagingKind::File {
+            continue;
+        }
+        if reserved_paths
+            .iter()
+            .any(|reserved| reserved == &entry.destination)
+        {
+            anyhow::bail!(
+                "asset staging destination already exists in scaffold output and overwrite=false: {}",
+                entry.destination.display()
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_asset_staging_entry(
