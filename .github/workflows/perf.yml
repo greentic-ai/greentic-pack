@@ -22,7 +22,7 @@ jobs:
           token: ${{ github.token }}
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.94.0
 
       - name: Run perf guard tests
         run: cargo test -p greentic-pack-lib --test perf_scaling --test perf_timeout
