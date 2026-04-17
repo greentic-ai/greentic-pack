@@ -77,6 +77,7 @@ greentic-pack wizard apply --answers .codex/pack-wizard.answers.normalized.json
 - `run_build` (bool)
 - `sign` (bool)
 - `sign_key_path` (string, required when `sign=true`)
+- `asset_staging` (array of external file/directory copy rules applied before delegate/build steps)
 - optional extension replay fields:
   - `extension_operation`
   - `extension_catalog_ref`
@@ -105,6 +106,45 @@ greentic-pack wizard apply --answers .codex/pack-wizard.answers.normalized.json
     "run_doctor": true,
     "run_build": true,
     "sign": false
+  },
+  "locks": {}
+}
+```
+
+## Example: stage external assets declaratively
+
+`asset_staging` is resolved relative to the AnswerDocument file location, and
+each `destination` must stay inside `pack_dir`. Staging runs after the pack root
+exists and before delegate/build steps, so flows and `pack.yaml` asset entries
+can rely on the copied files without extra shell scripting.
+
+```json
+{
+  "wizard_id": "greentic-pack.wizard.run",
+  "schema_id": "greentic-pack.wizard.answers",
+  "schema_version": "1.0.0",
+  "locale": "en",
+  "answers": {
+    "pack_dir": "./deep-research-demo.pack",
+    "run_delegate_flow": false,
+    "run_delegate_component": false,
+    "run_doctor": true,
+    "run_build": true,
+    "sign": false,
+    "asset_staging": [
+      {
+        "source": "./assets/cards",
+        "destination": "assets/cards",
+        "kind": "directory",
+        "recursive": true
+      },
+      {
+        "source": "./README-snippet.md",
+        "destination": "assets/docs/readme-snippet.md",
+        "kind": "file",
+        "overwrite": true
+      }
+    ]
   },
   "locks": {}
 }

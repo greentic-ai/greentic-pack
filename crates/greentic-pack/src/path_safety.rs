@@ -55,11 +55,12 @@ mod tests {
     #[test]
     fn normalizes_nested_path_under_root() {
         let root = tempdir().expect("tempdir");
+        let canon_root = root.path().canonicalize().expect("canonical root");
         let normalized =
             normalize_under_root(root.path(), Path::new("./assets/../assets/file.txt"))
                 .expect("path under root should succeed");
 
-        assert_eq!(normalized, root.path().join("assets/file.txt"));
+        assert_eq!(normalized, canon_root.join("assets/file.txt"));
     }
 
     #[test]

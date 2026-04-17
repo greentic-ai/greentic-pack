@@ -403,6 +403,7 @@ greentic-pack wizard apply --answers <FILE> [--emit-answers <FILE>] [--schema-ve
   - validates AnswerDocument content only (no side effects)
 - `apply`:
   - executes side effects from AnswerDocument (`greentic-flow`, `greentic-component`, `doctor`, `build`, optional `sign`)
+  - stages any declared `answers.asset_staging` files/directories into `pack_dir` after the pack root exists and before delegate/build steps
 - `--emit-answers` writes the normalized/migrated AnswerDocument envelope.
 - `--migrate` allows missing/older schema metadata to be normalized to the target schema version.
 

@@ -1,2 +1,0 @@
-cargo:rerun-if-changed=build.rs
-cargo:rustc-env=DEBUG_OUTPUT_DIR=/Users/maarten/Documents/GitHub/agentic/greentic-pack/crates/packc/tests/router_echo/target/release/build/wit-bindgen-rust-macro-0665f5f37ccd3cd3/out

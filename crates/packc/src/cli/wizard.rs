@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,6 +17,7 @@ use greentic_types::pack::extensions::capabilities::CapabilitiesExtensionV1;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use serde_yaml_bw::{Mapping, Value as YamlValue};
+use walkdir::WalkDir;
 
 use crate::cli::add_extension::{
     CapabilityOfferSpec, ensure_capabilities_extension, inject_capability_offer_spec,
@@ -184,11 +185,14 @@ struct WizardAnswerDocument {
     answers: BTreeMap<String, Value>,
     #[serde(default)]
     locks: BTreeMap<String, Value>,
+    #[serde(skip)]
+    base_dir: PathBuf,
 }
 
 #[derive(Debug)]
 struct WizardExecutionPlan {
     pack_dir: PathBuf,
+    pack_root: PathBuf,
     create_pack_id: Option<String>,
     create_pack_scaffold: bool,
     run_delegate_flow: bool,
@@ -199,11 +203,43 @@ struct WizardExecutionPlan {
     component_wizard_answers: Option<Value>,
     sign_key_path: Option<String>,
     extension_operation: Option<ExtensionOperationRecord>,
+    asset_staging: Vec<ResolvedAssetStagingEntry>,
 }
 
 struct FlowSchemaContext {
     pack_dir: Option<PathBuf>,
     flow_wizard_answers: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum AssetStagingKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AssetStagingEntry {
+    source: String,
+    destination: String,
+    kind: AssetStagingKind,
+    #[serde(default)]
+    recursive: bool,
+    #[serde(default = "default_asset_staging_overwrite")]
+    overwrite: bool,
+}
+
+#[derive(Debug)]
+struct ResolvedAssetStagingEntry {
+    source: PathBuf,
+    destination: PathBuf,
+    kind: AssetStagingKind,
+    recursive: bool,
+    overwrite: bool,
+}
+
+fn default_asset_staging_overwrite() -> bool {
+    true
 }
 
 pub(crate) fn set_forced_schema_flag(requested: bool) {
@@ -476,7 +512,7 @@ fn maybe_print_answer_schema(cmd: &WizardRunArgs, schema_requested: bool) -> Res
     let flow_context = cmd.answers.as_deref().and_then(|path| {
         load_answer_document(path, &target_schema_version, cmd.migrate, None)
             .ok()
-            .and_then(|doc| execution_plan_from_answers(&doc.answers).ok())
+            .and_then(|doc| execution_plan_from_answers(&doc.answers, &doc.base_dir).ok())
             .map(|plan| FlowSchemaContext {
                 pack_dir: Some(plan.pack_dir),
                 flow_wizard_answers: plan.flow_wizard_answers,
@@ -544,7 +580,18 @@ fn load_answer_document(
     let raw = fs::read(path).with_context(|| format!("read answers file {}", path.display()))?;
     let parsed: Value = serde_json::from_slice(&raw)
         .with_context(|| format!("decode answers json {}", path.display()))?;
-    normalize_answer_document(parsed, target_schema_version, migrate, requested_locale)
+    let base_dir = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    normalize_answer_document(
+        parsed,
+        target_schema_version,
+        migrate,
+        requested_locale,
+        base_dir,
+    )
 }
 
 fn normalize_answer_document(
@@ -552,6 +599,7 @@ fn normalize_answer_document(
     target_schema_version: &str,
     migrate: bool,
     requested_locale: Option<&str>,
+    base_dir: PathBuf,
 ) -> Result<WizardAnswerDocument> {
     let mut obj = parsed
         .as_object()
@@ -606,6 +654,7 @@ fn normalize_answer_document(
         locale,
         answers,
         locks,
+        base_dir,
     })
 }
 
@@ -730,6 +779,7 @@ fn answer_document_from_session(
         locale: locale.to_string(),
         answers,
         locks: BTreeMap::new(),
+        base_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
     })
 }
 
@@ -848,6 +898,28 @@ fn pack_wizard_answers_schema() -> Value {
             "component_wizard_answers": {
                 "description": "Nested greentic-component wizard answers for component-level replay inside greentic-pack.",
                 "$ref": "#/$defs/greentic_component_wizard_any_mode"
+            },
+            "asset_staging": {
+                "type": "array",
+                "description": "External files or directories to copy into the generated pack root before delegate/build steps run. Relative sources resolve from the AnswerDocument location; destinations must stay inside pack_dir.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "source": { "type": "string" },
+                        "destination": { "type": "string" },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["file", "directory"]
+                        },
+                        "recursive": { "type": "boolean" },
+                        "overwrite": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    },
+                    "required": ["source", "destination", "kind"]
+                }
             },
             "extension_operation": { "type": "string" },
             "extension_catalog_ref": { "type": "string" },
@@ -1041,7 +1113,7 @@ fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
             PACK_WIZARD_SCHEMA_ID
         ));
     }
-    let plan = execution_plan_from_answers(&doc.answers)?;
+    let plan = execution_plan_from_answers(&doc.answers, &doc.base_dir)?;
     let pack_dir_must_exist = !plan.create_pack_scaffold
         && !matches!(
             plan.extension_operation
@@ -1072,7 +1144,7 @@ fn validate_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
 }
 
 fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
-    let plan = execution_plan_from_answers(&doc.answers)?;
+    let plan = execution_plan_from_answers(&doc.answers, &doc.base_dir)?;
     let self_exe = wizard_self_exe()?;
     if plan.create_pack_scaffold {
         let pack_id = plan
@@ -1098,6 +1170,9 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
     }
     if let Some(extension) = plan.extension_operation.as_ref() {
         apply_extension_operation(&plan.pack_dir, extension)?;
+    }
+    if !plan.asset_staging.is_empty() {
+        stage_assets_into_pack(&plan.pack_root, &plan.asset_staging)?;
     }
     if plan.run_delegate_flow {
         let ok = run_flow_delegate_replay(&plan.pack_dir, plan.flow_wizard_answers.as_ref());
@@ -1190,11 +1265,16 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
     Ok(())
 }
 
-fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<WizardExecutionPlan> {
+fn execution_plan_from_answers(
+    answers: &BTreeMap<String, Value>,
+    answers_base_dir: &Path,
+) -> Result<WizardExecutionPlan> {
     let pack_dir_raw = answers
         .get("pack_dir")
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("answers.pack_dir must be a string"))?;
+    let pack_dir = PathBuf::from(pack_dir_raw);
+    let pack_root = absolutize_path(&pack_dir);
     let create_pack_scaffold = answer_bool(answers, "create_pack_scaffold", false)?;
     let create_pack_id = answers
         .get("create_pack_id")
@@ -1218,8 +1298,10 @@ fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<Wiza
     }
     let sign_key_path = if sign { sign_key_path } else { None };
     let extension_operation = parse_extension_operation_record(answers)?;
+    let asset_staging = parse_asset_staging_entries(answers, answers_base_dir, &pack_root)?;
     Ok(WizardExecutionPlan {
-        pack_dir: PathBuf::from(pack_dir_raw),
+        pack_dir,
+        pack_root,
         create_pack_id,
         create_pack_scaffold,
         run_delegate_flow,
@@ -1230,6 +1312,7 @@ fn execution_plan_from_answers(answers: &BTreeMap<String, Value>) -> Result<Wiza
         component_wizard_answers,
         sign_key_path,
         extension_operation,
+        asset_staging,
     })
 }
 
@@ -1240,6 +1323,234 @@ fn answer_bool(answers: &BTreeMap<String, Value>, key: &str, default: bool) -> R
             .as_bool()
             .ok_or_else(|| anyhow!("answers.{key} must be a boolean")),
     }
+}
+
+fn absolutize_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    }
+}
+
+fn normalize_pack_destination(pack_root: &Path, candidate: &Path) -> Result<PathBuf> {
+    if candidate.is_absolute() {
+        anyhow::bail!(
+            "asset staging destination must be relative to pack_dir: {}",
+            candidate.display()
+        );
+    }
+
+    let mut normalized = pack_root.to_path_buf();
+    for component in candidate.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir => {
+                anyhow::bail!(
+                    "asset staging destination must not contain '..' segments: {}",
+                    candidate.display()
+                );
+            }
+            Component::Prefix(_) | Component::RootDir => {
+                anyhow::bail!(
+                    "asset staging destination must be relative to pack_dir: {}",
+                    candidate.display()
+                );
+            }
+        }
+    }
+    Ok(normalized)
+}
+
+fn parse_asset_staging_entries(
+    answers: &BTreeMap<String, Value>,
+    answers_base_dir: &Path,
+    pack_root: &Path,
+) -> Result<Vec<ResolvedAssetStagingEntry>> {
+    let Some(value) = answers.get("asset_staging") else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_array()
+        .ok_or_else(|| anyhow!("answers.asset_staging must be an array"))?;
+    let mut resolved = Vec::with_capacity(items.len());
+    let mut seen_destinations = BTreeSet::new();
+    for (index, item) in items.iter().enumerate() {
+        let field = format!("answers.asset_staging[{index}]");
+        let entry: AssetStagingEntry = serde_json::from_value(item.clone())
+            .with_context(|| format!("{field} is not a valid asset staging entry"))?;
+        let source_rel = PathBuf::from(&entry.source);
+        let source = if source_rel.is_absolute() {
+            source_rel
+        } else {
+            answers_base_dir.join(&source_rel)
+        };
+        let destination = normalize_pack_destination(pack_root, Path::new(&entry.destination))?;
+        validate_asset_staging_entry(&field, &entry, &source, &destination)?;
+        let dest_key = destination.display().to_string();
+        if !seen_destinations.insert(dest_key.clone()) {
+            anyhow::bail!(
+                "{field}.destination conflicts with another asset staging entry: {dest_key}"
+            );
+        }
+        resolved.push(ResolvedAssetStagingEntry {
+            source,
+            destination,
+            kind: entry.kind,
+            recursive: entry.recursive,
+            overwrite: entry.overwrite,
+        });
+    }
+    Ok(resolved)
+}
+
+fn validate_asset_staging_entry(
+    field: &str,
+    entry: &AssetStagingEntry,
+    source: &Path,
+    _destination: &Path,
+) -> Result<()> {
+    if entry.source.trim().is_empty() {
+        anyhow::bail!("{field}.source must not be empty");
+    }
+    if entry.destination.trim().is_empty() {
+        anyhow::bail!("{field}.destination must not be empty");
+    }
+    if !source.exists() {
+        anyhow::bail!("{field}.source does not exist: {}", source.display());
+    }
+
+    match entry.kind {
+        AssetStagingKind::File => {
+            if !source.is_file() {
+                anyhow::bail!(
+                    "{field}.kind=file requires a file source, got {}",
+                    source.display()
+                );
+            }
+        }
+        AssetStagingKind::Directory => {
+            if !source.is_dir() {
+                anyhow::bail!(
+                    "{field}.kind=directory requires a directory source, got {}",
+                    source.display()
+                );
+            }
+            if !entry.recursive {
+                anyhow::bail!("{field}.recursive must be true when kind=directory");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn stage_assets_into_pack(pack_root: &Path, entries: &[ResolvedAssetStagingEntry]) -> Result<()> {
+    fs::create_dir_all(pack_root)
+        .with_context(|| format!("create pack root {}", pack_root.display()))?;
+    for entry in entries {
+        stage_single_asset(pack_root, entry)?;
+    }
+    Ok(())
+}
+
+fn stage_single_asset(_pack_root: &Path, entry: &ResolvedAssetStagingEntry) -> Result<()> {
+    match entry.kind {
+        AssetStagingKind::File => {
+            copy_staged_file(&entry.source, &entry.destination, entry.overwrite)
+        }
+        AssetStagingKind::Directory => copy_staged_directory(
+            &entry.source,
+            &entry.destination,
+            entry.recursive,
+            entry.overwrite,
+        ),
+    }
+}
+
+fn copy_staged_file(source: &Path, destination: &Path, overwrite: bool) -> Result<()> {
+    if destination.is_dir() {
+        anyhow::bail!(
+            "asset staging destination is a directory but source is a file: {}",
+            destination.display()
+        );
+    }
+    if destination.exists() && !overwrite {
+        anyhow::bail!(
+            "asset staging destination already exists and overwrite=false: {}",
+            destination.display()
+        );
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create staged asset parent {}", parent.display()))?;
+    }
+    fs::copy(source, destination).with_context(|| {
+        format!(
+            "copy staged asset file {} -> {}",
+            source.display(),
+            destination.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn copy_staged_directory(
+    source: &Path,
+    destination: &Path,
+    recursive: bool,
+    overwrite: bool,
+) -> Result<()> {
+    if !recursive {
+        anyhow::bail!(
+            "directory staging requires recursive=true for source {}",
+            source.display()
+        );
+    }
+    if destination.exists() && destination.is_file() {
+        anyhow::bail!(
+            "asset staging destination is a file but source is a directory: {}",
+            destination.display()
+        );
+    }
+    fs::create_dir_all(destination)
+        .with_context(|| format!("create staged asset directory {}", destination.display()))?;
+    for item in WalkDir::new(source).into_iter().filter_map(Result::ok) {
+        let path = item.path();
+        let rel = path
+            .strip_prefix(source)
+            .expect("walkdir entry should remain under source");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = destination.join(rel);
+        if item.file_type().is_dir() {
+            fs::create_dir_all(&target)
+                .with_context(|| format!("create staged asset directory {}", target.display()))?;
+            continue;
+        }
+        if target.exists() && !overwrite {
+            anyhow::bail!(
+                "asset staging destination already exists and overwrite=false: {}",
+                target.display()
+            );
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create staged asset parent {}", parent.display()))?;
+        }
+        fs::copy(path, &target).with_context(|| {
+            format!(
+                "copy staged asset file {} -> {}",
+                path.display(),
+                target.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn string_map_to_json_value(map: &BTreeMap<String, String>) -> Value {

@@ -1,1 +1,0 @@
-/Users/maarten/Documents/GitHub/agentic/greentic-pack/crates/packc/tests/router_echo/target/wasm32-wasip2/release/router_echo.wasm: /Users/maarten/Documents/GitHub/agentic/greentic-pack/crates/packc/tests/router_echo/src/lib.rs /Users/maarten/Documents/GitHub/agentic/greentic-pack/crates/packc/tests/router_echo/wit/mcp-router.wit

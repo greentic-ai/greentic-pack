@@ -1,12 +1,14 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use serde_json::{Value, json};
 use tempfile::TempDir;
+use walkdir::WalkDir;
 
 #[test]
 fn wizard_run_emit_answers_writes_envelope() {
@@ -250,6 +252,891 @@ fn wizard_apply_answers_with_sign_runs_sign_step() {
     assert!(calls.contains("doctor --in ."));
     assert!(calls.contains("build --in ."));
     assert!(calls.contains("sign --pack . --key ./test-sign-key.pem"));
+}
+
+#[test]
+fn wizard_apply_answers_stage_asset_file_into_pack() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(
+        source_dir.join("README-snippet.md"),
+        "hello from staged file\n",
+    )
+    .expect("write source file");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/README-snippet.md",
+                        "destination": "assets/docs/readme-snippet.md",
+                        "kind": "file"
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(output.status.success(), "wizard apply should succeed");
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/docs/readme-snippet.md"))
+            .expect("read staged file"),
+        "hello from staged file\n"
+    );
+}
+
+#[test]
+fn wizard_run_answers_stage_asset_file_into_pack() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(source_dir.join("hello.txt"), "run path staging\n").expect("write source file");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/hello.txt",
+                        "destination": "assets/hello.txt",
+                        "kind": "file"
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("run")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard run --answers");
+    assert!(
+        output.status.success(),
+        "wizard run --answers should succeed"
+    );
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/hello.txt")).expect("read staged file"),
+        "run path staging\n"
+    );
+}
+
+#[test]
+fn wizard_apply_answers_stage_asset_directory_recursively() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external/cards");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(source_dir.join("nested")).expect("create nested source dir");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(source_dir.join("hello.json"), "{\"hello\":true}\n").expect("write root file");
+    fs::write(source_dir.join("nested/world.json"), "{\"world\":true}\n")
+        .expect("write nested file");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/cards",
+                        "destination": "assets/cards",
+                        "kind": "directory",
+                        "recursive": true
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(output.status.success(), "wizard apply should succeed");
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/cards/hello.json")).expect("read root copy"),
+        "{\"hello\":true}\n"
+    );
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/cards/nested/world.json"))
+            .expect("read nested copy"),
+        "{\"world\":true}\n"
+    );
+}
+
+#[test]
+fn wizard_apply_answers_reject_asset_staging_outside_pack_root() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(source_dir.join("hello.txt"), "nope\n").expect("write source file");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/hello.txt",
+                        "destination": "../outside.txt",
+                        "kind": "file"
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(!output.status.success(), "wizard apply should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("must not contain '..' segments"));
+}
+
+#[test]
+fn wizard_apply_answers_reject_missing_asset_source() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/missing.txt",
+                        "destination": "assets/missing.txt",
+                        "kind": "file"
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(!output.status.success(), "wizard apply should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("source does not exist"));
+}
+
+#[test]
+fn wizard_asset_staging_can_feed_followup_build_without_shell_copying() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("adaptive-pack");
+    let external_dir = temp.path().join("external/cards");
+    let answers_path = temp.path().join("answers.json");
+    copy_tree(
+        &workspace_root().join("examples/adaptive-mcp-oauth-demo"),
+        &pack_dir,
+    );
+    fs::create_dir_all(&external_dir).expect("create external dir");
+
+    let source_card = fs::read_to_string(pack_dir.join("assets/oauth_connect_card.json"))
+        .expect("read source card");
+    fs::write(external_dir.join("hello.json"), &source_card).expect("write external card");
+    fs::remove_file(pack_dir.join("assets/oauth_connect_card.json")).expect("remove original card");
+
+    let flow_path = pack_dir.join("flows/adaptive_mcp_oauth_demo.ygtc");
+    let flow = fs::read_to_string(&flow_path).expect("read flow");
+    fs::write(
+        &flow_path,
+        flow.replace(
+            "asset_path: oauth_connect_card.json",
+            "asset_path: cards/hello.json",
+        ),
+    )
+    .expect("write flow");
+
+    let pack_yaml_path = pack_dir.join("pack.yaml");
+    let pack_yaml = fs::read_to_string(&pack_yaml_path).expect("read pack yaml");
+    fs::write(
+        &pack_yaml_path,
+        pack_yaml.replace("assets/oauth_connect_card.json", "assets/cards/hello.json"),
+    )
+    .expect("write pack yaml");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/cards/hello.json",
+                        "destination": "assets/cards/hello.json",
+                        "kind": "file"
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let apply = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .current_dir(workspace_root())
+        .output()
+        .expect("run wizard apply");
+    assert!(apply.status.success(), "wizard apply should succeed");
+
+    let build = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("build")
+        .arg("--in")
+        .arg(&pack_dir)
+        .arg("--log")
+        .arg("warn")
+        .current_dir(workspace_root())
+        .output()
+        .expect("run build");
+    assert!(
+        build.status.success(),
+        "build should succeed after asset staging"
+    );
+    assert!(pack_dir.join("assets/cards/hello.json").exists());
+}
+
+#[test]
+fn wizard_asset_staging_run_and_apply_have_identical_results() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_root = temp.path().join("inputs");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(source_root.join("cards/empty")).expect("create source dirs");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(source_root.join("cards/alpha.json"), "{\"alpha\":1}\n").expect("write alpha");
+    fs::write(source_root.join("cards/.keep"), "").expect("write dotfile");
+    fs::write(source_root.join("snippet.md"), "parity\n").expect("write snippet");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./inputs/cards",
+                "destination": "assets/cards",
+                "kind": "directory",
+                "recursive": true
+            },
+            {
+                "source": "./inputs/snippet.md",
+                "destination": "assets/docs/snippet.md",
+                "kind": "file"
+            }
+        ]),
+    );
+
+    let run = run_wizard_answers("run", &answers_path);
+    assert!(run.status.success(), "wizard run --answers should succeed");
+    let run_snapshot = snapshot_tree(&pack_dir);
+
+    fs::remove_dir_all(&pack_dir).expect("remove pack after run");
+    fs::create_dir_all(&pack_dir).expect("recreate pack");
+
+    let apply = run_wizard_answers("apply", &answers_path);
+    assert!(apply.status.success(), "wizard apply should succeed");
+    let apply_snapshot = snapshot_tree(&pack_dir);
+
+    assert_eq!(run_snapshot, apply_snapshot);
+}
+
+#[test]
+fn wizard_asset_staging_resolves_relative_sources_from_answers_file_directory() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_dir = temp.path().join("nested/answers");
+    let answers_path = answers_dir.join("answers.json");
+    fs::create_dir_all(answers_dir.join("source")).expect("create source dir");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(
+        answers_dir.join("source/from-answers-dir.txt"),
+        "relative source base\n",
+    )
+    .expect("write source");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./source/from-answers-dir.txt",
+                "destination": "assets/from-answers-dir.txt",
+                "kind": "file"
+            }
+        ]),
+    );
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .output()
+        .expect("run wizard apply");
+    assert!(output.status.success(), "wizard apply should succeed");
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/from-answers-dir.txt")).expect("read staged"),
+        "relative source base\n"
+    );
+}
+
+#[test]
+fn wizard_asset_staging_supports_absolute_source_paths() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_path = temp.path().join("absolute.txt");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(&source_path, "absolute path\n").expect("write absolute source");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": source_path,
+                "destination": "assets/absolute.txt",
+                "kind": "file"
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "wizard apply should succeed");
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/absolute.txt")).expect("read staged"),
+        "absolute path\n"
+    );
+}
+
+#[test]
+fn wizard_asset_staging_rejects_normalized_destination_traversal_forms() {
+    for destination in [
+        "../outside.txt",
+        "assets/../../outside.txt",
+        "./assets/../outside.txt",
+    ] {
+        let temp = TempDir::new().expect("tempdir");
+        let pack_dir = temp.path().join("pack");
+        let source_dir = temp.path().join("external");
+        let answers_path = temp.path().join("answers.json");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        fs::write(source_dir.join("hello.txt"), destination).expect("write source");
+
+        write_asset_answers(
+            &answers_path,
+            &pack_dir,
+            json!([
+                {
+                    "source": "./external/hello.txt",
+                    "destination": destination,
+                    "kind": "file"
+                }
+            ]),
+        );
+
+        let output = run_wizard_answers("apply", &answers_path);
+        assert!(
+            !output.status.success(),
+            "destination {destination} should fail"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("must not contain '..' segments"),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn wizard_asset_staging_rejects_duplicate_destinations_deterministically() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(source_dir.join("one.txt"), "one\n").expect("write one");
+    fs::write(source_dir.join("two.txt"), "two\n").expect("write two");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/one.txt",
+                "destination": "assets/collision.txt",
+                "kind": "file"
+            },
+            {
+                "source": "./external/two.txt",
+                "destination": "assets/collision.txt",
+                "kind": "file",
+                "overwrite": true
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(
+        !output.status.success(),
+        "duplicate destination should fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("conflicts with another asset staging entry"));
+    assert!(stderr.contains("assets/collision.txt"));
+}
+
+#[test]
+fn wizard_asset_staging_rejects_file_to_existing_directory_destination() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(pack_dir.join("assets/cards")).expect("create destination dir");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(source_dir.join("card.json"), "{}\n").expect("write source");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/card.json",
+                "destination": "assets/cards",
+                "kind": "file"
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(!output.status.success(), "file to dir should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("destination is a directory"));
+}
+
+#[test]
+fn wizard_asset_staging_rejects_directory_to_existing_file_destination() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external/cards");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::create_dir_all(pack_dir.join("assets")).expect("create assets dir");
+    fs::write(pack_dir.join("assets/cards"), "existing file\n").expect("write existing file");
+    fs::write(source_dir.join("hello.json"), "{}\n").expect("write source");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/cards",
+                "destination": "assets/cards",
+                "kind": "directory",
+                "recursive": true
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(!output.status.success(), "directory to file should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("destination is a file"));
+}
+
+#[test]
+fn wizard_asset_staging_overwrites_existing_scaffold_file_when_enabled() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("scaffold-pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(
+        source_dir.join("pack.yaml"),
+        "pack_id: overwritten.by.staging\n",
+    )
+    .expect("write source");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "create_pack_scaffold": true,
+                "create_pack_id": "scaffold.override",
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/pack.yaml",
+                        "destination": "pack.yaml",
+                        "kind": "file",
+                        "overwrite": true
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "overwrite=true should succeed");
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("pack.yaml")).expect("read staged"),
+        "pack_id: overwritten.by.staging\n"
+    );
+}
+
+#[test]
+fn wizard_asset_staging_rejects_existing_scaffold_file_when_overwrite_disabled() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("scaffold-pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&source_dir).expect("create source dir");
+    fs::write(
+        source_dir.join("pack.yaml"),
+        "pack_id: overwritten.by.staging\n",
+    )
+    .expect("write source");
+
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "create_pack_scaffold": true,
+                "create_pack_id": "scaffold.no-overwrite",
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": [
+                    {
+                        "source": "./external/pack.yaml",
+                        "destination": "pack.yaml",
+                        "kind": "file",
+                        "overwrite": false
+                    }
+                ]
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(!output.status.success(), "overwrite=false should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("overwrite=false"));
+    assert!(stderr.contains("pack.yaml"));
+}
+
+#[test]
+fn wizard_asset_staging_reports_missing_source_path() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/missing.txt",
+                "destination": "assets/missing.txt",
+                "kind": "file"
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(!output.status.success(), "missing source should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("source does not exist"));
+    assert!(stderr.contains("external/missing.txt"));
+}
+
+#[test]
+fn wizard_asset_staging_rejects_kind_mismatches() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_file = temp.path().join("file_mismatch.json");
+    let answers_dir = temp.path().join("dir_mismatch.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(source_dir.join("cards")).expect("create dir source");
+    fs::write(source_dir.join("single.txt"), "one\n").expect("write file source");
+
+    write_asset_answers(
+        &answers_file,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/cards",
+                "destination": "assets/cards",
+                "kind": "file"
+            }
+        ]),
+    );
+    let file_output = run_wizard_answers("apply", &answers_file);
+    assert!(!file_output.status.success(), "dir as file should fail");
+    assert!(
+        String::from_utf8_lossy(&file_output.stderr).contains("kind=file requires a file source")
+    );
+
+    write_asset_answers(
+        &answers_dir,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/single.txt",
+                "destination": "assets/single",
+                "kind": "directory",
+                "recursive": true
+            }
+        ]),
+    );
+    let dir_output = run_wizard_answers("apply", &answers_dir);
+    assert!(!dir_output.status.success(), "file as dir should fail");
+    assert!(
+        String::from_utf8_lossy(&dir_output.stderr)
+            .contains("kind=directory requires a directory source")
+    );
+}
+
+#[test]
+fn wizard_asset_staging_preserves_hidden_files_and_empty_directories() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external/tree");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(source_dir.join("nested/empty")).expect("create nested dirs");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::write(source_dir.join(".gitkeep"), "").expect("write gitkeep");
+    fs::write(source_dir.join("nested/file.json"), "{}\n").expect("write nested file");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/tree",
+                "destination": "assets/tree",
+                "kind": "directory",
+                "recursive": true
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "recursive staging should succeed");
+    assert!(
+        pack_dir.join("assets/tree/.gitkeep").exists(),
+        "dotfile should be copied"
+    );
+    assert!(
+        pack_dir.join("assets/tree/nested/file.json").exists(),
+        "nested file should be copied"
+    );
+    assert!(
+        pack_dir.join("assets/tree/nested/empty").is_dir(),
+        "empty dir should be preserved"
+    );
+}
+
+#[test]
+fn wizard_asset_staging_apply_is_idempotent() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(source_dir.join("cards")).expect("create source dir");
+    fs::write(source_dir.join("cards/hello.json"), "{\"hello\":true}\n").expect("write source");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/cards",
+                "destination": "assets/cards",
+                "kind": "directory",
+                "recursive": true
+            }
+        ]),
+    );
+
+    let first = run_wizard_answers("apply", &answers_path);
+    assert!(first.status.success(), "first apply should succeed");
+    let first_snapshot = snapshot_tree(&pack_dir);
+
+    let second = run_wizard_answers("apply", &answers_path);
+    assert!(second.status.success(), "second apply should succeed");
+    let second_snapshot = snapshot_tree(&pack_dir);
+
+    assert_eq!(first_snapshot, second_snapshot);
+}
+
+#[test]
+fn wizard_asset_staging_partial_failure_is_fail_fast_and_keeps_prior_copies() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let source_dir = temp.path().join("external");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+    fs::create_dir_all(source_dir.join("cards")).expect("create source dirs");
+    fs::write(source_dir.join("ok.txt"), "ok\n").expect("write ok file");
+    fs::write(source_dir.join("cards/hello.json"), "{}\n").expect("write card file");
+
+    write_asset_answers(
+        &answers_path,
+        &pack_dir,
+        json!([
+            {
+                "source": "./external/ok.txt",
+                "destination": "assets/conflict",
+                "kind": "file"
+            },
+            {
+                "source": "./external/cards",
+                "destination": "assets/conflict/subdir",
+                "kind": "directory",
+                "recursive": true
+            }
+        ]),
+    );
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(!output.status.success(), "apply should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Not a directory") || stderr.contains("create staged asset parent"));
+    assert_eq!(
+        fs::read_to_string(pack_dir.join("assets/conflict")).expect("first file should remain"),
+        "ok\n"
+    );
+    assert!(!pack_dir.join("assets/conflict/subdir/hello.json").exists());
 }
 
 #[test]
@@ -1611,6 +2498,33 @@ printf '{"title":"component-%s","type":"object","properties":{"answers":{"type":
     );
     assert_eq!(
         schema
+            .get("properties")
+            .and_then(|v| v.get("answers"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("asset_staging"))
+            .and_then(|v| v.get("items"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("kind"))
+            .and_then(|v| v.get("enum"))
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        schema
+            .get("properties")
+            .and_then(|v| v.get("answers"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("asset_staging"))
+            .and_then(|v| v.get("items"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("overwrite"))
+            .and_then(|v| v.get("default"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        schema
             .get("$defs")
             .and_then(|v| v.get("greentic_flow_wizard_runtime_schema"))
             .and_then(|v| v.get("schema_id"))
@@ -2064,6 +2978,81 @@ fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn copy_tree(src: &std::path::Path, dest: &std::path::Path) {
+    fs::create_dir_all(dest).expect("create destination dir");
+    for entry in WalkDir::new(src).into_iter().filter_map(Result::ok) {
+        if entry.file_type().is_symlink() {
+            continue;
+        }
+        let rel = entry.path().strip_prefix(src).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).expect("create dir");
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).expect("create parent");
+            }
+            fs::copy(entry.path(), &target).expect("copy file");
+        }
+    }
+}
+
+fn write_asset_answers(answers_path: &Path, pack_dir: &Path, asset_staging: Value) {
+    if let Some(parent) = answers_path.parent() {
+        fs::create_dir_all(parent).expect("create answers parent");
+    }
+    fs::write(
+        answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "asset_staging": asset_staging
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+}
+
+fn run_wizard_answers(command: &str, answers_path: &Path) -> std::process::Output {
+    Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg(command)
+        .arg("--answers")
+        .arg(answers_path)
+        .output()
+        .expect("run wizard command")
+}
+
+fn snapshot_tree(root: &Path) -> BTreeMap<String, String> {
+    let mut snapshot = BTreeMap::new();
+    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(root).expect("relative path");
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let key = rel.display().to_string();
+        if entry.file_type().is_dir() {
+            snapshot.insert(key, "dir".to_string());
+        } else {
+            let content = fs::read(entry.path()).expect("read snapshot file");
+            snapshot.insert(key, format!("file:{content:?}"));
+        }
+    }
+    snapshot
 }
 
 fn default_catalog_ref() -> String {
