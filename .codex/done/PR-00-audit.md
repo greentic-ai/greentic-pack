@@ -1,153 +1,80 @@
-# PR-00 Audit — greentic-pack Greentic-X Readiness Audit
+# PR-00-AUDIT — audit greentic-pack extension/deployer UX and legacy structure
 
 ## Goal
+Audit `greentic-pack` so the follow-up PRs can make the extension model, and especially the **deployer extension** model, explicit and easy to scaffold correctly.
 
-Audit the current `greentic-pack` codebase before making any Greentic-X-related changes so that all follow-up PRs reuse the **existing** wizard, extension catalog, scaffold, doctor, build, signing, i18n, and template systems.
+The objective is not to redesign the whole wizard system. It is to identify where the current implementation is:
+- too vague
+- too legacy
+- too implicit
+- too inconsistent between help text, wizard UX, and scaffold outputs
 
-This PR is mandatory and must be completed before any implementation PR in this repo.
+## Key design assumption
+The rest of the platform capabilities already exist or are being handled elsewhere. This repo’s job is to:
+- scaffold packs
+- describe extension metadata
+- wire deterministic replay fixtures
+- lock external extension references
+- validate pack structure
 
-## Why this audit exists
+## Audit questions
 
-We already know from the product direction that:
+### 1. Extension model clarity
+- Where does `greentic-pack` currently define the difference between:
+  - application packs
+  - extension packs
+  - deployer extensions
+  - observer/control/provider extensions?
+- Is that difference visible in:
+  - wizard screens
+  - docs/help
+  - scaffolded metadata
+  - validation code?
 
-- `greentic-pack` is the correct repo for new pack creation patterns
-- the deterministic AnswerDocument workflow is canonical
-- extension/application creation already exists
-- we do **not** want Codex to invent a second scaffolding system
-- we do **not** want repo-local guesses to diverge from the actual code
+### 2. Deployer extension model
+- Does the current wizard explain what a deployer extension actually is?
+- Does the scaffold capture:
+  - capability id
+  - supported targets
+  - supported ops
+  - input/output schema placeholders
+  - target-specific notes?
+- Are deployer extensions currently confused with runtime/provider features?
 
-Therefore this PR should inspect the real code and then update the implementation PRs in this folder with exact file paths, real commands, real abstractions, and the minimum invasive change set.
+### 3. Wizard product surface
+- Is `greentic-pack wizard` clearly the canonical UX?
+- Are old/legacy subcommands or code paths still present and confusing?
+- Do docs and help mirror the actual wizard-first behavior?
 
-## Audit scope
+### 4. Replay support
+- Where are `AnswerDocument` fixtures emitted and replayed today?
+- Are they stable enough for CI?
+- Does the current scaffold encourage replay-based deterministic tests?
 
-### 1. Wizard entrypoints and command shapes
-Audit the real CLI and wizard code for:
+### 5. Locking / extension refs
+- How are extension references added today?
+- Are tag refs and digest refs clearly separated?
+- Is there a stable lockfile model?
+- Are media type and signature hooks already anticipated?
 
-- main command layout
-- `wizard run`, `wizard validate`, `wizard apply`
-- main-menu and submenu structure
-- replay/AnswerDocument normalization behavior
-- any existing create/update/apply/finalize pipelines
-- direct non-wizard commands such as `add-extension capability`
+### 6. Deletion / cleanup opportunities
+Identify old code or UX that should be removed because it causes confusion:
+- stale command paths
+- placeholder extension types/tests that should not leak into product UX
+- ambiguous metadata fields
+- docs that don’t explain deployer extensions properly
 
-Document:
+## Required outputs
+Produce:
+1. A module/command audit of wizard, extension add/lock/doctor, and scaffold generation.
+2. A list of exact places where deployer extensions are under-specified.
+3. A delete/refactor list for old wizard and extension UX.
+4. A recommended scaffold shape for deployer extensions.
+5. A recommended lock/ref-validation flow.
 
-- exact source files
-- exact structs/enums
-- actual command names and flags
-- where new menu items or templates are registered
-
-### 2. Application pack vs extension pack scaffolding
-Identify how the repo currently distinguishes:
-
-- application pack creation
-- extension pack creation
-- add-extension-to-existing-pack flows
-- template selection and catalog resolution
-- baseline scaffold generation
-
-Document:
-
-- real pack scaffold generation flow
-- how directories/files are materialized
-- how baseline directories are created
-- how template write plans are applied
-- where replay-complete answer docs are emitted
-
-### 3. Extension catalog mechanism
-Audit the default catalog and template model:
-
-- catalog schema
-- where bundled/default/local/remote catalogs are resolved
-- interpolation model
-- QA answers vs edit answers
-- `write_files` and `write_binary_files`
-- where extension type IDs / template IDs are defined and matched
-
-Document:
-
-- real catalog format
-- whether Greentic-X templates should be added as:
-  - new template under an existing extension type
-  - new extension type
-  - application-pack template path
-- exact extension type best suited for Greentic-X runtime packs and Greentic-X ops/contract packs
-
-### 4. Pack manifest / extension persistence model
-Audit how `pack.yaml`, extension JSON files, capabilities extensions, and any lock/build artifacts are currently managed.
-
-Document:
-
-- canonical persistence points
-- manifest update code paths
-- capability-first wiring path
-- how extension metadata becomes build/runtime material
-
-### 5. Doctor/build/finalize/signing pipeline
-Inspect:
-
-- doctor flow
-- resolve/build behavior
-- signing flow
-- how scaffolded templates participate in doctor/build
-- how warnings/errors are surfaced
-
-Document:
-
-- exact pipeline order
-- real code paths
-- tests already covering these stages
-
-### 6. i18n requirements
-Audit:
-
-- where CLI strings live
-- how translations are generated/validated
-- how wizard text should be updated without violating existing i18n practices
-
-Document:
-
-- exact files and scripts
-- whether there are golden tests or generated snapshots
-
-### 7. Existing template patterns worth reusing
-Find the closest existing template(s) to:
-
-- capability runtime-like packs
-- packs exposing a capability offer
-- component-backed scaffold templates
-- scaffold-only extension packs
-
-Document the best reuse candidates.
-
-## Deliverables
-
-This audit PR must produce:
-
-1. `docs/audits/greentic-x-pack-audit.md` with findings
-2. updated versions of the follow-up PRs in this folder, rewritten with:
-   - exact file paths
-   - exact command/menu names
-   - real catalog/template insertion points
-   - actual manifest and schema terms used in the repo
-3. a concise recommendation:
-   - whether Greentic-X contract/ops/runtime packs should be modeled as:
-     - application pack templates,
-     - extension pack templates,
-     - or a mix
-
-## Constraints
-
-- Do not implement Greentic-X behavior yet
-- Do not add speculative new CLI trees
-- Do not create a second scaffold engine
-- Prefer catalog/template-driven changes over hard-coded product logic
-- Keep repo behavior generic
-
-## Exit criteria
-
-This PR is complete only when a human can look at the audit and say:
-
-- exactly where the implementation belongs
-- exactly what existing machinery must be reused
-- exactly how to avoid parallel implementations
+## Acceptance criteria
+The audit is complete only when a follow-up engineer can implement the next PRs without guessing:
+- what a deployer extension is
+- what metadata it must declare
+- what `greentic-pack` should scaffold
+- how replay fixtures and lockfiles should be used

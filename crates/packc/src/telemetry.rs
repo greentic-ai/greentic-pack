@@ -22,20 +22,22 @@ pub fn install_with_config(service_name: &str, cfg: &TelemetryConfig) -> Result<
     }
 
     let export = match cfg.exporter {
-        TelemetryExporterKind::Otlp => ExportConfig {
-            mode: ExportMode::OtlpGrpc,
-            endpoint: cfg.endpoint.clone(),
-            headers: Default::default(),
-            sampling: Sampling::TraceIdRatio(cfg.sampling as f64),
-            compression: None,
-        },
-        TelemetryExporterKind::Stdout => ExportConfig {
-            mode: ExportMode::JsonStdout,
-            endpoint: None,
-            headers: Default::default(),
-            sampling: Sampling::TraceIdRatio(cfg.sampling as f64),
-            compression: None,
-        },
+        TelemetryExporterKind::Otlp => {
+            let mut export = ExportConfig::default();
+            export.mode = ExportMode::OtlpGrpc;
+            export.endpoint = cfg.endpoint.clone();
+            export.sampling = Sampling::TraceIdRatio(cfg.sampling as f64);
+            export.compression = None;
+            export
+        }
+        TelemetryExporterKind::Stdout => {
+            let mut export = ExportConfig::default();
+            export.mode = ExportMode::JsonStdout;
+            export.endpoint = None;
+            export.sampling = Sampling::TraceIdRatio(cfg.sampling as f64);
+            export.compression = None;
+            export
+        }
         TelemetryExporterKind::None => unreachable!("handled above"),
     };
 

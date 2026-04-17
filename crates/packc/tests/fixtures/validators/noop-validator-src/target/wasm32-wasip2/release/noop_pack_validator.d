@@ -1,1 +1,0 @@
-/projects/ai/greentic-ng/greentic-pack/crates/packc/tests/fixtures/validators/noop-validator-src/target/wasm32-wasip2/release/noop_pack_validator.wasm: /projects/ai/greentic-ng/greentic-pack/crates/packc/tests/fixtures/validators/noop-validator-src/src/lib.rs /projects/ai/greentic-ng/greentic-pack/crates/packc/tests/fixtures/validators/noop-validator-src/wit/package.wit

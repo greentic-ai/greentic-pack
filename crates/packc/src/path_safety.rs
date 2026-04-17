@@ -62,10 +62,11 @@ mod tests {
     #[test]
     fn normalizes_relative_paths_with_parent_segments() {
         let root = tempdir().expect("tempdir");
+        let canon_root = root.path().canonicalize().expect("canonical root");
         let path = normalize_under_root(root.path(), Path::new("a/b/../c.txt"))
             .expect("path within root should work");
 
-        assert_eq!(path, root.path().join("a/c.txt"));
+        assert_eq!(path, canon_root.join("a/c.txt"));
     }
 
     #[test]

@@ -1,2 +1,0 @@
-cargo:rustc-link-lib=static=wit_bindgen_cabi0_51_0
-cargo:rustc-link-search=native=/projects/ai/greentic-ng/greentic-pack/crates/packc/tests/fixtures/validators/noop-validator-src/target/wasm32-wasip2/release/build/wit-bindgen-5a3832272ab05b8f/out
