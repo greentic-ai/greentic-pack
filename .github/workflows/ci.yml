@@ -38,47 +38,6 @@ jobs:
         BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
       test-args: "--workspace --all-features --locked"
 
-  publish:
-    name: Publish crates
-    needs: [release]
-    if: needs.release.result == 'success'
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TARGET_DIR: target/ci
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
-      - name: Install lld + clang (Linux only)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y lld clang
-      - name: Configure lld for native Linux builds
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-          EOF
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-rust-1.91-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Publish changed crates
-        uses: katyo/publish-crates@v2
-        with:
-          path: .
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          ignore-unpublished-changes: true
-          check-repo: true
-          dry-run: false
-      - name: Note already-published versions
-        if: always()
-        run: echo "If cargo publish reported 'already exists on crates.io index', no new publish was performed (expected and non-fatal)."
-
   release:
     name: Build binaries + Release
     needs: [ci]
