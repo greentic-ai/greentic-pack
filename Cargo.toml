@@ -14,8 +14,8 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.94"
-version = "0.4.124"
+rust-version = "1.95"
+version = "0.5.0"
 license = "MIT"
 
 [workspace.dependencies]
@@ -29,7 +29,7 @@ sha2 = "0.11"
 hex = "0.4"
 semver = { version = "1", features = ["serde"] }
 blake3 = "1"
-constant_time_eq = "=0.4.2"
+constant_time_eq = "0.4"
 ciborium = "0.2"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 walkdir = "2"
@@ -42,18 +42,18 @@ pkcs8 = { version = "0.10", features = ["pem"] }
 toml = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
-greentic-types = { version = "0.4" }
-greentic-flow = { version = "0.4" }
-greentic-interfaces-host = { version = "0.4" }
-greentic-interfaces-wasmtime = { version = "0.4" }
-greentic-telemetry = { version = "0.4", features = ["otlp"] }
-greentic-config-types = "0.4"
-greentic-qa-lib = "0.4"
-greentic-i18n-lib = "0.4"
-greentic-config = "0.4"
-greentic-pack = { package = "greentic-pack-lib", path = "crates/greentic-pack", version="0.4" }
+greentic-types = { version = "0.5" }
+greentic-flow = { version = "0.5" }
+greentic-interfaces-host = { version = "0.5" }
+greentic-interfaces-wasmtime = { version = "0.5" }
+greentic-telemetry = { version = "0.5", features = ["otlp"] }
+greentic-config-types = "0.5"
+greentic-qa-lib = "0.5"
+greentic-i18n-lib = "0.5"
+greentic-config = "0.5"
+greentic-pack = { package = "greentic-pack-lib", path = "crates/greentic-pack", version="0.5" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
-pack_component_template = { version = "0.4", path = "crates/pack_component_template" }
+pack_component_template = { version = "0.5", path = "crates/pack_component_template" }
 rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
 tempfile = "3"
 rand_core = "0.10"
@@ -63,7 +63,7 @@ x509-parser = "0.18"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 wit-component = "0.247"
-greentic-distributor-client = { version = ">=0.4.31, <0.5", default-features = false, features = ["reqwest", "dist-client"] }
+greentic-distributor-client = { version = "0.5", default-features = false, features = ["reqwest", "dist-client"] }
 schemars = "1"
 wasmtime = "43"
 wasmtime-wasi = "43"

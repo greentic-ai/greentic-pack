@@ -38,7 +38,7 @@ jobs:
           cargo install cargo-binstall --locked
         fi
         BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
-        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force || cargo install greentic-component --locked --force
         BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
       test-args: "--workspace --all-features --locked"
 
@@ -75,15 +75,27 @@ jobs:
             cargo install cargo-binstall --locked
           fi
           BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
-          BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
+          BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force || cargo install greentic-component --locked --force
           BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
-      - name: Run semver checks with Rust 1.95
+      - name: Resolve semver baseline tag
+        id: semver-baseline
+        run: |
+          git fetch --tags --force
+          baseline_tag="$(git tag -l 'v*' --sort=-v:refname | sed -n '2p')"
+          if [ -z "$baseline_tag" ]; then
+            echo "Unable to determine previous stable v* tag for semver baseline" >&2
+            exit 1
+          fi
+          echo "baseline_tag=$baseline_tag" >> "$GITHUB_OUTPUT"
+          echo "Using semver baseline tag: $baseline_tag"
+      - name: Run semver checks against previous git tag
         run: |
           rustup override set 1.95.0
           rustc --version
           cargo --version
           cargo install cargo-semver-checks --locked --force
           cargo semver-checks check-release \
+            --baseline-rev "${{ steps.semver-baseline.outputs.baseline_tag }}" \
             --package greentic-pack \
             --package greentic-pack-lib \
             --package pack_component_template
@@ -119,14 +131,14 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: ${{ matrix.target }}
       - name: Install target
         run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-${{ runner.os }}-${{ matrix.target }}-rust-1.91-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: release-${{ runner.os }}-${{ matrix.target }}-rust-1.95-${{ hashFiles('**/Cargo.lock') }}
       - name: Install Linux toolchains
         if: matrix.os == 'ubuntu-latest'
         run: |

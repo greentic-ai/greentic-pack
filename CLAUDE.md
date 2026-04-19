@@ -56,7 +56,7 @@ ci/local_check.sh
 ## Key Conventions
 
 - `#![forbid(unsafe_code)]` — no unsafe code allowed.
-- Rust 2024 edition, pinned to rustc 1.94.0 (`rust-toolchain.toml`).
+- Rust 2024 edition, pinned to rustc 1.95.0 (`rust-toolchain.toml`).
 - Use `greentic_interfaces::canonical` — never import from `greentic_interfaces::bindings::*` (enforced by `ci/check_no_interfaces_bindings_imports.sh`).
 - Prefer existing Greentic shared crates (interfaces, types, secrets, oauth, messaging, events) over re-defining types locally.
 - Error handling: `anyhow::Result<T>` with `.context()` for propagation; `thiserror` for domain-specific errors.
