@@ -1,7 +1,11 @@
 /target
+**/target/
 dist/
+**/dist/
 .packc/
 **/.packc/
+.cargo/
+.cargo/**
 .DS_Store
 examples/.DS_Store
 .greentic/
