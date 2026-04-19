@@ -77,10 +77,16 @@ jobs:
           BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
           BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
           BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
-      - uses: obi1kenobi/cargo-semver-checks-action@v2
-        with:
-          rust-toolchain: manual
-          package: greentic-pack,greentic-pack-lib,pack_component_template
+      - name: Run semver checks with Rust 1.95
+        run: |
+          rustup override set 1.95.0
+          rustc --version
+          cargo --version
+          cargo install cargo-semver-checks --locked --force
+          cargo semver-checks check-release \
+            --package greentic-pack \
+            --package greentic-pack-lib \
+            --package pack_component_template
 
   release:
     name: Build binaries + Release
