@@ -581,6 +581,9 @@ fn wizard_asset_staging_can_feed_followup_build_without_shell_copying() {
         .arg("--answers")
         .arg(&answers_path)
         .current_dir(workspace_root())
+        .env_remove("GREENTIC_PACK_WIZARD_SELF_EXE")
+        .env_remove("GREENTIC_FLOW_BIN")
+        .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run wizard apply");
     assert!(apply.status.success(), "wizard apply should succeed");
@@ -592,6 +595,9 @@ fn wizard_asset_staging_can_feed_followup_build_without_shell_copying() {
         .arg("--log")
         .arg("warn")
         .current_dir(workspace_root())
+        .env_remove("GREENTIC_PACK_WIZARD_SELF_EXE")
+        .env_remove("GREENTIC_FLOW_BIN")
+        .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run build");
     assert!(
@@ -677,6 +683,9 @@ fn wizard_asset_staging_resolves_relative_sources_from_answers_file_directory() 
         .arg("apply")
         .arg("--answers")
         .arg(&answers_path)
+        .env_remove("GREENTIC_PACK_WIZARD_SELF_EXE")
+        .env_remove("GREENTIC_FLOW_BIN")
+        .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run wizard apply");
     assert!(output.status.success(), "wizard apply should succeed");
@@ -3029,10 +3038,14 @@ fn write_asset_answers(answers_path: &Path, pack_dir: &Path, asset_staging: Valu
 
 fn run_wizard_answers(command: &str, answers_path: &Path) -> std::process::Output {
     Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(workspace_root())
         .arg("wizard")
         .arg(command)
         .arg("--answers")
         .arg(answers_path)
+        .env_remove("GREENTIC_PACK_WIZARD_SELF_EXE")
+        .env_remove("GREENTIC_FLOW_BIN")
+        .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run wizard command")
 }
