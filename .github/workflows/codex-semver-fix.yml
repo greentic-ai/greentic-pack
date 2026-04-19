@@ -21,5 +21,27 @@ jobs:
     uses: greenticai/.github/.github/workflows/codex-semver-fix.yml@main
     with:
       branch: ${{ github.event.inputs.branch || '' }}
+      rust-version: "1.95.0"
       semver-checks-package: "greentic-pack,greentic-pack-lib,pack_component_template"
+      setup-script: |
+        bash ci/check_no_duplicate_canonical_wit.sh
+        if [ "$(uname -s)" = "Linux" ]; then
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
+        fi
+        sudo apt-get update && sudo apt-get install -y lld clang
+        mkdir -p .cargo
+        cat > .cargo/config.toml <<'TOML'
+        [target.x86_64-unknown-linux-gnu]
+        linker = "clang"
+        rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+        TOML
+        rustup target add wasm32-wasip2
+        if [ ! -x "$HOME/.cargo/bin/cargo-binstall" ]; then
+          cargo install cargo-binstall --locked
+        fi
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
+        BINSTALL_DISABLE_STRATEGIES=compile cargo binstall wasm-tools -y --force
     secrets: inherit
