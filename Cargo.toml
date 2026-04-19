@@ -29,6 +29,7 @@ sha2 = "0.11"
 hex = "0.4"
 semver = { version = "1", features = ["serde"] }
 blake3 = "1"
+constant_time_eq = "=0.4.2"
 ciborium = "0.2"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 walkdir = "2"
