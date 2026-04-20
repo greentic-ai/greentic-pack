@@ -5,9 +5,15 @@ edition = "2024"
 license = "MIT"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = [
+    "cdylib",
+]
 
-[dependencies]
-greentic-interfaces-guest = { version = "0.4", default-features = false, features = ["component-v0-6"] }
+[dependencies.greentic-interfaces-guest]
+version = ">=0.5.0-0, <0.6.0-0"
+default-features = false
+features = [
+    "component-v0-6",
+]
 
 [workspace]

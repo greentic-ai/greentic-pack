@@ -6,12 +6,20 @@ license = "MIT"
 publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = [
+    "cdylib",
+    "rlib",
+]
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_cbor = "0.11"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-greentic-interfaces = "0.4"
+[dependencies.serde]
+version = "1"
+features = [
+    "derive",
+]
+
+[target."cfg(not(target_arch = \"wasm32\"))".dependencies]
+greentic-interfaces = ">=0.5.0-0, <0.6.0-0"
