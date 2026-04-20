@@ -81,10 +81,23 @@ jobs:
         id: semver-baseline
         run: |
           git fetch --tags --force
-          baseline_tag="$(git tag -l 'v*' --sort=-v:refname | sed -n '2p')"
-          if [ -z "$baseline_tag" ]; then
-            echo "Unable to determine previous stable v* tag for semver baseline" >&2
+          newest_tag="$(git tag -l 'v*' --sort=-v:refname | sed -n '1p')"
+          if [ -z "$newest_tag" ]; then
+            echo "No v* tags found for semver baseline" >&2
             exit 1
+          fi
+          # When HEAD itself IS the newest tag (e.g. CI on a release-cut
+          # merge), compare against the tag before that. Otherwise (PRs,
+          # regular pushes to main, anything where HEAD is past the latest
+          # release), compare against the latest release tag.
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$newest_tag")" ]; then
+            baseline_tag="$(git tag -l 'v*' --sort=-v:refname | sed -n '2p')"
+            if [ -z "$baseline_tag" ]; then
+              echo "HEAD is the only v* tag; nothing to compare against" >&2
+              exit 1
+            fi
+          else
+            baseline_tag="$newest_tag"
           fi
           echo "baseline_tag=$baseline_tag" >> "$GITHUB_OUTPUT"
           echo "Using semver baseline tag: $baseline_tag"
