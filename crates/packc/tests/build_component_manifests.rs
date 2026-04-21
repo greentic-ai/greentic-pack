@@ -275,6 +275,37 @@ fn component_cache_entry_path(cache_dir: &Path, digest: &str) -> PathBuf {
         .join("entry.json")
 }
 
+fn move_cached_manifest_to_legacy_dir(cache_dir: &Path, digest: &str) {
+    let normalized = digest.trim_start_matches("sha256:");
+    let prefix_len = normalized.len().min(2);
+    let (prefix, rest) = normalized.split_at(prefix_len);
+    let artifact_dir = cache_dir
+        .join("artifacts")
+        .join("sha256")
+        .join(prefix)
+        .join(rest);
+    let entry_path = component_cache_entry_path(cache_dir, digest);
+    let entry_bytes = fs::read(&entry_path).expect("read cache entry");
+    let mut entry: Value = serde_json::from_slice(&entry_bytes).expect("parse cache entry");
+    let source_dir = entry["local_path"]
+        .as_str()
+        .map(PathBuf::from)
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .expect("cache entry local_path parent");
+    let source_manifest = source_dir.join("component.manifest.json");
+    let legacy_dir = cache_dir.join("legacy-components").join(normalized);
+    fs::create_dir_all(&legacy_dir).expect("legacy component dir");
+    fs::copy(&source_manifest, legacy_dir.join("component.manifest.json"))
+        .expect("copy legacy component manifest");
+    fs::remove_file(&source_manifest).expect("remove source manifest");
+    entry["local_path"] = Value::String(artifact_dir.join("blob").display().to_string());
+    fs::write(
+        &entry_path,
+        serde_json::to_vec_pretty(&entry).expect("cache entry json"),
+    )
+    .expect("rewrite cache entry");
+}
+
 fn write_component_manifest(path: &Path) {
     let manifest = serde_json::json!({
         "id": COMPONENT_ID,
@@ -565,6 +596,29 @@ fn build_warns_when_manifest_missing() {
         }),
         "expected PACK_COMPONENT_NOT_EXPLICIT warning"
     );
+}
+
+#[test]
+fn build_materializes_component_manifest_from_legacy_cache_layout() {
+    let temp = TempDir::new().expect("temp dir");
+    let pack_dir = write_pack_fixture(&temp, false);
+    let cache_dir = temp.path().join("cache");
+    let digest = read_lock_digest(&pack_dir);
+    cache_component(&cache_dir, &digest, true);
+    move_cached_manifest_to_legacy_dir(&cache_dir, &digest);
+
+    let output = build_pack(&pack_dir, &cache_dir, true);
+    assert!(
+        output.status.success(),
+        "build failed:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let manifest_bytes = fs::read(pack_dir.join("dist/manifest.cbor")).expect("manifest");
+    let manifest = decode_pack_manifest(&manifest_bytes).expect("decode manifest");
+    assert_eq!(manifest.components.len(), 1);
+    assert_eq!(manifest.components[0].id.as_str(), COMPONENT_ID);
 }
 
 #[test]

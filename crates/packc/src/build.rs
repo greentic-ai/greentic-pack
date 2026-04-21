@@ -1863,11 +1863,12 @@ fn load_component_manifest_for_lock(
 ) -> Result<Option<ComponentManifest>> {
     let mut search_paths = Vec::new();
     search_paths.extend(component_manifest_search_paths(pack_dir, component_id));
-    if let Some(source) = bundled_source
-        && let Some(parent) = source.parent()
-    {
-        search_paths.push(parent.join("component.manifest.cbor"));
-        search_paths.push(parent.join("component.manifest.json"));
+    if let Some(source) = bundled_source {
+        if let Some(parent) = source.parent() {
+            search_paths.push(parent.join("component.manifest.cbor"));
+            search_paths.push(parent.join("component.manifest.json"));
+        }
+        search_paths.extend(legacy_cache_component_manifest_search_paths(source));
     }
 
     for path in search_paths {
@@ -1877,6 +1878,50 @@ fn load_component_manifest_for_lock(
     }
 
     Ok(None)
+}
+
+fn legacy_cache_component_manifest_search_paths(source: &Path) -> Vec<PathBuf> {
+    let Some(component_dir) = source.parent() else {
+        return Vec::new();
+    };
+    let Some(component_hash) = component_dir.file_name().and_then(|name| name.to_str()) else {
+        return Vec::new();
+    };
+    let Some(prefix_dir) = component_dir.parent() else {
+        return Vec::new();
+    };
+    let Some(prefix) = prefix_dir.file_name().and_then(|name| name.to_str()) else {
+        return Vec::new();
+    };
+    let Some(sha_dir) = prefix_dir.parent() else {
+        return Vec::new();
+    };
+    let Some(sha_name) = sha_dir.file_name().and_then(|name| name.to_str()) else {
+        return Vec::new();
+    };
+    if sha_name != "sha256" {
+        return Vec::new();
+    }
+    let Some(artifacts_dir) = sha_dir.parent() else {
+        return Vec::new();
+    };
+    let Some(artifacts_name) = artifacts_dir.file_name().and_then(|name| name.to_str()) else {
+        return Vec::new();
+    };
+    if artifacts_name != "artifacts" {
+        return Vec::new();
+    }
+    let Some(cache_root) = artifacts_dir.parent() else {
+        return Vec::new();
+    };
+
+    let legacy_dir = cache_root
+        .join("legacy-components")
+        .join(format!("{prefix}{component_hash}"));
+    vec![
+        legacy_dir.join("component.manifest.cbor"),
+        legacy_dir.join("component.manifest.json"),
+    ]
 }
 
 fn component_manifest_search_paths(pack_dir: &Path, name: &str) -> Vec<PathBuf> {

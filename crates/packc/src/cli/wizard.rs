@@ -962,6 +962,22 @@ fn generic_flow_wizard_schema() -> Value {
     })
 }
 
+fn flow_wizard_routing_schema() -> Value {
+    json!({
+        "description": "Optional routing intent. Use \"out\", \"reply\", or an explicit route array such as [{\"to\":\"next\"}].",
+        "anyOf": [
+            { "enum": ["out", "reply"] },
+            { "type": "array" }
+        ]
+    })
+}
+
+fn flow_step_mapping_schema(description: &str) -> Value {
+    json!({
+        "description": description
+    })
+}
+
 fn flow_step_answers_schema() -> Value {
     json!({
         "type": "object",
@@ -993,7 +1009,12 @@ fn flow_step_action_schema(action: &str) -> Value {
                 "type": "string",
                 "enum": ["default", "setup", "update", "remove"]
             },
-            "answers": { "$ref": "#/$defs/greentic_flow_step_answers" }
+            "operation": { "type": "string" },
+            "answers": { "$ref": "#/$defs/greentic_flow_step_answers" },
+            "routing": flow_wizard_routing_schema(),
+            "in_map": flow_step_mapping_schema("Optional flow authoring input mapping. This is separate from component `answers` and may reference flow payload/state/config such as `config.<key>`."),
+            "out_map": flow_step_mapping_schema("Optional flow authoring success-output mapping. This is separate from component `answers`."),
+            "err_map": flow_step_mapping_schema("Optional flow authoring error-output mapping. This is separate from component `answers`.")
         },
         "required": required
     })
