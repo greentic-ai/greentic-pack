@@ -1,102 +1,394 @@
 # Greentic Pack
 
-Greentic packs are portable, signed bundles of flows, components, assets, and
-metadata. They let you ship a complete capability as a single `.gtpack` file,
-then run, validate, or deploy it anywhere with consistent results.
+`greentic-pack` helps you create, edit, validate, and ship Greentic packs.
 
-A pack can describe an **application** flow, **infrastructure** configuration,
-or **provider** extension. You can evolve each pack independently, publish it to
-registries, and compose packs into larger systems without rebuilding your app.
+A pack is a folder, and later a `.gtpack` file, that contains the things your
+Greentic project needs:
 
-## Why packs are useful
+- flows
+- components
+- assets
+- translations
+- metadata about how everything fits together
 
-- **Portable**: one archive captures flows, manifests, component sources, and
-  assets.
-- **Composable**: pack dependencies let teams reuse shared capabilities.
-- **Inspectable**: `greentic-pack doctor` surfaces flows, components, sources,
-  providers, and SBOM state.
-- **Verifiable**: packs include checksums, SBOMs, and optional signatures.
-- **Extensible**: capability extensions let you add new capabilities without
-  reworking the core runtime.
+If you are not a systems programmer, that is completely fine. The normal way to
+work with this tool is:
 
-## Quickstart (try a demo pack)
+1. Create or open a pack with the wizard
+2. Add or edit flows
+3. Add or edit components
+4. Run validation
+5. Build a `.gtpack`
 
-Install the CLI:
+This README is written for humans first, especially people who are comfortable
+writing product logic but do not want to reverse-engineer the CLI.
+
+If you are a coding agent or you are scripting pack creation, do not invent
+wizard payloads from this README. Use the live schema and deterministic replay
+workflow in [docs/coding-agents.md](/projects/ai/greentic-ng/greentic-pack/docs/coding-agents.md).
+
+## What A Pack Is
+
+Think of a pack as a project folder for one Greentic capability.
+
+Examples:
+
+- a customer-support assistant
+- a research workflow
+- a provider or extension pack that adds new runtime capability
+
+Common files and directories inside a pack:
+
+- `pack.yaml`: the pack manifest
+- `flows/`: conversation and orchestration flows, usually `.ygtc` files
+- `components/`: component folders or component references
+- `assets/`: cards, prompts, schemas, examples, images, and other support files
+- `i18n/`: translations
+- `extensions/`: extension-specific data files for extension packs
+
+You usually do not need to hand-author everything from scratch. The wizard can
+scaffold the basic structure for you.
+
+## Install
+
+Install the main CLI:
 
 ```bash
 cargo install cargo-binstall
 cargo binstall greentic-pack
 ```
 
-Build and inspect the demo pack in this repo:
+The pack wizard can delegate to other tools. If you plan to edit flows or
+components through the wizard, also install:
 
 ```bash
-greentic-pack lint --in examples/weather-demo
-greentic-pack build --in examples/weather-demo --gtpack-out dist/weather-demo.gtpack
-greentic-pack doctor dist/weather-demo.gtpack
+cargo binstall greentic-flow
+cargo binstall greentic-component
 ```
 
-Create a new pack scaffold:
+If `cargo binstall` is not available in your environment, you can use:
+
+```bash
+cargo install --locked greentic-pack
+cargo install --locked greentic-flow
+cargo install --locked greentic-component
+```
+
+Check that the tools are available:
+
+```bash
+greentic-pack --help
+greentic-flow --help
+greentic-component --help
+```
+
+## Quick Start
+
+Create a new pack:
+
+```bash
+greentic-pack wizard
+```
+
+Choose `Create application pack`, then:
+
+1. enter a pack id
+2. choose a directory
+3. use `Edit flows` to open the flow wizard
+4. use `Add/edit components` to open the component wizard
+5. finish with validation and build
+
+If you prefer a non-interactive scaffold first:
 
 ```bash
 greentic-pack new acme.weather --dir ./acme-weather
+cd ./acme-weather
+greentic-pack update --in .
+greentic-pack build --in .
 ```
 
-## Pack types at a glance
+## The Easiest Mental Model
 
-- **Application packs**: flows, templates, and component references that power
-  user-facing experiences.
-- **Infrastructure packs**: operational configuration, telemetry, and deployment
-  defaults for a platform team.
-- **Provider packs**: add new capabilities via
-  `extensions.greentic.ext.capabilities.v1` and component-backed runtimes.
+You do not need to learn every command at once. Most day-to-day work falls into
+these jobs:
 
-For the full taxonomy and rules, see:
-- `docs/repo-pack-types.md`
-- `docs/pack_extensions_components.md`
+- `wizard`: guided authoring
+- `update`: refresh pack metadata after changing files
+- `lint`: validate source pack contents
+- `resolve`: write or refresh `pack.lock.cbor`
+- `build`: create the distributable `.gtpack`
+- `doctor`: inspect a source pack or built archive
 
-Full docs index:
-- `docs/README.md`
+## Typical Human Workflow
 
-## How packs work (short version)
+### 1. Create a new application pack
 
-1. Author a `pack.yaml` and flows (`.ygtc`).
-2. Resolve component sources into `pack.lock.cbor`.
-3. Build a canonical `.gtpack` that embeds the manifest, SBOM, and assets.
-4. Distribute the `.gtpack` and inspect it with `greentic-pack doctor` or
-   derive a deployment plan with `greentic-pack plan`.
+Run:
 
-Deep dives:
-- `docs/pack-format.md`
-- `docs/usage.md`
-- `docs/pack_extensions_components.md`
-- `docs/extension-provider-packs-howto.md`
-- `docs/internationalise-pack-howto.md`
-- `docs/vision/README.md`
-- `docs/vision/legacy.md`
+```bash
+greentic-pack wizard
+```
 
-Capability extension validation note:
-- In `greentic-pack build`, capability offer `provider.component_ref` can target either `pack.yaml` component ids or lock-backed component ids from `pack.lock`.
+Pick:
 
-## Example packs
+1. `Create application pack`
+2. choose a pack id like `acme.weather`
+3. choose an output directory like `./acme-weather`
 
-- `examples/weather-demo` – application pack with a simple conversational flow.
-- `examples/qa-demo` – multi-turn QA flow with subflow calls.
-- `examples/billing-demo`, `examples/search-demo`, `examples/reco-demo` –
-  provider-oriented manifests and pack kinds.
+The wizard creates the basic pack structure for you.
 
-## CLI reference
+### 2. Add or edit flows
 
-See `docs/cli.md` for a complete reference of commands, flags, and workflows.
-For compatibility-only aliases and migration switches, see
-`docs/vision/legacy.md`.
+From the pack wizard, choose `Edit flows`.
 
-## Local checks & publishing
+This opens `greentic-flow wizard` for you. Use it when you want to:
 
-- Local CI wrapper: `ci/local_check.sh`
-- Publishing guidance: `docs/publishing.md`
+- add a new flow file
+- add or update steps in a flow
+- set routing between steps
+- configure step inputs and outputs
 
-## Contributing & security
+If you already have a pack and want to work on flows directly:
 
-- Contributing guidelines: `CONTRIBUTING.md`
-- Security policy: `SECURITY.md`
+```bash
+cd ./acme-weather
+greentic-flow wizard .
+```
+
+### 3. Add or edit components
+
+From the pack wizard, choose `Add/edit components`.
+
+This opens `greentic-component wizard`, which helps you:
+
+- create a new component
+- update component configuration
+- answer component QA/setup questions
+- keep component metadata aligned with the pack
+
+If you want to run it directly:
+
+```bash
+cd ./acme-weather
+greentic-component wizard --project-root .
+```
+
+### 4. Refresh pack metadata
+
+After editing files manually, run:
+
+```bash
+greentic-pack update --in .
+```
+
+This syncs `pack.yaml` with the current `flows/` and `components/` content.
+
+### 5. Validate before building
+
+Run:
+
+```bash
+greentic-pack lint --in .
+greentic-pack resolve --in .
+```
+
+Why both?
+
+- `lint` checks source-level correctness
+- `resolve` produces `pack.lock.cbor`, which pins resolved component sources
+
+### 6. Build the pack
+
+Run:
+
+```bash
+greentic-pack build --in . --gtpack-out ./dist/acme-weather.gtpack
+```
+
+This creates the distributable archive you can inspect, test, or publish.
+
+### 7. Inspect the built result
+
+Run:
+
+```bash
+greentic-pack doctor ./dist/acme-weather.gtpack
+```
+
+This is a good final check before sharing the pack with anyone else.
+
+## Understanding The Main Commands
+
+### `greentic-pack wizard`
+
+Use this when:
+
+- you are new to pack authoring
+- you want the safest path
+- you want to create or update a pack interactively
+- you want the CLI to open the flow and component wizards for you
+
+### `greentic-pack new`
+
+Use this when:
+
+- you already know you want a new empty scaffold
+- you are comfortable filling in files yourself after scaffolding
+
+### `greentic-pack update`
+
+Use this after:
+
+- adding a new flow file
+- adding or removing component files
+- changing pack structure by hand
+
+### `greentic-pack lint`
+
+Use this early and often. It is the fast “did I break the pack?” check.
+
+### `greentic-pack resolve`
+
+Use this when your flows or components depend on resolved references and you
+need to refresh `pack.lock.cbor`.
+
+### `greentic-pack build`
+
+Use this when you want the actual archive that will be shared, inspected, or
+deployed.
+
+### `greentic-pack doctor`
+
+Use this when you want a readable report about a pack or `.gtpack`.
+
+## Common Tasks
+
+### Create a new pack
+
+```bash
+greentic-pack wizard
+```
+
+### Open an existing pack and continue editing
+
+```bash
+greentic-pack wizard
+```
+
+Choose `Update application pack` or `Update extension pack`.
+
+### Build a pack from a directory
+
+```bash
+greentic-pack build --in ./my-pack --gtpack-out ./dist/my-pack.gtpack
+```
+
+### Check a built archive
+
+```bash
+greentic-pack doctor ./dist/my-pack.gtpack
+```
+
+### Work directly on flows
+
+```bash
+cd ./my-pack
+greentic-flow wizard .
+```
+
+### Work directly on components
+
+```bash
+cd ./my-pack
+greentic-component wizard --project-root .
+```
+
+## Extension Packs
+
+If you are creating a provider or extension pack, the wizard is still the best
+starting point.
+
+Run:
+
+```bash
+greentic-pack wizard
+```
+
+Then choose one of:
+
+- `Create extension pack`
+- `Update extension pack`
+- `Add extension to existing pack`
+
+For extension-specific background and lower-level details, see:
+
+- [docs/extension-provider-packs-howto.md](/projects/ai/greentic-ng/greentic-pack/docs/extension-provider-packs-howto.md)
+- [docs/pack_extensions_components.md](/projects/ai/greentic-ng/greentic-pack/docs/pack_extensions_components.md)
+
+## Recommended Simple Workflow
+
+If you want one copy-pasteable routine for ordinary work:
+
+```bash
+greentic-pack wizard
+greentic-pack update --in ./my-pack
+greentic-pack lint --in ./my-pack
+greentic-pack resolve --in ./my-pack
+greentic-pack build --in ./my-pack --gtpack-out ./dist/my-pack.gtpack
+greentic-pack doctor ./dist/my-pack.gtpack
+```
+
+## Which Document Should I Read Next?
+
+Read this README if you are:
+
+- learning the tool
+- using the wizard manually
+- trying to understand the overall workflow
+
+Read [docs/coding-agents.md](/projects/ai/greentic-ng/greentic-pack/docs/coding-agents.md) if you are:
+
+- a coding agent
+- generating `AnswerDocument` files
+- using `wizard --schema`
+- using `wizard run --dry-run --emit-answers`
+- applying deterministic wizard replays
+
+Read [docs/cli.md](/projects/ai/greentic-ng/greentic-pack/docs/cli.md) if you need:
+
+- exact flags
+- command reference
+- lower-level behavior details
+
+Read [docs/pack-format.md](/projects/ai/greentic-ng/greentic-pack/docs/pack-format.md) if you need:
+
+- archive structure details
+- deterministic packaging details
+
+## Examples
+
+Examples in this repository include:
+
+- `examples/weather-demo`
+- `examples/adaptive-mcp-oauth-demo`
+
+A good way to learn is to inspect one example and run:
+
+```bash
+greentic-pack doctor --in examples/weather-demo
+greentic-pack build --in examples/weather-demo --gtpack-out ./dist/weather-demo.gtpack
+greentic-pack doctor ./dist/weather-demo.gtpack
+```
+
+## Documentation Map
+
+- [docs/README.md](/projects/ai/greentic-ng/greentic-pack/docs/README.md): documentation index
+- [docs/cli.md](/projects/ai/greentic-ng/greentic-pack/docs/cli.md): command reference
+- [docs/coding-agents.md](/projects/ai/greentic-ng/greentic-pack/docs/coding-agents.md): deterministic agent workflow
+- [docs/extension-provider-packs-howto.md](/projects/ai/greentic-ng/greentic-pack/docs/extension-provider-packs-howto.md): extension-specific authoring
+- [docs/pack_extensions_components.md](/projects/ai/greentic-ng/greentic-pack/docs/pack_extensions_components.md): component and extension details
+- [docs/publishing.md](/projects/ai/greentic-ng/greentic-pack/docs/publishing.md): release and publishing guidance
+
+## Contributing And Security
+
+- [SECURITY.md](/projects/ai/greentic-ng/greentic-pack/SECURITY.md)

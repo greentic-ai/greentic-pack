@@ -3,6 +3,10 @@
 This document describes every `greentic-pack` command and flag, along with
 common usage patterns. The CLI is published as the `greentic-pack` binary.
 
+If you want the easiest human-facing introduction, start with `README.md`.
+If you are a coding agent or you are building AnswerDocuments, start with
+`docs/coding-agents.md`.
+
 Compatibility-only aliases and migration switches are documented in
 `docs/vision/legacy.md`.
 

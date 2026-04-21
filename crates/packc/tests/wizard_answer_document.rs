@@ -2740,6 +2740,41 @@ exit 0
                                     "template": "adaptive-card"
                                 }
                             }
+                        },
+                        {
+                            "action": "update-step",
+                            "flow": "flows/order_tracking_flow.ygtc",
+                            "step_id": "router",
+                            "component": "components/router.wasm",
+                            "mode": "default",
+                            "operation": "handle_message",
+                            "answers": {
+                                "prompt": "route"
+                            },
+                            "routing": [
+                                {
+                                    "condition": "response.action == \"create_research_plan\"",
+                                    "to": "research_planner"
+                                },
+                                {
+                                    "condition": "response.action == \"start_research_analysis\"",
+                                    "to": "research_analyst"
+                                },
+                                {
+                                    "out": true
+                                }
+                            ],
+                            "in_map": {
+                                "payload": {
+                                    "question": "{{entry.input.metadata.user_question}}"
+                                }
+                            },
+                            "out_map": {
+                                "planner_output": "{{response.plan}}"
+                            },
+                            "err_map": {
+                                "error": "{{error.message}}"
+                            }
                         }
                     ]
                 },
@@ -2788,6 +2823,55 @@ exit 0
             .and_then(|v| v.get("template"))
             .and_then(Value::as_str),
         Some("adaptive-card")
+    );
+    let update_action = replayed_flow
+        .get("actions")
+        .and_then(Value::as_array)
+        .and_then(|items| items.get(1))
+        .expect("second replayed flow action");
+    let routes = update_action
+        .get("routing")
+        .and_then(Value::as_array)
+        .expect("routing array");
+    assert_eq!(
+        routes
+            .first()
+            .and_then(|route| route.get("condition"))
+            .and_then(Value::as_str),
+        Some("response.action == \"create_research_plan\"")
+    );
+    assert_eq!(
+        routes
+            .get(1)
+            .and_then(|route| route.get("condition"))
+            .and_then(Value::as_str),
+        Some("response.action == \"start_research_analysis\"")
+    );
+    assert_eq!(
+        update_action.get("operation").and_then(Value::as_str),
+        Some("handle_message")
+    );
+    assert_eq!(
+        update_action
+            .get("in_map")
+            .and_then(|v| v.get("payload"))
+            .and_then(|v| v.get("question"))
+            .and_then(Value::as_str),
+        Some("{{entry.input.metadata.user_question}}")
+    );
+    assert_eq!(
+        update_action
+            .get("out_map")
+            .and_then(|v| v.get("planner_output"))
+            .and_then(Value::as_str),
+        Some("{{response.plan}}")
+    );
+    assert_eq!(
+        update_action
+            .get("err_map")
+            .and_then(|v| v.get("error"))
+            .and_then(Value::as_str),
+        Some("{{error.message}}")
     );
     let replayed_component: Value = serde_json::from_slice(
         &fs::read(pack_dir.join("component.replayed.json"))
