@@ -12,6 +12,7 @@ pub mod components;
 pub mod config;
 pub mod extensions_lock;
 pub mod gui;
+pub mod info;
 pub mod input;
 pub mod inspect;
 pub mod inspect_lock;
