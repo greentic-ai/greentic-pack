@@ -136,6 +136,31 @@ mod tests {
     }
 
     #[test]
+    fn invalid_signature_with_key_id_renders_invalid_and_key_id() {
+        let out = render(&sample(SignatureInfo {
+            status: SignatureStatus::Invalid,
+            key_id: Some("ed25519:bad".into()),
+        }));
+        assert!(out.contains("invalid · key_id=ed25519:bad"));
+        assert!(!out.contains("signed"));
+        assert!(!out.contains("unsigned"));
+    }
+
+    #[test]
+    fn invalid_signature_without_key_id_renders_bare_invalid() {
+        let out = render(&sample(SignatureInfo {
+            status: SignatureStatus::Invalid,
+            key_id: None,
+        }));
+        // Must contain "invalid" on the Signature row but NOT "key_id=".
+        assert!(out.contains("invalid"));
+        assert!(!out.contains("key_id="));
+        // Also must not accidentally render "signed" or "unsigned" as the status.
+        let signature_line = out.lines().find(|l| l.starts_with("Signature")).unwrap();
+        assert_eq!(signature_line.trim(), "Signature    invalid");
+    }
+
+    #[test]
     fn omits_sections_when_empty() {
         let r = InfoReport {
             info_schema_version: 1,
