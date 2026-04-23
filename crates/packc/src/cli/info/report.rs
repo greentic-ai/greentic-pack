@@ -54,7 +54,7 @@ impl InfoReport {
             info_schema_version: 1,
             name: meta.name.clone(),
             version: meta.version.to_string(),
-            kind: meta.kind.as_ref().map(pack_kind_to_string),
+            kind: meta.kind.as_ref().map(|k| pack_kind_to_string(k).to_string()),
             description: meta.description.clone(),
             authors: meta.authors.clone(),
             license: meta.license.clone(),
@@ -90,12 +90,25 @@ impl InfoReport {
     }
 }
 
-fn pack_kind_to_string(k: &greentic_pack::PackKind) -> String {
-    // Relies on PackKind's #[serde(rename_all = "kebab-case")] attribute.
-    serde_json::to_value(k)
-        .ok()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(|| format!("{:?}", k).to_lowercase())
+fn pack_kind_to_string(k: &greentic_pack::PackKind) -> &'static str {
+    use greentic_pack::PackKind as K;
+    // Keeps the mapping kebab-case to align with upstream's
+    // `#[serde(rename_all = "kebab-case")]` contract; a new variant added upstream
+    // will fail to compile here, forcing an explicit info rendering decision.
+    match k {
+        K::Application => "application",
+        K::SourceProvider => "source-provider",
+        K::Scanner => "scanner",
+        K::Signing => "signing",
+        K::Attestation => "attestation",
+        K::PolicyEngine => "policy-engine",
+        K::OciProvider => "oci-provider",
+        K::BillingProvider => "billing-provider",
+        K::SearchProvider => "search-provider",
+        K::RecommendationProvider => "recommendation-provider",
+        K::DistributionBundle => "distribution-bundle",
+        K::RolloutStrategy => "rollout-strategy",
+    }
 }
 
 #[cfg(test)]
