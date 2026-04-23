@@ -66,6 +66,15 @@ pub fn handle(path: &Path, format: InspectFormat, strict: bool) -> Result<()> {
         ));
     }
 
+    // TODO(upstream): distinguish Invalid from Unsigned signature states.
+    // The underlying VerifyReport exposes only `signature_ok: bool` and a free-text
+    // `warnings: Vec<String>`. A present-but-invalid signature (bad digest / wrong key)
+    // is currently indistinguishable from a missing signature via the public library
+    // API, so we collapse both into Unsigned here. When greentic-pack-lib grows a
+    // typed signature-state (e.g. `SignatureOutcome::{Ok, Missing, Invalid{..}}`),
+    // map the Invalid arm onto `SignatureStatus::Invalid` and populate key_id from
+    // the same source. A5's human-formatter already handles Invalid correctly
+    // (crates/packc/src/cli/info/human.rs::signature_line).
     let sig = if load.report.signature_ok {
         SignatureInfo {
             status: SignatureStatus::Signed,
@@ -83,7 +92,7 @@ pub fn handle(path: &Path, format: InspectFormat, strict: bool) -> Result<()> {
     match format {
         InspectFormat::Json => {
             let value: Value = serde_json::to_value(&report)?;
-            let sorted = sort_json(value);
+            let sorted = super::inspect::sort_json(value);
             println!("{}", serde_json::to_string_pretty(&sorted)?);
         }
         InspectFormat::Human => {
@@ -124,24 +133,6 @@ fn validate_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Recursively sort JSON object keys so the machine-readable output is
-/// deterministic across platforms and serde_json versions.
-fn sort_json(value: Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            let mut entries: Vec<(String, Value)> = map.into_iter().collect();
-            entries.sort_by(|a, b| a.0.cmp(&b.0));
-            let mut sorted = serde_json::Map::new();
-            for (key, value) in entries {
-                sorted.insert(key, sort_json(value));
-            }
-            Value::Object(sorted)
-        }
-        Value::Array(values) => Value::Array(values.into_iter().map(sort_json).collect()),
-        other => other,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,27 +152,5 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.starts_with(ERR_NOT_A_PACK));
         assert!(msg.contains("expected .gtpack extension"));
-    }
-
-    #[test]
-    fn sort_json_orders_keys_recursively() {
-        let v: Value = serde_json::json!({
-            "b": 1,
-            "a": { "z": 2, "y": 3 },
-            "c": [{ "n": 1, "m": 2 }],
-        });
-        let sorted = sort_json(v);
-        let rendered = serde_json::to_string(&sorted).unwrap();
-        // All sibling keys appear in ascending order after sorting.
-        let a_idx = rendered.find("\"a\"").unwrap();
-        let b_idx = rendered.find("\"b\"").unwrap();
-        let c_idx = rendered.find("\"c\"").unwrap();
-        assert!(a_idx < b_idx && b_idx < c_idx);
-        let y_idx = rendered.find("\"y\"").unwrap();
-        let z_idx = rendered.find("\"z\"").unwrap();
-        assert!(y_idx < z_idx);
-        let m_idx = rendered.find("\"m\"").unwrap();
-        let n_idx = rendered.find("\"n\"").unwrap();
-        assert!(m_idx < n_idx);
     }
 }

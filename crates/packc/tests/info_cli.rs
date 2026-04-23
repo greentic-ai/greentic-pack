@@ -238,12 +238,12 @@ fn strict_on_unsigned_exits_3() {
         .args(["info", pack.to_str().expect("pack path"), "--strict"])
         .output()
         .expect("run info --strict");
-    assert_eq!(
-        out.status.code(),
-        Some(3),
-        "expected exit 3 on strict unsigned; stderr: {}",
-        String::from_utf8_lossy(&out.stderr)
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.starts_with("Signature verification failed"),
+        "stderr did not start with expected prefix: {stderr}"
     );
+    assert_eq!(out.status.code(), Some(3));
 }
 
 #[test]
