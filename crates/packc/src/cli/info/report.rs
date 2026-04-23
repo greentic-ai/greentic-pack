@@ -54,7 +54,10 @@ impl InfoReport {
             info_schema_version: 1,
             name: meta.name.clone(),
             version: meta.version.to_string(),
-            kind: meta.kind.as_ref().map(|k| pack_kind_to_string(k).to_string()),
+            kind: meta
+                .kind
+                .as_ref()
+                .map(|k| pack_kind_to_string(k).to_string()),
             description: meta.description.clone(),
             authors: meta.authors.clone(),
             license: meta.license.clone(),
