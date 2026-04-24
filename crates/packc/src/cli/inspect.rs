@@ -230,7 +230,7 @@ fn to_sorted_json(value: Value) -> Result<String> {
     Ok(serde_json::to_string_pretty(&sorted)?)
 }
 
-fn sort_json(value: Value) -> Value {
+pub(crate) fn sort_json(value: Value) -> Value {
     match value {
         Value::Object(map) => {
             let mut entries: Vec<(String, Value)> = map.into_iter().collect();

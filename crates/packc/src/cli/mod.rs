@@ -12,6 +12,8 @@ pub mod components;
 pub mod config;
 pub mod extensions_lock;
 pub mod gui;
+pub mod info;
+pub mod info_cmd;
 pub mod input;
 pub mod inspect;
 pub mod inspect_lock;
@@ -84,6 +86,18 @@ pub enum Command {
     Gui(self::gui::GuiCommand),
     /// Diagnose a pack archive (.gtpack) or source directory (runs validation)
     Doctor(self::inspect::InspectArgs),
+    /// Describe a .gtpack: show name, version, components, and metadata.
+    Info {
+        /// Path to a .gtpack file.
+        #[arg(value_name = "PATH")]
+        path: std::path::PathBuf,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = self::inspect::InspectFormat::Human)]
+        format: self::inspect::InspectFormat,
+        /// Fail if unsigned or signature invalid.
+        #[arg(long, default_value_t = false)]
+        strict: bool,
+    },
     /// Deprecated alias for `doctor`
     Inspect(self::inspect::InspectArgs),
     /// Inspect pack.lock.cbor (stable JSON to stdout)
@@ -338,6 +352,33 @@ pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
                 eprintln!("{}", crate::cli_i18n::t("cli.warn.inspect_deprecated"));
             }
             self::inspect::handle(args, cli.json, &runtime).await?
+        }
+        Command::Info {
+            path,
+            format,
+            strict,
+        } => {
+            // Honour the global `--json` flag as a shortcut for `--format json`.
+            let effective_format = if cli.json {
+                self::inspect::InspectFormat::Json
+            } else {
+                format
+            };
+            match self::info_cmd::handle(&path, effective_format, strict) {
+                Ok(()) => {}
+                Err(err) => {
+                    let msg = err.to_string();
+                    let code = if msg.starts_with(self::info_cmd::ERR_NOT_A_PACK) {
+                        2
+                    } else if msg.starts_with(self::info_cmd::ERR_STRICT_UNSIGNED) {
+                        3
+                    } else {
+                        1
+                    };
+                    eprintln!("{msg}");
+                    std::process::exit(code);
+                }
+            }
         }
         Command::InspectLock(args) => self::inspect_lock::handle(args)?,
         Command::Qa(args) => self::qa::handle(args, &runtime)?,

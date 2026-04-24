@@ -142,6 +142,7 @@ fn is_known_root_command(command: &str) -> bool {
             | "verify"
             | "gui"
             | "doctor"
+            | "info"
             | "inspect"
             | "inspect-lock"
             | "qa"
