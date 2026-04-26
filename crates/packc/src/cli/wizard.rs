@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -817,6 +817,14 @@ fn wizard_answer_schema(
         "greentic_flow_wizard_action".to_string(),
         flow_wizard_action_schema(),
     );
+    defs.insert(
+        "greentic_component_wizard_simple_fields".to_string(),
+        component_wizard_simple_fields_schema(),
+    );
+    defs.insert(
+        "greentic_component_wizard_qa_envelope".to_string(),
+        component_wizard_qa_envelope_schema(),
+    );
     for mode in component_modes {
         defs.insert(
             format!("greentic_component_wizard_{mode}"),
@@ -896,8 +904,12 @@ fn pack_wizard_answers_schema() -> Value {
                 ]
             },
             "component_wizard_answers": {
-                "description": "Nested greentic-component wizard answers for component-level replay inside greentic-pack.",
-                "$ref": "#/$defs/greentic_component_wizard_any_mode"
+                "description": "Nested greentic-component wizard answers for component-level replay inside greentic-pack. Accepts either the greentic-component QA replay envelope or the simple component fields object; simple fields are wrapped as {\"schema\":\"component-wizard-run/v1\",\"mode\":\"create\",\"fields\":...} before replay.",
+                "anyOf": [
+                    { "$ref": "#/$defs/greentic_component_wizard_any_mode" },
+                    { "$ref": "#/$defs/greentic_component_wizard_simple_fields" },
+                    { "$ref": "#/$defs/greentic_component_wizard_qa_envelope" }
+                ]
             },
             "asset_staging": {
                 "type": "array",
@@ -959,6 +971,53 @@ fn generic_flow_wizard_schema() -> Value {
             }
         },
         "required": ["schema_id", "schema_version", "actions"]
+    })
+}
+
+fn component_wizard_simple_fields_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "Convenience shape for answers.component_wizard_answers. greentic-pack wraps this object in the greentic-component QA replay envelope before invoking `greentic-component wizard --qa-answers`.",
+        "additionalProperties": true,
+        "properties": {
+            "component_name": { "type": "string" },
+            "output_dir": { "type": "string" },
+            "abi_version": { "type": "string" },
+            "filesystem_mode": { "type": "string" },
+            "telemetry_scope": { "type": "string" },
+            "http_client": { "type": "boolean" },
+            "messaging_inbound": { "type": "boolean" },
+            "messaging_outbound": { "type": "boolean" },
+            "secrets_enabled": { "type": "boolean" },
+            "secret_keys": {
+                "type": "array",
+                "items": { "type": "string" }
+            }
+        },
+        "required": ["component_name"]
+    })
+}
+
+fn component_wizard_qa_envelope_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "greentic-component QA replay envelope accepted by `greentic-component wizard --qa-answers`.",
+        "additionalProperties": true,
+        "properties": {
+            "schema": {
+                "type": "string",
+                "const": "component-wizard-run/v1"
+            },
+            "mode": {
+                "type": "string",
+                "default": "create"
+            },
+            "fields": {
+                "type": "object",
+                "additionalProperties": true
+            }
+        },
+        "required": ["schema", "mode", "fields"]
     })
 }
 
@@ -1205,14 +1264,13 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
         }
     }
     if plan.run_delegate_component {
-        let ok =
-            run_component_delegate_replay(&plan.pack_dir, plan.component_wizard_answers.as_ref());
-        if !ok {
-            return Err(anyhow!(
-                "wizard apply failed while running component delegate for {}",
-                plan.pack_dir.display()
-            ));
-        }
+        run_component_delegate_replay(&plan.pack_dir, plan.component_wizard_answers.as_ref())
+            .with_context(|| {
+                format!(
+                    "wizard apply failed while running component delegate for {}",
+                    plan.pack_dir.display()
+                )
+            })?;
     }
     if plan.run_doctor || plan.run_build {
         let update_ok = run_process(
@@ -3903,6 +3961,17 @@ fn run_process(binary: &Path, args: &[&str], cwd: Option<&Path>) -> Result<bool>
     Ok(status.success())
 }
 
+fn run_process_capture(binary: &Path, args: &[String], cwd: &Path) -> Result<Output> {
+    Command::new(binary)
+        .args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .with_context(|| format!("spawn {}", binary.display()))
+}
+
 fn run_delegate(binary: &str, args: &[&str], cwd: &Path) -> bool {
     let resolved = crate::external_tools::resolve(binary).unwrap_or_else(|| PathBuf::from(binary));
     run_process(&resolved, args, Some(cwd)).unwrap_or(false)
@@ -4011,12 +4080,18 @@ fn run_flow_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
     run_delegate_owned("greentic-flow", &args, pack_dir)
 }
 
-fn run_component_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bool {
+fn run_component_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> Result<()> {
     if let Some(answers) = answers {
         let answers_path = temp_answers_path("greentic-component-wizard-replay");
-        if !write_json_value(&answers_path, answers) {
-            return false;
-        }
+        let replay_answers = normalize_component_wizard_answers_for_replay(answers)?;
+        let replay_json = serde_json::to_string_pretty(&replay_answers)
+            .context("serialize component_wizard_answers for replay")?;
+        fs::write(&answers_path, replay_json.as_bytes()).with_context(|| {
+            format!(
+                "write temp greentic-component replay answers {}",
+                answers_path.display()
+            )
+        })?;
         let args = vec![
             "wizard".to_string(),
             "--project-root".to_string(),
@@ -4026,11 +4101,92 @@ fn run_component_delegate_replay(pack_dir: &Path, answers: Option<&Value>) -> bo
             "--qa-answers".to_string(),
             answers_path.display().to_string(),
         ];
-        let ok = run_delegate_owned("greentic-component", &args, pack_dir);
+        let resolved = crate::external_tools::resolve("greentic-component")
+            .unwrap_or_else(|| PathBuf::from("greentic-component"));
+        let output = run_process_capture(&resolved, &args, pack_dir);
         let _ = fs::remove_file(&answers_path);
-        return ok;
+        let output = output?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!(
+                "greentic-component wizard replay failed with status {}\nstdout:\n{}\nstderr:\n{}\ncomponent_wizard_answers JSON passed to greentic-component:\n{}",
+                output.status,
+                stdout.trim(),
+                stderr.trim(),
+                replay_json
+            ));
+        }
+        if !output.stdout.is_empty() {
+            let _ = io::stdout().write_all(&output.stdout);
+        }
+        if !output.stderr.is_empty() {
+            let _ = io::stderr().write_all(&output.stderr);
+        }
+        return Ok(());
     }
-    run_delegate("greentic-component", &["wizard"], pack_dir)
+    if run_delegate("greentic-component", &["wizard"], pack_dir) {
+        Ok(())
+    } else {
+        Err(anyhow!("greentic-component wizard failed"))
+    }
+}
+
+fn normalize_component_wizard_answers_for_replay(answers: &Value) -> Result<Value> {
+    reject_custom_component_operation_names(answers)?;
+    let Some(object) = answers.as_object() else {
+        return Ok(answers.clone());
+    };
+    if object.contains_key("schema")
+        || object.contains_key("wizard_id")
+        || object.contains_key("answers")
+    {
+        return Ok(answers.clone());
+    }
+    if !object.contains_key("component_name") {
+        return Ok(answers.clone());
+    }
+    Ok(json!({
+        "schema": "component-wizard-run/v1",
+        "mode": "create",
+        "fields": answers
+    }))
+}
+
+fn reject_custom_component_operation_names(answers: &Value) -> Result<()> {
+    let Some((path, operation_names)) = find_component_operation_names(answers) else {
+        return Ok(());
+    };
+    if operation_names.as_array().is_some_and(Vec::is_empty) {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "answers.component_wizard_answers{path} is not supported by greentic-pack component replay because greentic-component currently ignores custom operation names during scaffold. Scaffold the component first, then run `greentic-component wizard add-operation` for each custom operation."
+    ))
+}
+
+fn find_component_operation_names(answers: &Value) -> Option<(&'static str, &Value)> {
+    let object = answers.as_object()?;
+    if let Some(value) = object.get("operation_names") {
+        return Some((".operation_names", value));
+    }
+    if let Some(value) = object
+        .get("fields")
+        .and_then(Value::as_object)
+        .and_then(|fields| fields.get("operation_names"))
+    {
+        return Some((".fields.operation_names", value));
+    }
+    if let Some(value) = object
+        .get("answers")
+        .and_then(Value::as_object)
+        .and_then(|answers| answers.get("fields"))
+        .and_then(Value::as_object)
+        .and_then(|fields| fields.get("operation_names"))
+    {
+        return Some((".answers.fields.operation_names", value));
+    }
+    None
 }
 
 fn handle_delegate_failure<R: BufRead, W: Write>(

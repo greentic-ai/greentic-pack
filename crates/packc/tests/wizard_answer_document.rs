@@ -2556,6 +2556,26 @@ printf '{"title":"component-%s","type":"object","properties":{"answers":{"type":
             .and_then(Value::as_str),
         Some("component-doctor")
     );
+    assert_eq!(
+        schema
+            .get("$defs")
+            .and_then(|v| v.get("greentic_component_wizard_qa_envelope"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("schema"))
+            .and_then(|v| v.get("const"))
+            .and_then(Value::as_str),
+        Some("component-wizard-run/v1")
+    );
+    assert_eq!(
+        schema
+            .get("$defs")
+            .and_then(|v| v.get("greentic_component_wizard_simple_fields"))
+            .and_then(|v| v.get("properties"))
+            .and_then(|v| v.get("component_name"))
+            .and_then(|v| v.get("type"))
+            .and_then(Value::as_str),
+        Some("string")
+    );
     let step_comment = schema
         .get("$defs")
         .and_then(|v| v.get("greentic_flow_step_answers"))
@@ -2886,6 +2906,227 @@ exit 0
             .and_then(Value::as_str),
         Some("order-status")
     );
+}
+
+#[test]
+fn wizard_apply_wraps_simple_component_wizard_answers_for_qa_replay() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let component_exe = temp.path().join("greentic-component");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_script(&self_exe, "#!/usr/bin/env bash\nexit 0\n");
+    write_script(
+        &component_exe,
+        r#"#!/usr/bin/env bash
+answers=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--qa-answers" ]; then answers="$2"; shift 2; continue; fi
+  shift
+done
+if [ -n "$answers" ]; then cp "$answers" "$PWD/component.replayed.json"; fi
+exit 0
+"#,
+    );
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_delegate_component": true,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "component_wizard_answers": {
+                    "component_name": "component-rust-qa",
+                    "output_dir": "components/component-rust-qa",
+                    "abi_version": "0.6.0",
+                    "http_client": false,
+                    "messaging_inbound": false,
+                    "messaging_outbound": false,
+                    "secrets_enabled": false,
+                    "secret_keys": []
+                }
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .env("GREENTIC_PACK_WIZARD_SELF_EXE", &self_exe)
+        .env("GREENTIC_COMPONENT_BIN", &component_exe)
+        .output()
+        .expect("run wizard apply");
+    assert!(output.status.success(), "wizard apply should succeed");
+
+    let replayed_component: Value = serde_json::from_slice(
+        &fs::read(pack_dir.join("component.replayed.json"))
+            .expect("read replayed component answers"),
+    )
+    .expect("parse replayed component answers");
+    assert_eq!(
+        replayed_component.get("schema").and_then(Value::as_str),
+        Some("component-wizard-run/v1")
+    );
+    assert_eq!(
+        replayed_component.get("mode").and_then(Value::as_str),
+        Some("create")
+    );
+    assert_eq!(
+        replayed_component
+            .get("fields")
+            .and_then(|v| v.get("component_name"))
+            .and_then(Value::as_str),
+        Some("component-rust-qa")
+    );
+}
+
+#[test]
+fn wizard_apply_component_delegate_failure_prints_replay_json() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let component_exe = temp.path().join("greentic-component");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_script(&self_exe, "#!/usr/bin/env bash\nexit 0\n");
+    write_script(
+        &component_exe,
+        r#"#!/usr/bin/env bash
+echo "missing field schema" >&2
+exit 1
+"#,
+    );
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_delegate_component": true,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "component_wizard_answers": {
+                    "schema": "component-wizard-run/v1",
+                    "mode": "create",
+                    "fields": {
+                        "component_name": "component-rust-qa"
+                    }
+                }
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .env("GREENTIC_PACK_WIZARD_SELF_EXE", &self_exe)
+        .env("GREENTIC_COMPONENT_BIN", &component_exe)
+        .output()
+        .expect("run wizard apply");
+    assert!(!output.status.success(), "wizard apply should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("missing field schema"));
+    assert!(stderr.contains("component_wizard_answers JSON passed to greentic-component"));
+    assert!(stderr.contains("\"schema\": \"component-wizard-run/v1\""));
+    assert!(stderr.contains("\"component_name\": \"component-rust-qa\""));
+}
+
+#[test]
+fn wizard_apply_rejects_custom_component_operation_names_before_delegate() {
+    let _guard = env_guard();
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    let self_exe = temp.path().join("greentic-pack-self");
+    let component_exe = temp.path().join("greentic-component");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_script(
+        &self_exe,
+        "#!/usr/bin/env bash\nif [ \"$1\" = \"new\" ] && [ \"$2\" = \"--dir\" ]; then mkdir -p \"$3\"; fi\nexit 0\n",
+    );
+    write_script(
+        &component_exe,
+        r#"#!/usr/bin/env bash
+touch "$PWD/component-delegate-called"
+exit 0
+"#,
+    );
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "create_pack_scaffold": true,
+                "create_pack_id": "custom-ops-pack",
+                "run_delegate_component": true,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "component_wizard_answers": {
+                    "schema": "component-wizard-run/v1",
+                    "mode": "create",
+                    "fields": {
+                        "component_name": "component-rust-qa",
+                        "output_dir": "components/component-rust-qa",
+                        "operation_names": ["answer-question"],
+                        "abi_version": "0.6.0"
+                    }
+                }
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .arg("wizard")
+        .arg("apply")
+        .arg("--answers")
+        .arg(&answers_path)
+        .env("GREENTIC_PACK_WIZARD_SELF_EXE", &self_exe)
+        .env("GREENTIC_COMPONENT_BIN", &component_exe)
+        .output()
+        .expect("run wizard apply");
+    assert!(!output.status.success(), "wizard apply should fail");
+    assert!(
+        !pack_dir.join("component-delegate-called").exists(),
+        "component delegate should not run after unsupported operation_names"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("operation_names"));
+    assert!(stderr.contains("not supported"));
+    assert!(stderr.contains("greentic-component wizard add-operation"));
 }
 
 #[test]
