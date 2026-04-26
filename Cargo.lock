@@ -1709,9 +1709,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-flow"
-version = "0.5.7"
+version = "0.6.24888858655"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39dc2f13a03fd5f722c13217afa99a222c15b79a646c8069be30ad7c1847d704"
+checksum = "6eab8a0ff7bac09341cf2fdcb5bffd4bf36c01a401db4d0a830842102e85e011"
 dependencies = [
  "anyhow",
  "blake3",

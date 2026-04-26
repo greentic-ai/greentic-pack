@@ -43,7 +43,7 @@ toml = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 greentic-types = { version = "0.5" }
-greentic-flow = { version = "0.5" }
+greentic-flow = { version = "0.6" }
 greentic-interfaces-host = { version = "0.5" }
 greentic-interfaces-wasmtime = { version = "0.5" }
 greentic-telemetry = { version = "0.5", features = ["otlp"] }
