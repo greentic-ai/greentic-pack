@@ -577,7 +577,12 @@ fn is_forbidden_source_path(path: &str) -> bool {
     if path.starts_with("flows/") && path.ends_with(".json") {
         return true;
     }
-    if path.ends_with("manifest.json") {
+    // Catches nested component manifests like
+    // `components/<name>.manifest.json`. The dot-prefix is required so we do
+    // not false-positive on legitimate distribution assets whose filename
+    // happens to end with `manifest.json` — e.g. i18n locale catalogs that
+    // ship a `_manifest.json` index file at runtime.
+    if path.ends_with(".manifest.json") {
         return true;
     }
     false
@@ -1230,6 +1235,33 @@ mod tests {
     use std::collections::HashMap;
     use std::os::unix::process::ExitStatusExt;
     use std::path::PathBuf;
+
+    #[test]
+    fn forbidden_source_paths_match_pack_and_component_manifests_only() {
+        // Production-mode validator must reject build-time source files…
+        assert!(is_forbidden_source_path("pack.yaml"));
+        assert!(is_forbidden_source_path("pack.manifest.json"));
+        assert!(is_forbidden_source_path("components/foo.manifest.json"));
+        assert!(is_forbidden_source_path(
+            "components/ai.greentic.component-adaptive-card.manifest.json"
+        ));
+        assert!(is_forbidden_source_path("flows/main.ygtc"));
+        assert!(is_forbidden_source_path("flows/auxiliary.json"));
+        assert!(is_forbidden_source_path("secret-requirements.json"));
+        assert!(is_forbidden_source_path("secrets_requirements.json"));
+
+        // …but it must NOT false-positive on distribution assets whose
+        // filename merely ends with `manifest.json`. The most common case is
+        // an i18n locale catalog index file (`assets/i18n/_manifest.json`)
+        // which ships at runtime so callers can enumerate available
+        // locales — see hr-onboarding-demo and the other greentic-demo
+        // packs that all carry one of these.
+        assert!(!is_forbidden_source_path("assets/i18n/_manifest.json"));
+        assert!(!is_forbidden_source_path("assets/_manifest.json"));
+        assert!(!is_forbidden_source_path("custommanifest.json"));
+        assert!(!is_forbidden_source_path("assets/cards/welcome.json"));
+        assert!(!is_forbidden_source_path("assets/i18n/en.json"));
+    }
 
     fn sample_args() -> InspectArgs {
         InspectArgs {
