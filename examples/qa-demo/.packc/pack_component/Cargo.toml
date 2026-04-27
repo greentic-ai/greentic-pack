@@ -22,4 +22,4 @@ features = [
 ]
 
 [target."cfg(not(target_arch = \"wasm32\"))".dependencies]
-greentic-interfaces = ">=0.5.0-0, <0.6.0-0"
+greentic-interfaces = ">=0.6.0-dev, <0.7.0-0"
