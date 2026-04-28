@@ -246,8 +246,10 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
             .await?;
 
     let mut bundled_paths = BTreeMap::new();
+    let mut bundled_hashes = BTreeMap::new();
     for entry in &build.lock_components {
         bundled_paths.insert(entry.component_id.clone(), entry.logical_path.clone());
+        bundled_hashes.insert(entry.component_id.clone(), entry.wasm_sha256.clone());
     }
 
     let materialized = materialize_flow_components(
@@ -270,6 +272,7 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         build.manifest.extensions,
         &pack_lock,
         &bundled_paths,
+        &bundled_hashes,
         materialized.manifest_paths.as_ref(),
     )?;
     if !opts.dry_run {
@@ -340,6 +343,11 @@ struct LockComponentBinary {
     component_id: String,
     logical_path: String,
     source: PathBuf,
+    /// Hex-encoded SHA-256 of the bundled WASM bytes (no `sha256:` prefix).
+    /// This is the authoritative content hash used for runtime verification of
+    /// inline artifacts; it may differ from `LockedComponent::resolved_digest`
+    /// when the cached blob was produced by an older toolchain.
+    wasm_sha256: String,
 }
 
 #[derive(Clone)]
@@ -1136,6 +1144,7 @@ fn merge_component_sources_extension(
     extensions: Option<BTreeMap<String, ExtensionRef>>,
     lock: &greentic_pack::pack_lock::PackLockV1,
     bundled_paths: &BTreeMap<String, String>,
+    bundled_hashes: &BTreeMap<String, String>,
     manifest_paths: Option<&std::collections::BTreeMap<String, String>>,
 ) -> Result<Option<BTreeMap<String, ExtensionRef>>> {
     let mut entries = Vec::new();
@@ -1165,6 +1174,20 @@ fn merge_component_sources_extension(
         } else {
             ArtifactLocationV1::Remote
         };
+        // For inline (bundled) artifacts the digest in the manifest extension
+        // is the authoritative hash that the runtime verifies against the
+        // bytes inside the gtpack archive — so it MUST be the SHA-256 of the
+        // bundled bytes, not the (possibly stale) `resolved_digest` from the
+        // pack lock. For remote artifacts we pass through `resolved_digest`,
+        // which the runtime forwards to the distributor cache lookup.
+        let digest = if matches!(artifact, ArtifactLocationV1::Inline { .. }) {
+            match bundled_hashes.get(&comp.component_id) {
+                Some(hex) => format!("sha256:{hex}"),
+                None => comp.resolved_digest.clone(),
+            }
+        } else {
+            comp.resolved_digest.clone()
+        };
         entries.push(ComponentSourceEntryV1 {
             name: comp.component_id.clone(),
             component_id: Some(ComponentId::new(comp.component_id.clone()).map_err(|err| {
@@ -1176,7 +1199,7 @@ fn merge_component_sources_extension(
             })?),
             source,
             resolved: ResolvedComponentV1 {
-                digest: comp.resolved_digest.clone(),
+                digest,
                 signature: None,
                 signed_by: None,
             },
@@ -1649,6 +1672,7 @@ async fn collect_lock_component_artifacts(
                 component_id: comp.component_id.clone(),
                 logical_path: logical_path.clone(),
                 source: cache_path.clone(),
+                wasm_sha256: wasm_sha256.clone(),
             });
         }
     }
@@ -2848,9 +2872,17 @@ mod tests {
             "demo.tagged".to_string(),
             "blobs/sha256/deadbeef.wasm".to_string(),
         );
+        let mut bundled_hashes = BTreeMap::new();
+        bundled_hashes.insert("demo.tagged".to_string(), "deadbeef".repeat(8));
 
-        let ext_none =
-            merge_component_sources_extension(None, &lock_tag, &bundled_paths, None).expect("ext");
+        let ext_none = merge_component_sources_extension(
+            None,
+            &lock_tag,
+            &bundled_paths,
+            &bundled_hashes,
+            None,
+        )
+        .expect("ext");
         let value = match ext_none
             .unwrap()
             .get(EXT_COMPONENT_SOURCES_V1)
@@ -2876,9 +2908,14 @@ mod tests {
         );
         let lock_digest = PackLockV1::new(components);
 
-        let ext_none =
-            merge_component_sources_extension(None, &lock_digest, &BTreeMap::new(), None)
-                .expect("ext");
+        let ext_none = merge_component_sources_extension(
+            None,
+            &lock_digest,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            None,
+        )
+        .expect("ext");
         let value = match ext_none
             .unwrap()
             .get(EXT_COMPONENT_SOURCES_V1)
@@ -2909,10 +2946,17 @@ mod tests {
             "demo.component".to_string(),
             "components/demo.component.wasm".to_string(),
         );
+        let mut bundled_hashes = BTreeMap::new();
+        bundled_hashes.insert("demo.component".to_string(), "abcd".repeat(16));
 
-        let ext_cache =
-            merge_component_sources_extension(None, &lock_digest_bundled, &bundled_paths, None)
-                .expect("ext");
+        let ext_cache = merge_component_sources_extension(
+            None,
+            &lock_digest_bundled,
+            &bundled_paths,
+            &bundled_hashes,
+            None,
+        )
+        .expect("ext");
         let value = match ext_cache
             .unwrap()
             .get(EXT_COMPONENT_SOURCES_V1)
@@ -2937,8 +2981,14 @@ mod tests {
         );
         let lock = PackLockV1::new(components);
 
-        let ext_none =
-            merge_component_sources_extension(None, &lock, &BTreeMap::new(), None).expect("ext");
+        let ext_none = merge_component_sources_extension(
+            None,
+            &lock,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            None,
+        )
+        .expect("ext");
         assert!(ext_none.is_none(), "file refs should be omitted");
 
         let mut components = BTreeMap::new();
@@ -2956,8 +3006,14 @@ mod tests {
         );
         let lock = PackLockV1::new(components);
 
-        let ext_some =
-            merge_component_sources_extension(None, &lock, &BTreeMap::new(), None).expect("ext");
+        let ext_some = merge_component_sources_extension(
+            None,
+            &lock,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            None,
+        )
+        .expect("ext");
         let value = match ext_some
             .unwrap()
             .get(EXT_COMPONENT_SOURCES_V1)

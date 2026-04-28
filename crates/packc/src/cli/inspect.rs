@@ -577,7 +577,13 @@ fn is_forbidden_source_path(path: &str) -> bool {
     if path.starts_with("flows/") && path.ends_with(".json") {
         return true;
     }
-    if path.ends_with("manifest.json") {
+    // Component manifest sources live under `components/<id>/component.manifest.json`
+    // or `components/<id>.manifest.json`. Earlier the rule was a blanket
+    // `path.ends_with("manifest.json")`, which incorrectly flagged generic asset
+    // index files like `assets/i18n/_manifest.json` as forbidden.
+    if path.starts_with("components/")
+        && (path.ends_with("/component.manifest.json") || path.ends_with(".manifest.json"))
+    {
         return true;
     }
     false
@@ -1298,10 +1304,18 @@ mod tests {
     #[test]
     fn forbidden_source_paths_match_dev_only_inputs() {
         assert!(is_forbidden_source_path("pack.yaml"));
+        assert!(is_forbidden_source_path("pack.manifest.json"));
         assert!(is_forbidden_source_path("flows/main.json"));
         assert!(is_forbidden_source_path("flows/main.ygtc"));
         assert!(is_forbidden_source_path("components/demo.manifest.json"));
+        assert!(is_forbidden_source_path(
+            "components/demo/component.manifest.json"
+        ));
         assert!(!is_forbidden_source_path("gui/assets/index.html"));
+        // Asset index files are not source-only; the bundle/runtime rely on them.
+        assert!(!is_forbidden_source_path("assets/i18n/_manifest.json"));
+        assert!(!is_forbidden_source_path("assets/i18n/en/_manifest.json"));
+        assert!(!is_forbidden_source_path("assets/cards/_manifest.json"));
     }
 
     #[test]
