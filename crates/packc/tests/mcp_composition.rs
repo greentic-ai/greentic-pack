@@ -86,20 +86,23 @@ impl WasiView for Ctx {
     }
 }
 
+fn wasm_tools_available() -> bool {
+    Command::new("wasm-tools")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[must_use]
 fn compose_adapter_and_router(
     adapter: &std::path::Path,
     router: &std::path::Path,
     out: &std::path::Path,
-) {
-    // Prefer wasm-tools if available; otherwise skip to avoid noisy failures in minimal environments.
-    let has_wasm_tools = Command::new("wasm-tools")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !has_wasm_tools {
+) -> bool {
+    if !wasm_tools_available() {
         eprintln!("skipping mcp composition test: wasm-tools not installed");
-        return;
+        return false;
     }
 
     let output = Command::new("wasm-tools")
@@ -120,6 +123,7 @@ fn compose_adapter_and_router(
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(out.exists(), "composed artifact should exist");
+    true
 }
 
 fn inspect_exports(component: &std::path::Path) -> String {
@@ -147,7 +151,9 @@ fn composed_component_exports_greentic_world_and_imports_router() {
         .join("fixtures")
         .join("router-echo-component.wasm");
 
-    compose_adapter_and_router(&adapter, &router, &out);
+    if !compose_adapter_and_router(&adapter, &router, &out) {
+        return;
+    }
     let wit = inspect_exports(&out);
     assert!(
         wit.contains("export greentic:component/node@0.4.0"),
@@ -173,7 +179,9 @@ fn composed_component_invokes_router_echo() {
         .join("fixtures")
         .join("router-echo-component.wasm");
 
-    compose_adapter_and_router(&adapter, &router, &out);
+    if !compose_adapter_and_router(&adapter, &router, &out) {
+        return;
+    }
 
     let mut config = Config::new();
     config.wasm_component_model(true);
