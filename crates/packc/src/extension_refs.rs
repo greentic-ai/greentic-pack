@@ -319,8 +319,14 @@ mod tests {
 
     #[test]
     fn pin_reference_rewrites_oci_tag_to_digest() {
-        let pinned = pin_reference("oci://ghcr.io/acme/demo:latest", "sha256:abcd");
-        assert_eq!(pinned, "oci://ghcr.io/acme/demo@sha256:abcd");
+        let pinned = pin_reference(
+            "oci://ghcr.io/greenticai/components/templates:stable",
+            "sha256:abcd",
+        );
+        assert_eq!(
+            pinned,
+            "oci://ghcr.io/greenticai/components/templates@sha256:abcd"
+        );
     }
 
     #[test]
@@ -330,7 +336,7 @@ mod tests {
             role: "deployer".to_string(),
             source: ExtensionDependencySource {
                 kind: "oci".to_string(),
-                reference: "oci://ghcr.io/acme/demo:latest".to_string(),
+                reference: "oci://ghcr.io/greenticai/components/templates:stable".to_string(),
                 allow_tags: false,
             },
         }]);
