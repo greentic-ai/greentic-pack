@@ -68,6 +68,7 @@ schemars = { workspace = true }
 zip = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
+hyper = { workspace = true }
 tempfile = { workspace = true }
 wit-component = { workspace = true }
 greentic-distributor-client = { workspace = true, default-features = false, features = ["reqwest", "dist-client"] }
@@ -75,7 +76,6 @@ pack_component_template = { workspace = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
-wasmtime-wasi-tls = { workspace = true }
 indexmap = { workspace = true }
 ciborium = { workspace = true }
 sys-locale = { workspace = true }
