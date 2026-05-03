@@ -6,8 +6,11 @@ use wasmtime_wasi::p2::add_to_linker_sync;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::WasiHttpCtx;
 use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpView, add_only_http_to_linker_sync};
+use wasmtime_wasi_tls::p2::{
+    LinkOptions as WasiTlsLinkOptions, add_to_linker as add_tls_to_linker,
+};
 use wasmtime_wasi_tls::{
-    LinkOptions as WasiTlsLinkOptions, WasiTls, WasiTlsCtx, WasiTlsCtxBuilder,
+    UnsupportedProvider, WasiTlsCtx, WasiTlsCtxBuilder, WasiTlsCtxView, WasiTlsView,
 };
 
 pub struct DescribeHostState {
@@ -21,12 +24,15 @@ impl Default for DescribeHostState {
     fn default() -> Self {
         // Describe-only paths should be offline-safe: no inherited env/args,
         // no preopened directories, and no ambient stdio requirements.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let mut wasi = WasiCtxBuilder::new();
         Self {
             table: ResourceTable::new(),
             wasi: wasi.build(),
             wasi_http: WasiHttpCtx::new(),
-            wasi_tls: WasiTlsCtxBuilder::new().build(),
+            wasi_tls: WasiTlsCtxBuilder::new()
+                .provider(Box::new(UnsupportedProvider::default()))
+                .build(),
         }
     }
 }
@@ -50,6 +56,15 @@ impl WasiHttpView for DescribeHostState {
     }
 }
 
+impl WasiTlsView for DescribeHostState {
+    fn tls(&mut self) -> WasiTlsCtxView<'_> {
+        WasiTlsCtxView {
+            ctx: &mut self.wasi_tls,
+            table: &mut self.table,
+        }
+    }
+}
+
 pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Result<()> {
     // Some WASI helper registrars may re-export overlapping interface names
     // (for example `wasi:io/*`) across preview2, TLS, and HTTP worlds.
@@ -60,10 +75,8 @@ pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Resu
 
     let mut tls_options = WasiTlsLinkOptions::default();
     tls_options.tls(true);
-    wasmtime_wasi_tls::add_to_linker(linker, &mut tls_options, |host: &mut DescribeHostState| {
-        WasiTls::new(&host.wasi_tls, &mut host.table)
-    })
-    .map_err(|err| anyhow::anyhow!("register wasi tls describe host stubs: {err}"))?;
+    add_tls_to_linker(linker, &tls_options)
+        .map_err(|err| anyhow::anyhow!("register wasi tls describe host stubs: {err}"))?;
 
     add_only_http_to_linker_sync(linker)
         .map_err(|err| anyhow::anyhow!("register wasi http describe host stubs: {err}"))?;

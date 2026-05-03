@@ -117,7 +117,7 @@ fn messaging_validator_smoke() {
     add_extension_and_run_validator(
         "messaging",
         "messaging.dummy",
-        "oci://ghcr.io/greenticai/validators/messaging:latest",
+        "oci://ghcr.io/greenticai/validators/messaging:stable",
     );
 }
 
@@ -126,7 +126,7 @@ fn events_validator_smoke() {
     add_extension_and_run_validator(
         "events",
         "events.dummy",
-        "oci://ghcr.io/greenticai/validators/events:latest",
+        "oci://ghcr.io/greenticai/validators/events:stable",
     );
 }
 

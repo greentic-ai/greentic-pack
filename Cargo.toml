@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.95"
-version = "0.5.5"
+version = "0.5.6"
 license = "MIT"
 
 [workspace.dependencies]
@@ -59,16 +59,17 @@ tempfile = "3"
 rand_core = "0.10"
 getrandom = "0.4"
 rustls-pki-types = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 x509-parser = "0.18"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 wit-component = "0.247"
 greentic-distributor-client = { version = "0.5", default-features = false, features = ["reqwest", "dist-client"] }
 schemars = "1"
-wasmtime = "43"
-wasmtime-wasi = "43"
-wasmtime-wasi-http = "43"
-wasmtime-wasi-tls = "43"
+wasmtime = "44"
+wasmtime-wasi = "44"
+wasmtime-wasi-http = "44"
+wasmtime-wasi-tls = "44"
 assert_cmd = "2"
 indoc = "2"
 predicates = "3"
