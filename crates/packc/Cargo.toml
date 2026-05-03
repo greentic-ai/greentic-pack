@@ -94,3 +94,8 @@ assert_cmd = { workspace = true }
 indoc = { workspace = true }
 tempfile = { workspace = true }
 predicates = { workspace = true }
+
+[build-dependencies]
+# Keep Wasmtime build-dependency features aligned with transitive Greentic
+# interface build scripts so MSVC does not link two JIT debug symbol sets.
+wasmtime = { workspace = true }
