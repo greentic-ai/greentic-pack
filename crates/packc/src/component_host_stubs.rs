@@ -5,35 +5,45 @@ use wasmtime::component::Linker;
 use wasmtime_wasi::p2::add_to_linker_sync;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::WasiHttpCtx;
-use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpView, add_only_http_to_linker_sync};
-use wasmtime_wasi_tls::p2::{
-    LinkOptions as WasiTlsLinkOptions, add_to_linker as add_tls_to_linker,
+use wasmtime_wasi_http::p2::{
+    HttpError, HttpResult, WasiHttpCtxView, WasiHttpHooks, WasiHttpView,
+    add_only_http_to_linker_sync,
 };
-use wasmtime_wasi_tls::{
-    UnsupportedProvider, WasiTlsCtx, WasiTlsCtxBuilder, WasiTlsCtxView, WasiTlsView,
-};
+use wasmtime_wasi_http::p2::{body, types};
 
 pub struct DescribeHostState {
     table: ResourceTable,
     wasi: WasiCtx,
     wasi_http: WasiHttpCtx,
-    wasi_tls: WasiTlsCtx,
+    http_hooks: DescribeHttpHooks,
 }
+
+#[derive(Default)]
+struct DescribeHttpHooks;
 
 impl Default for DescribeHostState {
     fn default() -> Self {
         // Describe-only paths should be offline-safe: no inherited env/args,
         // no preopened directories, and no ambient stdio requirements.
-        let _ = rustls::crypto::ring::default_provider().install_default();
         let mut wasi = WasiCtxBuilder::new();
         Self {
             table: ResourceTable::new(),
             wasi: wasi.build(),
             wasi_http: WasiHttpCtx::new(),
-            wasi_tls: WasiTlsCtxBuilder::new()
-                .provider(Box::new(UnsupportedProvider::default()))
-                .build(),
+            http_hooks: DescribeHttpHooks,
         }
+    }
+}
+
+impl WasiHttpHooks for DescribeHttpHooks {
+    fn send_request(
+        &mut self,
+        _request: hyper::Request<body::HyperOutgoingBody>,
+        _config: types::OutgoingRequestConfig,
+    ) -> HttpResult<types::HostFutureIncomingResponse> {
+        Err(HttpError::trap(wasmtime::Error::msg(
+            "wasi:http outgoing requests are unavailable in describe-only host stubs",
+        )))
     }
 }
 
@@ -51,16 +61,7 @@ impl WasiHttpView for DescribeHostState {
         WasiHttpCtxView {
             ctx: &mut self.wasi_http,
             table: &mut self.table,
-            hooks: Default::default(),
-        }
-    }
-}
-
-impl WasiTlsView for DescribeHostState {
-    fn tls(&mut self) -> WasiTlsCtxView<'_> {
-        WasiTlsCtxView {
-            ctx: &mut self.wasi_tls,
-            table: &mut self.table,
+            hooks: &mut self.http_hooks,
         }
     }
 }
@@ -73,16 +74,11 @@ pub fn add_describe_host_imports(linker: &mut Linker<DescribeHostState>) -> Resu
     add_to_linker_sync(linker)
         .map_err(|err| anyhow::anyhow!("register wasi preview2 describe host stubs: {err}"))?;
 
-    let mut tls_options = WasiTlsLinkOptions::default();
-    tls_options.tls(true);
-    add_tls_to_linker(linker, &tls_options)
-        .map_err(|err| anyhow::anyhow!("register wasi tls describe host stubs: {err}"))?;
-
     add_only_http_to_linker_sync(linker)
         .map_err(|err| anyhow::anyhow!("register wasi http describe host stubs: {err}"))?;
 
     // NOTE: greentic host interfaces (state-store, secrets-store, http-client,
-    // interfaces-types, etc.) are NOT registered here. They are handled by
+    // interfaces-types, TLS, etc.) are NOT registered here. They are handled by
     // `stub_remaining_imports` which uses `define_unknown_imports_as_traps` to
     // provide trap stubs for any component imports not already in the linker.
     // This avoids having to maintain an exhaustive list of every greentic
