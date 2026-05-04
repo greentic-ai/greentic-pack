@@ -345,13 +345,7 @@ fn wizard_run_answers_stage_asset_file_into_pack() {
     )
     .expect("write answers");
 
-    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
-        .arg("wizard")
-        .arg("run")
-        .arg("--answers")
-        .arg(&answers_path)
-        .output()
-        .expect("run wizard run --answers");
+    let output = run_wizard_answers("run", &answers_path);
     assert!(
         output.status.success(),
         "wizard run --answers should succeed"
