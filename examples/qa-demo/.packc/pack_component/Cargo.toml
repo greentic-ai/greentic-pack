@@ -1,6 +1,6 @@
 [package]
 name = "pack_component"
-version = "0.1.0"
+version = "1.1.0-dev.0"
 edition = "2021"
 license = "MIT"
 publish = false
@@ -22,4 +22,4 @@ features = [
 ]
 
 [target."cfg(not(target_arch = \"wasm32\"))".dependencies]
-greentic-interfaces = ">=0.6.0-dev, <0.7.0-0"
+greentic-interfaces = ">=1.1.0-dev, <1.2.0-0"
