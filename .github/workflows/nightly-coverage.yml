@@ -47,6 +47,7 @@ jobs:
           cargo binstall -y --force \
             cargo-component \
             cargo-llvm-cov \
+            cargo-nextest \
             greentic-component \
             greentic-dev \
             wasm-tools
