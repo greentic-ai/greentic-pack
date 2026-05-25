@@ -3624,6 +3624,7 @@ fn ask_enum<R: BufRead, W: Write>(
         frontend: WizardFrontend::Text,
         i18n: i18n.qa_i18n_config(),
         verbose: false,
+        env_id: "local".into(),
     };
 
     let mut driver = WizardDriver::new(config).context("initialize QA enum driver")?;
@@ -3722,6 +3723,7 @@ fn ask_enum_custom_labels_owned<R: BufRead, W: Write>(
         frontend: WizardFrontend::Text,
         i18n: i18n.qa_i18n_config(),
         verbose: false,
+        env_id: "local".into(),
     };
 
     let mut driver = WizardDriver::new(config).context("initialize QA custom enum driver")?;
@@ -3821,6 +3823,7 @@ fn ask_text<R: BufRead, W: Write>(
         frontend: WizardFrontend::Text,
         i18n: i18n.qa_i18n_config(),
         verbose: false,
+        env_id: "local".into(),
     };
 
     let mut driver = WizardDriver::new(config).context("initialize QA text driver")?;
