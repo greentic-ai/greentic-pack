@@ -462,6 +462,7 @@ fn build_provider_decl(args: &ProviderArgs, root: &Path) -> Result<ProviderDecl>
 
     Ok(ProviderDecl {
         provider_type: args.provider_id.clone(),
+        provider_id: None,
         capabilities,
         ops,
         config_schema_ref: config_ref,
@@ -483,6 +484,7 @@ pub(crate) fn inject_provider_entry_for_wizard(
 ) -> Result<String> {
     let provider = ProviderDecl {
         provider_type: provider_id.to_string(),
+        provider_id: None,
         capabilities: vec![kind.to_string()],
         ops: match kind {
             "messaging" => vec!["send".to_string(), "receive".to_string()],
@@ -930,6 +932,7 @@ extensions:
     fn provider_decl() -> ProviderDecl {
         ProviderDecl {
             provider_type: "demo.provider".to_string(),
+            provider_id: None,
             capabilities: vec!["messaging".to_string()],
             ops: vec!["send".to_string()],
             config_schema_ref: "schemas/messaging/demo/config.schema.json".to_string(),
