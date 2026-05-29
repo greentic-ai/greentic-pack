@@ -377,6 +377,7 @@ mod tests {
     fn provider(provider_type: &str) -> ProviderDecl {
         ProviderDecl {
             provider_type: provider_type.to_string(),
+            provider_id: None,
             capabilities: vec!["send".to_string(), "receive".to_string()],
             ops: vec!["send".to_string()],
             config_schema_ref: "schemas/provider.json".to_string(),

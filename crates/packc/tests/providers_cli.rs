@@ -20,6 +20,7 @@ use zip::{CompressionMethod, ZipWriter};
 fn provider_decl(id: &str, config: &str) -> ProviderDecl {
     ProviderDecl {
         provider_type: id.to_string(),
+        provider_id: None,
         capabilities: vec!["cap".into()],
         ops: vec!["op".into()],
         config_schema_ref: config.to_string(),
