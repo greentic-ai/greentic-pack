@@ -780,6 +780,7 @@ mod tests {
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
+            agents: BTreeMap::new(),
         };
         let manifest_cbor = encode_pack_manifest(&manifest).expect("encode manifest");
         let wasm_bytes = b"validator wasm";
@@ -864,6 +865,7 @@ mod tests {
             secret_requirements: Vec::new(),
             signatures: PackSignatures::default(),
             bootstrap: None,
+            agents: BTreeMap::new(),
             extensions: Some(BTreeMap::from([(
                 PROVIDER_EXTENSION_ID.to_string(),
                 greentic_types::pack_manifest::ExtensionRef {
