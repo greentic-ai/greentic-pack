@@ -64,6 +64,7 @@ fn manifest_with_providers(providers: Vec<ProviderDecl>) -> PackManifest {
         signatures: PackSignatures::default(),
         bootstrap: Some(BootstrapSpec::default()),
         extensions: Some(extensions),
+        agents: BTreeMap::new(),
     }
 }
 

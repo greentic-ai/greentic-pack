@@ -412,6 +412,7 @@ fn assemble_manifest(
         signatures: PackSignatures::default(),
         bootstrap,
         extensions,
+        agents: config.agents.clone(),
     };
 
     annotate_manifest_build_mode(&mut manifest, dev_mode);
@@ -3377,6 +3378,7 @@ flows:
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            agents: BTreeMap::new(),
         }
     }
 
@@ -3447,6 +3449,7 @@ flows:
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
+            agents: BTreeMap::new(),
         }
     }
 
@@ -3490,6 +3493,84 @@ flows:
             msg.contains("requires network access"),
             "error message should describe missing network access, got {}",
             msg
+        );
+    }
+
+    /// Verify that agent config blobs supplied in `PackConfig.agents` are passed
+    /// through verbatim into the resulting `greentic_types::PackManifest.agents`.
+    ///
+    /// The designer populates `pack.yaml` (or the wizard-answers → PackConfig
+    /// mapping) with an `agents:` map; packc must forward it without
+    /// interpretation so the runner can deserialise each blob into its own
+    /// `AgentConfig`.
+    #[test]
+    fn assemble_manifest_passes_agent_blobs_through_to_pack_manifest() {
+        use serde_json::json;
+
+        let agent_blob = json!({
+            "agent_id": "greeter",
+            "system_prompt": "You are a helpful greeter.",
+            "tools": [],
+            "llm": { "provider": "openai", "model": "gpt-4o-mini" }
+        });
+
+        let mut agent_map = BTreeMap::new();
+        agent_map.insert("greeter".to_string(), agent_blob.clone());
+
+        let config = PackConfig {
+            pack_id: "demo.agents.test".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "test".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            components: Vec::new(),
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+            agents: agent_map,
+        };
+
+        let build_products =
+            assemble_manifest(&config, std::path::Path::new("."), &[], false, false, false)
+                .expect("assemble manifest");
+
+        assert_eq!(
+            build_products.manifest.agents.get("greeter"),
+            Some(&agent_blob),
+            "PackManifest.agents must contain the agent blob keyed by agent_id"
+        );
+    }
+
+    /// Packs without an `agents` section must produce an empty map so the
+    /// runtime can handle them without special-casing.
+    #[test]
+    fn assemble_manifest_produces_empty_agents_when_none_configured() {
+        let config = PackConfig {
+            pack_id: "demo.no-agents".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "test".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            components: Vec::new(),
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+            agents: BTreeMap::new(),
+        };
+
+        let build_products =
+            assemble_manifest(&config, std::path::Path::new("."), &[], false, false, false)
+                .expect("assemble manifest");
+
+        assert!(
+            build_products.manifest.agents.is_empty(),
+            "PackManifest.agents must be empty when pack.yaml contains no agents"
         );
     }
 }
