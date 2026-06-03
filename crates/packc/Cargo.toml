@@ -25,6 +25,14 @@ include = [
 [package.metadata.cargo-semver-checks.lints]
 struct_marked_non_exhaustive = "allow"
 
+[lib]
+name = "packc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "greentic-pack"
+path = "bin/greentic_pack.rs"
+
 [features]
 default = []
 pem = []
@@ -34,68 +42,60 @@ openssl = []
 anyhow = { workspace = true }
 base64 = { workspace = true }
 blake3 = { workspace = true }
-constant_time_eq = { workspace = true }
+ciborium = { workspace = true }
 clap = { workspace = true }
+constant_time_eq = { workspace = true }
 ed25519-dalek = { workspace = true }
+getrandom = { workspace = true }
+greentic-config = { workspace = true }
+greentic-config-types = { workspace = true }
+greentic-distributor-client = { workspace = true, default-features = false, features = ["reqwest", "dist-client"] }
 greentic-flow = { workspace = true }
-greentic-types = { workspace = true }
+greentic-i18n-lib = { workspace = true }
 greentic-interfaces-host = { workspace = true }
 greentic-interfaces-wasmtime = { workspace = true }
+greentic-pack = { workspace = true }
+greentic-qa-lib = { workspace = true }
 greentic-telemetry = { workspace = true }
+greentic-types = { workspace = true }
 hex = { workspace = true }
+hyper = { workspace = true }
 ignore = { workspace = true }
+indexmap = { workspace = true }
+pack_component_template = { workspace = true }
 pkcs8 = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+schemars = { workspace = true }
+semver = { workspace = true }
 serde = { workspace = true }
-serde_yaml_bw = { workspace = true }
-serde_json = { workspace = true }
 serde_cbor = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_bw = { workspace = true }
 sha2 = { workspace = true }
-time = { workspace = true }
-walkdir = { workspace = true }
+sys-locale = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tokio = { workspace = true }
-getrandom = { workspace = true }
-greentic-pack = { workspace = true }
-greentic-config = { workspace = true }
-greentic-config-types = { workspace = true }
-greentic-qa-lib = { workspace = true }
-greentic-i18n-lib = { workspace = true }
-semver = { workspace = true }
-schemars = { workspace = true }
-zip = { workspace = true }
-regex = { workspace = true }
-reqwest = { workspace = true }
-hyper = { workspace = true }
-tempfile = { workspace = true }
-wit-component = { workspace = true }
-greentic-distributor-client = { workspace = true, default-features = false, features = ["reqwest", "dist-client"] }
-pack_component_template = { workspace = true }
+unic-langid = { workspace = true }
+walkdir = { workspace = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
-indexmap = { workspace = true }
-ciborium = { workspace = true }
-sys-locale = { workspace = true }
-unic-langid = { workspace = true }
-
-[lib]
-name = "packc"
-path = "src/lib.rs"
-
-[[bin]]
-name = "greentic-pack"
-path = "bin/greentic_pack.rs"
-
-[dev-dependencies]
-assert_cmd = { workspace = true }
-indoc = { workspace = true }
-tempfile = { workspace = true }
-predicates = { workspace = true }
+wit-component = { workspace = true }
+zip = { workspace = true }
 
 [build-dependencies]
 # Keep Wasmtime build-dependency features aligned with transitive Greentic
 # interface build scripts so MSVC does not link two JIT debug symbol sets.
 wasmtime = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+indoc = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }

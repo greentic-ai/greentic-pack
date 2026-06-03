@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Pre-commit hook: mirrors the fmt + clippy gates from .github/workflows/ci.yml
+# Plus a cargo-sort check so workspace Cargo.toml dependency lists stay
+# alphabetized (CI doesn't run this yet — the hook is the canonical gate).
+#
 # Install once per clone: `git config core.hooksPath .githooks`
 set -euo pipefail
 
-if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$'; then
+# Skip when nothing Rust/cargo is staged.
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+if ! grep -qE '\.rs$|Cargo\.(toml|lock)$' <<<"$STAGED"; then
   exit 0
 fi
 
@@ -12,3 +17,14 @@ cargo fmt --all -- --check
 
 echo "→ cargo clippy --workspace --all-targets -- -D warnings"
 cargo clippy --workspace --all-targets -- -D warnings
+
+if ! command -v cargo-sort >/dev/null 2>&1; then
+  echo "→ cargo-sort not found, installing (one-time)…"
+  cargo install cargo-sort --locked
+fi
+
+echo "→ cargo sort --workspace --check"
+if ! cargo sort --workspace --check >/dev/null 2>&1; then
+  echo "✗ Cargo.toml dependency order is stale. Run \`cargo sort --workspace\` and re-stage." >&2
+  exit 1
+fi
