@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Pre-commit hook: mirrors the fmt + clippy gates from .github/workflows/ci.yml
+# Install once per clone: `git config core.hooksPath .githooks`
+set -euo pipefail
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$'; then
+  exit 0
+fi
+
+echo "→ cargo fmt --all -- --check"
+cargo fmt --all -- --check
+
+echo "→ cargo clippy --workspace --all-targets -- -D warnings"
+cargo clippy --workspace --all-targets -- -D warnings

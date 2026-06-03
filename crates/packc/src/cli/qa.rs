@@ -1135,6 +1135,7 @@ mod tests {
             name: None,
             display_name: None,
             bootstrap: None,
+            capabilities: Vec::new(),
             components: vec![ComponentConfig {
                 id: "demo.component".to_string(),
                 version: "0.1.0".to_string(),
@@ -1319,6 +1320,7 @@ mod tests {
             name: None,
             display_name: None,
             bootstrap: None,
+            capabilities: Vec::new(),
             components: vec![ComponentConfig {
                 id: "demo.component".to_string(),
                 version: "0.1.0".to_string(),
@@ -1470,6 +1472,7 @@ mod tests {
             name: None,
             display_name: None,
             bootstrap: None,
+            capabilities: Vec::new(),
             components: Vec::new(),
             dependencies: Vec::new(),
             flows: Vec::new(),
@@ -1562,6 +1565,7 @@ mod tests {
             name: None,
             display_name: None,
             bootstrap: None,
+            capabilities: Vec::new(),
             components: vec![
                 ComponentConfig {
                     id: "relative.component".to_string(),

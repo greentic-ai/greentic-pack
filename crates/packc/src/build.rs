@@ -1,6 +1,7 @@
 use crate::cli::resolve::{self, ResolveArgs};
 use crate::config::{
-    AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackConfig,
+    AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackCapabilityConfig,
+    PackConfig,
 };
 use crate::extension_refs::{
     default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
@@ -407,7 +408,7 @@ fn assemble_manifest(
         components: component_manifests,
         flows,
         dependencies,
-        capabilities: derive_pack_capabilities(&components),
+        capabilities: derive_pack_capabilities(&components, &config.capabilities),
         secret_requirements: secret_requirements.to_vec(),
         signatures: PackSignatures::default(),
         bootstrap,
@@ -1236,9 +1237,23 @@ fn merge_component_sources_extension(
 
 fn derive_pack_capabilities(
     components: &[(ComponentManifest, ComponentBinary)],
+    pack_declared: &[PackCapabilityConfig],
 ) -> Vec<ComponentCapability> {
     let mut seen = BTreeSet::new();
     let mut caps = Vec::new();
+
+    // Pack-declared first so author-supplied descriptions win on collision.
+    // These are author-declared opt-ins (e.g. `greentic.cap.fast2flow.v1`) —
+    // semantically distinct from the auto-derived `host:*` / `wasi:*` entries
+    // below, which describe the component's required host APIs.
+    for declared in pack_declared {
+        if seen.insert(declared.name.clone()) {
+            caps.push(ComponentCapability {
+                name: declared.name.clone(),
+                description: declared.description.clone(),
+            });
+        }
+    }
 
     for (component, _) in components {
         let mut add = |name: &str| {
@@ -3372,6 +3387,7 @@ flows:
             name: None,
             display_name: None,
             bootstrap: Some(bootstrap),
+            capabilities: Vec::new(),
             components: Vec::new(),
             dependencies: Vec::new(),
             flows: Vec::new(),

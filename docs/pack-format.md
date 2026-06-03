@@ -127,6 +127,28 @@ distribution:
 
 Components may carry an optional `kind` (e.g. `software`), optional `artifact_type` hint, `tags`, `platform`, and `entrypoint`. `artifact_path` is a generic path inside the `.gtpack`; the pack format does not assume WASM. Downstream tooling decides how to execute or install.
 
+## Capabilities
+
+Each compiled `manifest.capabilities` entry is a `ComponentCapability { name, description? }`. The array has two layers of meaning that share the wire format:
+
+- **Per-component derived** (auto): `derive_pack_capabilities` walks every component's host/WASI permission set and emits entries like `host:http`, `host:state:read`, `wasi:random`. These describe *what host APIs the WASM needs at runtime*. Authors do not write them by hand.
+- **Pack-declared opt-ins** (author-supplied): write a top-level `capabilities:` block in `pack.yaml`. These are *feature switches the pack opts into* (e.g. fast2flow free-text routing, observer hooks). The runtime gates downstream behaviour on matching exact strings.
+
+The two layers are distinguished by name convention: `greentic.cap.*` for pack-level opt-ins, `host:*` / `wasi:*` for derived permissions.
+
+```yaml
+# pack.yaml
+pack_id: example.pack
+version: 0.1.0
+kind: application
+publisher: Greentic
+capabilities:
+  - name: greentic.cap.fast2flow.v1
+    description: opts into fast2flow free-text routing
+```
+
+At build time, author-declared entries union with the derived entries — author entries land first so their descriptions survive a collision.
+
 ## Verification Semantics
 
 `open_pack(path, policy)` reads the archive, enforces size limits, rejects
