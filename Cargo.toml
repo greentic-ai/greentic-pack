@@ -46,9 +46,9 @@ regex = "1"
 hyper = "1"
 wit-component = "0.247"
 schemars = "1"
-wasmtime = "43"
-wasmtime-wasi = "43"
-wasmtime-wasi-http = { version = "43", default-features = false, features = ["p2"] }
+wasmtime = "45"
+wasmtime-wasi = "45"
+wasmtime-wasi-http = { version = "45", default-features = false, features = ["p2"] }
 assert_cmd = "2"
 indoc = "2"
 predicates = "3"
