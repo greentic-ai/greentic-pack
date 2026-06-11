@@ -182,3 +182,64 @@ flows:
         stderr
     );
 }
+
+#[test]
+fn build_allows_runtime_builtin_dw_agent_without_resolve_mapping() {
+    let temp = TempDir::new().expect("temp dir");
+    let pack_dir = temp.path();
+
+    fs::create_dir_all(pack_dir.join("flows")).unwrap();
+    fs::write(
+        pack_dir.join("flows/agent.ygtc"),
+        r#"id: agent
+schema_version: 2
+type: messaging
+start: ask
+nodes:
+  ask:
+    dw.agent.tx-network-assistant:
+      input:
+        mapping: '{"user_text":"{{in.text}}"}'
+    routing: reply
+"#,
+    )
+    .unwrap();
+
+    fs::write(
+        pack_dir.join("pack.yaml"),
+        r#"pack_id: dev.local.agent
+version: 0.1.0
+kind: application
+publisher: Test
+components: []
+flows:
+  - id: agent
+    file: flows/agent.ygtc
+    tags: [messaging]
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(pack_dir)
+        .args([
+            "build",
+            "--in",
+            pack_dir.to_str().unwrap(),
+            "--allow-pack-schema",
+            "--no-update",
+            "--gtpack-out",
+            pack_dir.join("dist/agent.gtpack").to_str().unwrap(),
+            "--log",
+            "warn",
+        ])
+        .output()
+        .expect("run packc build");
+
+    assert!(
+        output.status.success(),
+        "dw.agent builtin should not require component resolve mappings:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

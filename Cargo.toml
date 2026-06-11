@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.95"
-version = "0.5.7"
+version = "0.5.8"
 license = "MIT"
 
 [workspace.dependencies]
@@ -39,7 +39,7 @@ greentic-interfaces-wasmtime = { version = "0.5" }
 greentic-pack = { package = "greentic-pack-lib", path = "crates/greentic-pack", version = "0.5" }
 greentic-qa-lib = "0.5"
 greentic-telemetry = { version = "0.5", features = ["otlp"] }
-greentic-types = { version = "0.5" }
+greentic-types = { version = "0.5.3" }
 hex = "0.4"
 hyper = "1"
 ignore = "0.4"
