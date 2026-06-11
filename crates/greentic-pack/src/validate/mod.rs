@@ -657,6 +657,12 @@ fn missing_file_diagnostic(code: &str, message: &str, path: Option<String>) -> D
     }
 }
 
+fn is_runtime_builtin_component(component_id: &str) -> bool {
+    matches!(component_id, "dw.agent" | "dw.agent_graph")
+        || component_id.starts_with("dw.agent.")
+        || component_id.starts_with("dw.agent_graph.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -773,10 +779,4 @@ nodes:
             "expected key-only mapping references to be ignored, got: {diagnostics:?}"
         );
     }
-}
-
-fn is_runtime_builtin_component(component_id: &str) -> bool {
-    matches!(component_id, "dw.agent" | "dw.agent_graph")
-        || component_id.starts_with("dw.agent.")
-        || component_id.starts_with("dw.agent_graph.")
 }
