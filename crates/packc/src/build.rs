@@ -11,7 +11,10 @@ use crate::extensions::{
     validate_capabilities_extension, validate_components_extension, validate_deployer_extension,
     validate_static_routes_extension,
 };
-use crate::flow_resolve::load_flow_resolve_summary;
+use crate::flow_resolve::{
+    is_runtime_builtin_component, load_flow_resolve_summary, runtime_builtin_from_component_id,
+    runtime_builtin_from_operation,
+};
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 use anyhow::{Context, Result, anyhow};
 use greentic_distributor_client::{DistClient, DistOptions};
@@ -841,6 +844,23 @@ fn build_flows(
 
 fn apply_summary_component_ids(flow: &mut Flow, summary: &FlowResolveSummaryV1) -> Result<()> {
     for (node_id, node) in flow.nodes.iter_mut() {
+        if let Some((component_id, operation)) =
+            runtime_builtin_from_component_id(node.component.id.as_str())
+                .or_else(|| {
+                    runtime_builtin_from_operation(
+                        node.component.id.as_str(),
+                        node.component.operation.as_deref(),
+                    )
+                })
+                .map(|(component_id, operation)| (component_id.to_string(), operation.to_string()))
+        {
+            node.component.id = ComponentId::new(&component_id).unwrap();
+            node.component.operation = Some(operation);
+            continue;
+        }
+        if is_runtime_builtin_component(node.component.id.as_str()) {
+            continue;
+        }
         let resolved = summary.nodes.get(node_id.as_str()).ok_or_else(|| {
             anyhow!(
                 "flow resolve summary missing node {} (expected component id for node)",
