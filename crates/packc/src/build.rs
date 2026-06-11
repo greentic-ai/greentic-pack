@@ -1,6 +1,7 @@
 use crate::cli::resolve::{self, ResolveArgs};
 use crate::config::{
-    AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackConfig,
+    AssetConfig, ComponentConfig, ComponentOperationConfig, FlowConfig, PackCapabilityConfig,
+    PackConfig,
 };
 use crate::extension_refs::{
     default_extensions_file_path, default_extensions_lock_file_path, read_extensions_file,
@@ -10,7 +11,10 @@ use crate::extensions::{
     validate_capabilities_extension, validate_components_extension, validate_deployer_extension,
     validate_static_routes_extension,
 };
-use crate::flow_resolve::load_flow_resolve_summary;
+use crate::flow_resolve::{
+    is_runtime_builtin_component, load_flow_resolve_summary, runtime_builtin_from_component_id,
+    runtime_builtin_from_operation,
+};
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 use anyhow::{Context, Result, anyhow};
 use greentic_distributor_client::{DistClient, DistOptions};
@@ -407,7 +411,7 @@ fn assemble_manifest(
         components: component_manifests,
         flows,
         dependencies,
-        capabilities: derive_pack_capabilities(&components),
+        capabilities: derive_pack_capabilities(&components, &config.capabilities),
         secret_requirements: secret_requirements.to_vec(),
         signatures: PackSignatures::default(),
         bootstrap,
@@ -840,6 +844,23 @@ fn build_flows(
 
 fn apply_summary_component_ids(flow: &mut Flow, summary: &FlowResolveSummaryV1) -> Result<()> {
     for (node_id, node) in flow.nodes.iter_mut() {
+        if let Some((component_id, operation)) =
+            runtime_builtin_from_component_id(node.component.id.as_str())
+                .or_else(|| {
+                    runtime_builtin_from_operation(
+                        node.component.id.as_str(),
+                        node.component.operation.as_deref(),
+                    )
+                })
+                .map(|(component_id, operation)| (component_id.to_string(), operation.to_string()))
+        {
+            node.component.id = ComponentId::new(&component_id).unwrap();
+            node.component.operation = Some(operation);
+            continue;
+        }
+        if is_runtime_builtin_component(node.component.id.as_str()) {
+            continue;
+        }
         let resolved = summary.nodes.get(node_id.as_str()).ok_or_else(|| {
             anyhow!(
                 "flow resolve summary missing node {} (expected component id for node)",
@@ -1236,9 +1257,23 @@ fn merge_component_sources_extension(
 
 fn derive_pack_capabilities(
     components: &[(ComponentManifest, ComponentBinary)],
+    pack_declared: &[PackCapabilityConfig],
 ) -> Vec<ComponentCapability> {
     let mut seen = BTreeSet::new();
     let mut caps = Vec::new();
+
+    // Pack-declared first so author-supplied descriptions win on collision.
+    // These are author-declared opt-ins (e.g. `greentic.cap.fast2flow.v1`) —
+    // semantically distinct from the auto-derived `host:*` / `wasi:*` entries
+    // below, which describe the component's required host APIs.
+    for declared in pack_declared {
+        if seen.insert(declared.name.clone()) {
+            caps.push(ComponentCapability {
+                name: declared.name.clone(),
+                description: declared.description.clone(),
+            });
+        }
+    }
 
     for (component, _) in components {
         let mut add = |name: &str| {
@@ -3372,6 +3407,7 @@ flows:
             name: None,
             display_name: None,
             bootstrap: Some(bootstrap),
+            capabilities: Vec::new(),
             components: Vec::new(),
             dependencies: Vec::new(),
             flows: Vec::new(),

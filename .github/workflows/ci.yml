@@ -81,19 +81,34 @@ jobs:
         id: semver-baseline
         run: |
           git fetch --tags --force
-          newest_tag="$(git tag -l 'v*' --sort=-v:refname | sed -n '1p')"
-          if [ -z "$newest_tag" ]; then
-            echo "No v* tags found for semver baseline" >&2
+          # Pick the baseline from the SAME major.minor version line the
+          # workspace currently sits on. Without this filter the workflow
+          # picks whatever v* tag sorts highest — including 1.1.x dev tags
+          # auto-cut on the `develop` branch — and tries to build their
+          # source against the current 0.5.x dependency graph. That fails
+          # with E0432 on `greentic_types::telemetry::attr_keys` (the dev
+          # line's API) before semver-checks ever runs, blocking every PR
+          # on the stable lane.
+          ws_version="$(perl -ne 'print $1 if /^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+[^"]*)"/' Cargo.toml | head -n 1)"
+          if [ -z "$ws_version" ]; then
+            echo "Could not read workspace version from Cargo.toml" >&2
             exit 1
           fi
-          # When HEAD itself IS the newest tag (e.g. CI on a release-cut
-          # merge), compare against the tag before that. Otherwise (PRs,
-          # regular pushes to main, anything where HEAD is past the latest
-          # release), compare against the latest release tag.
+          major_minor="$(echo "$ws_version" | cut -d. -f1,2)"
+          echo "Workspace version: $ws_version (line: $major_minor.x)"
+          line_tags="$(git tag -l "v${major_minor}.*" --sort=-v:refname)"
+          if [ -z "$line_tags" ]; then
+            echo "No v${major_minor}.* tag found; semver-checks needs a same-line baseline" >&2
+            exit 1
+          fi
+          newest_tag="$(echo "$line_tags" | sed -n '1p')"
+          # When HEAD itself IS the newest tag on this line (release-cut),
+          # compare against the previous one. Otherwise compare against
+          # the newest on-line tag.
           if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$newest_tag")" ]; then
-            baseline_tag="$(git tag -l 'v*' --sort=-v:refname | sed -n '2p')"
+            baseline_tag="$(echo "$line_tags" | sed -n '2p')"
             if [ -z "$baseline_tag" ]; then
-              echo "HEAD is the only v* tag; nothing to compare against" >&2
+              echo "HEAD is the only v${major_minor}.* tag; nothing to compare against" >&2
               exit 1
             fi
           else

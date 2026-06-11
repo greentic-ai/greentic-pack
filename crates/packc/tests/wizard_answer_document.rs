@@ -256,6 +256,7 @@ fn wizard_apply_answers_with_sign_runs_sign_step() {
 
 #[test]
 fn wizard_apply_answers_stage_asset_file_into_pack() {
+    let _guard = env_guard();
     let temp = TempDir::new().expect("tempdir");
     let pack_dir = temp.path().join("pack");
     let source_dir = temp.path().join("external");
@@ -299,6 +300,9 @@ fn wizard_apply_answers_stage_asset_file_into_pack() {
         .arg("apply")
         .arg("--answers")
         .arg(&answers_path)
+        .env_remove("GREENTIC_PACK_WIZARD_SELF_EXE")
+        .env_remove("GREENTIC_FLOW_BIN")
+        .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run wizard apply");
     assert!(output.status.success(), "wizard apply should succeed");
