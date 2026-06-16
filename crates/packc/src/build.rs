@@ -1575,6 +1575,16 @@ async fn collect_lock_component_artifacts(
             continue;
         };
         if reference.starts_with("file://") {
+            // Local (e.g. store-acquired) component: read the wasm straight from
+            // disk and embed it at components/<id>.wasm. No registry fetch — the
+            // runner resolves it from the pack via the resolve sidecar's `local`
+            // source. (Previously such entries were skipped, so a flow that
+            // referenced a local component produced a pack the runner could not
+            // resolve.)
+            let binary = local_component_artifact(reference, &comp.component_id)?;
+            if seen_paths.insert(binary.logical_path.clone()) {
+                artifacts.push(binary);
+            }
             continue;
         }
         let parsed = ComponentSourceRef::from_str(reference).ok();
@@ -1679,6 +1689,26 @@ async fn collect_lock_component_artifacts(
     }
 
     Ok(artifacts)
+}
+
+/// Build a [`LockComponentBinary`] for a `file://<path>` local component
+/// reference: read the wasm from disk and target `components/<id>.wasm` inside
+/// the pack. Used to embed store-acquired / locally-resolved components instead
+/// of fetching them from a registry.
+fn local_component_artifact(reference: &str, component_id: &str) -> Result<LockComponentBinary> {
+    let local = reference
+        .strip_prefix("file://")
+        .ok_or_else(|| anyhow!("not a file:// reference: {reference}"))?;
+    let cache_path = PathBuf::from(local);
+    let bytes = fs::read(&cache_path)
+        .with_context(|| format!("failed to read local component {}", cache_path.display()))?;
+    let wasm_sha256 = hex::encode(Sha256::digest(&bytes));
+    Ok(LockComponentBinary {
+        component_id: component_id.to_string(),
+        logical_path: format!("components/{component_id}.wasm"),
+        source: cache_path,
+        wasm_sha256,
+    })
 }
 
 struct ResolvedLockItem {
@@ -2232,6 +2262,27 @@ mod tests {
     use std::io::Read;
     use std::path::Path;
     use std::{fs, path::PathBuf};
+
+    #[test]
+    fn local_component_artifact_reads_wasm_and_targets_components_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let wasm_path = dir.path().join("demo.wasm");
+        let bytes = b"\0asm\x01\0\0\0local-component-bytes";
+        fs::write(&wasm_path, bytes).unwrap();
+
+        let reference = format!("file://{}", wasm_path.to_string_lossy());
+        let bin = local_component_artifact(&reference, "greentic.demo-component").unwrap();
+
+        assert_eq!(bin.component_id, "greentic.demo-component");
+        assert_eq!(bin.logical_path, "components/greentic.demo-component.wasm");
+        assert_eq!(bin.source, wasm_path);
+        assert_eq!(bin.wasm_sha256, hex::encode(Sha256::digest(bytes)));
+    }
+
+    #[test]
+    fn local_component_artifact_rejects_non_file_ref() {
+        assert!(local_component_artifact("oci://x/y:1", "c").is_err());
+    }
     use tempfile::tempdir;
     use zip::ZipArchive;
 
