@@ -221,6 +221,7 @@ pub struct PackBuilder {
     distribution: Option<DistributionSection>,
 }
 
+#[derive(Clone)]
 struct Asset {
     path: String,
     bytes: Vec<u8>,
@@ -401,10 +402,16 @@ impl PackBuilder {
         self
     }
 
-    pub fn build(self, out_path: impl AsRef<Path>) -> Result<BuildResult> {
-        let meta = self.meta;
+    /// Returns every in-archive file keyed by archive path, in deterministic (sorted) order.
+    /// Includes flows, components, assets, manifest.cbor/json, provenance.json, sbom.json,
+    /// and signature files when signing is not None.
+    pub fn entries(&self) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
+        let meta = &self.meta;
         meta.validate()?;
-        let distribution = self.distribution.or_else(|| meta.distribution.clone());
+        let distribution = self
+            .distribution
+            .clone()
+            .or_else(|| meta.distribution.clone());
         let component_descriptors = if self.component_descriptors.is_empty() {
             meta.components.clone()
         } else {
@@ -419,7 +426,7 @@ impl PackBuilder {
         let mut pending_files: Vec<PendingFile> = Vec::new();
         let mut seen_flow_ids = BTreeSet::new();
 
-        for flow in self.flows {
+        for flow in &self.flows {
             validate_identifier(&flow.id, "flow id")?;
             if flow.entry.trim().is_empty() {
                 bail!("flow {} is missing an entry node", flow.id);
@@ -445,12 +452,12 @@ impl PackBuilder {
             ));
 
             flow_entries.push(FlowEntry {
-                id: flow.id,
-                kind: flow.kind,
-                entry: flow.entry,
+                id: flow.id.clone(),
+                kind: flow.kind.clone(),
+                entry: flow.entry.clone(),
                 file_yaml: yaml_path,
                 file_json: json_path,
-                hash_blake3: flow.hash_blake3,
+                hash_blake3: flow.hash_blake3.clone(),
             });
         }
 
@@ -465,7 +472,7 @@ impl PackBuilder {
         let mut component_entries = Vec::new();
         let mut seen_components = BTreeSet::new();
 
-        for component in self.components {
+        for component in &self.components {
             validate_identifier(&component.name, "component name")?;
             let key = format!("{}@{}", component.name, component.version);
             if !seen_components.insert(key.clone()) {
@@ -521,26 +528,26 @@ impl PackBuilder {
             }
 
             component_entries.push(ComponentEntry {
-                name: component.name,
-                version: component.version,
+                name: component.name.clone(),
+                version: component.version.clone(),
                 file_wasm: wasm_path,
                 hash_blake3: wasm_hash,
                 schema_file,
                 manifest_file,
-                world: component.world,
-                capabilities: component.capabilities,
+                world: component.world.clone(),
+                capabilities: component.capabilities.clone(),
             });
         }
 
         component_entries
             .sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
 
-        for asset in self.assets {
+        for asset in &self.assets {
             let path = normalize_relative_path(&["assets", &asset.path])?;
             pending_files.push(PendingFile::new(
                 path,
                 "application/octet-stream",
-                asset.bytes,
+                asset.bytes.clone(),
             ));
         }
 
@@ -566,7 +573,7 @@ impl PackBuilder {
             manifest_json,
         ));
 
-        let provenance = finalize_provenance(self.provenance);
+        let provenance = finalize_provenance(self.provenance.clone());
         let provenance_json = serde_json::to_vec_pretty(&provenance)?;
         pending_files.push(PendingFile::new(
             "provenance.json".to_string(),
@@ -583,7 +590,6 @@ impl PackBuilder {
                 media_type: file.media_type.clone(),
             });
         }
-        let build_files = sbom_entries.clone();
 
         let sbom_document = serde_json::json!({
             "format": SBOM_FORMAT,
@@ -596,11 +602,9 @@ impl PackBuilder {
             sbom_bytes.clone(),
         ));
 
-        let manifest_hash = hex_hash(&manifest_cbor);
-
         let mut signature_files = Vec::new();
         if !matches!(self.signing, Signing::None) {
-            let digest = signature_digest_from_entries(&build_files, &manifest_cbor, &sbom_bytes);
+            let digest = signature_digest_from_entries(&sbom_entries, &manifest_cbor, &sbom_bytes);
             let (signature_doc, chain_bytes) = match &self.signing {
                 Signing::Dev => dev_signature(&digest)?,
                 Signing::None => unreachable!(),
@@ -625,7 +629,44 @@ impl PackBuilder {
 
         let mut all_files = pending_files;
         all_files.extend(signature_files);
-        all_files.sort_by(|a, b| a.path.cmp(&b.path));
+
+        // BTreeMap provides sorted iteration by key — matches the original sort_by path.
+        let mut map = std::collections::BTreeMap::new();
+        for f in all_files {
+            map.insert(f.path, f.bytes);
+        }
+        Ok(map)
+    }
+
+    pub fn build(self, out_path: impl AsRef<Path>) -> Result<BuildResult> {
+        let entries = self.entries()?;
+
+        // build_files = SBOM of content files only (excludes sbom.json and signature files),
+        // matching what the original code captured before adding those to pending_files.
+        let excluded = ["sbom.json", SIGNATURE_PATH, SIGNATURE_CHAIN_PATH];
+        let build_files: Vec<SbomEntry> = entries
+            .iter()
+            .filter(|(path, _)| !excluded.contains(&path.as_str()))
+            .map(|(path, bytes)| SbomEntry {
+                path: path.clone(),
+                size: bytes.len() as u64,
+                hash_blake3: hex_hash(bytes),
+                media_type: media_type_for(path).to_string(),
+            })
+            .collect();
+
+        let manifest_hash = entries
+            .get("manifest.cbor")
+            .map(|b| hex_hash(b))
+            .unwrap_or_default();
+
+        let pending: Vec<PendingFile> = entries
+            .into_iter()
+            .map(|(path, bytes)| {
+                let mt = media_type_for(&path);
+                PendingFile::new(path, mt, bytes)
+            })
+            .collect();
 
         let out_path = out_path.as_ref().to_path_buf();
         if let Some(parent) = out_path.parent() {
@@ -633,7 +674,7 @@ impl PackBuilder {
                 .with_context(|| format!("failed to create directory {}", parent.display()))?;
         }
 
-        write_zip(&out_path, &all_files)?;
+        write_zip(&out_path, &pending)?;
 
         Ok(BuildResult {
             out_path,
@@ -872,6 +913,24 @@ pub(crate) fn hex_hash(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
+fn media_type_for(path: &str) -> &'static str {
+    if path.ends_with(".ygtc") {
+        "application/yaml"
+    } else if path.starts_with("schemas/") && path.ends_with(".json") {
+        "application/schema+json"
+    } else if path.ends_with(".json") {
+        "application/json"
+    } else if path.ends_with(".cbor") {
+        "application/cbor"
+    } else if path.ends_with(".wasm") {
+        "application/wasm"
+    } else if path.ends_with(".pem") {
+        "application/x-pem-file"
+    } else {
+        "application/octet-stream"
+    }
+}
+
 fn write_zip(out_path: &Path, files: &[PendingFile]) -> Result<()> {
     let file = fs::File::create(out_path)
         .with_context(|| format!("failed to create {}", out_path.display()))?;
@@ -1064,5 +1123,23 @@ mod tests {
             host: Some("ci".to_string()),
             notes: None,
         }
+    }
+
+    #[test]
+    fn entries_contains_manifest_and_assets_without_fs() {
+        let meta = sample_meta();
+        let builder = PackBuilder::new(meta)
+            .with_signing(Signing::None)
+            .with_flow(sample_flow())
+            .with_asset_bytes("x.json", b"{}".to_vec());
+        let entries = builder.entries().expect("entries");
+        assert!(entries.contains_key("manifest.cbor"));
+        assert!(entries.contains_key("manifest.json"));
+        assert!(entries.contains_key("assets/x.json"));
+        // deterministic ordering
+        let keys: Vec<_> = entries.keys().cloned().collect();
+        let mut sorted = keys.clone();
+        sorted.sort();
+        assert_eq!(keys, sorted);
     }
 }
