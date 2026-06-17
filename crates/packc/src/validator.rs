@@ -780,6 +780,7 @@ mod tests {
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
+            agents: Default::default(),
         };
         let manifest_cbor = encode_pack_manifest(&manifest).expect("encode manifest");
         let wasm_bytes = b"validator wasm";
@@ -882,6 +883,7 @@ mod tests {
                     }))),
                 },
             )])),
+            agents: Default::default(),
         };
 
         let refs = validator_refs_from_manifest(&manifest);

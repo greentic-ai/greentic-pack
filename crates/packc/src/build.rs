@@ -416,6 +416,7 @@ fn assemble_manifest(
         signatures: PackSignatures::default(),
         bootstrap,
         extensions,
+        agents: Default::default(),
     };
 
     annotate_manifest_build_mode(&mut manifest, dev_mode);
@@ -3483,6 +3484,7 @@ flows:
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
+            agents: Default::default(),
         }
     }
 
