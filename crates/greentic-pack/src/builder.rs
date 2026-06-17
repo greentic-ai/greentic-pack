@@ -689,7 +689,7 @@ impl PackBuilder {
             let (signature_doc, chain_bytes) = match &self.signing {
                 #[cfg(feature = "native")]
                 Signing::Dev => dev_signature(&digest)?,
-                Signing::None => unreachable!(),
+                Signing::None => bail!("internal: signing block entered with Signing::None"),
                 Signing::External(signer) => external_signature(&**signer, &digest)?,
             };
 
