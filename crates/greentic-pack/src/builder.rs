@@ -1,33 +1,91 @@
 use std::collections::BTreeSet;
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow, bail};
+#[cfg(feature = "native")]
+use std::fs;
+#[cfg(feature = "native")]
+use std::io::Write;
+#[cfg(feature = "native")]
+use std::path::Path;
+
+#[cfg(feature = "native")]
+use anyhow::Context;
+#[cfg(feature = "native")]
+use anyhow::anyhow;
+use anyhow::{Result, bail};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use blake3::Hasher;
+#[cfg(feature = "native")]
 use ed25519_dalek::Signer as _;
+#[cfg(feature = "native")]
 use ed25519_dalek::SigningKey;
+#[cfg(feature = "native")]
 use getrandom::fill as fill_random;
 use greentic_types::cbor::canonical;
+#[cfg(feature = "native")]
 use pkcs8::EncodePrivateKey;
+#[cfg(feature = "native")]
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ED25519};
+#[cfg(feature = "native")]
 use rustls_pki_types::PrivatePkcs8KeyDer;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
+#[cfg(feature = "native")]
 use time::OffsetDateTime;
+#[cfg(feature = "native")]
 use time::format_description::well_known::Rfc3339;
+#[cfg(feature = "native")]
 use zip::write::SimpleFileOptions;
+#[cfg(feature = "native")]
 use zip::{CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 use crate::events::EventsSection;
 use crate::kind::PackKind;
 use crate::messaging::MessagingSection;
 use crate::repo::{InterfaceBinding, RepoPackSection};
+
+// On native builds, re-export the canonical types from greentic-flow.
+// On wasm (no-default-features), define minimal compatible types locally so
+// that the entries() API surface compiles without pulling in wasmtime.
+#[cfg(feature = "native")]
+pub use greentic_flow::flow_bundle::{ComponentPin, FlowBundle, NodeRef};
+
+#[cfg(not(feature = "native"))]
+mod flow_bundle_wasm {
+    use serde::{Deserialize, Serialize};
+    use serde_json::Value;
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct ComponentPin {
+        pub name: String,
+        pub version_req: String,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct NodeRef {
+        pub node_id: String,
+        pub component: ComponentPin,
+        pub schema_id: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct FlowBundle {
+        pub id: String,
+        pub kind: String,
+        pub entry: String,
+        pub yaml: String,
+        pub json: Value,
+        pub hash_blake3: String,
+        pub nodes: Vec<NodeRef>,
+    }
+}
+
+#[cfg(not(feature = "native"))]
+pub use flow_bundle_wasm::{ComponentPin, FlowBundle, NodeRef};
 
 pub(crate) const SBOM_FORMAT: &str = "greentic-sbom-v1";
 pub(crate) const SIGNATURE_PATH: &str = "signatures/pack.sig";
@@ -121,8 +179,6 @@ impl PackMeta {
     }
 }
 
-pub use greentic_flow::flow_bundle::{ComponentPin, FlowBundle, NodeRef};
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ImportRef {
     pub pack_id: String,
@@ -202,12 +258,27 @@ pub trait Signer: Send + Sync {
 
 type DynSigner = dyn Signer + Send + Sync + 'static;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub enum Signing {
-    #[default]
+    #[cfg(feature = "native")]
     Dev,
     None,
     External(Arc<DynSigner>),
+}
+
+// Manual impl instead of derive because the default variant differs by feature flag.
+#[allow(clippy::derivable_impls)]
+impl Default for Signing {
+    fn default() -> Self {
+        #[cfg(feature = "native")]
+        {
+            Signing::Dev
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            Signing::None
+        }
+    }
 }
 
 pub struct PackBuilder {
@@ -292,9 +363,13 @@ impl SignatureEnvelope {
         digest: &blake3::Hash,
         key_fingerprint: Option<String>,
     ) -> Self {
+        #[cfg(feature = "native")]
         let signed_at = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+        #[cfg(not(feature = "native"))]
+        let signed_at = "1970-01-01T00:00:00Z".to_string();
+
         Self {
             alg: alg.into(),
             sig: URL_SAFE_NO_PAD.encode(sig_bytes),
@@ -338,7 +413,7 @@ impl PackBuilder {
             flows: Vec::new(),
             components: Vec::new(),
             assets: Vec::new(),
-            signing: Signing::Dev,
+            signing: Signing::default(),
             provenance: None,
         }
     }
@@ -469,9 +544,11 @@ impl PackBuilder {
 
         flow_entries.sort_by(|a, b| a.id.cmp(&b.id));
 
-        let mut component_entries = Vec::new();
-        let mut seen_components = BTreeSet::new();
+        let mut component_entries: Vec<ComponentEntry> = Vec::new();
+        #[cfg(feature = "native")]
+        let mut seen_components: BTreeSet<String> = BTreeSet::new();
 
+        #[cfg(feature = "native")]
         for component in &self.components {
             validate_identifier(&component.name, "component name")?;
             let key = format!("{}@{}", component.name, component.version);
@@ -537,6 +614,10 @@ impl PackBuilder {
                 world: component.world.clone(),
                 capabilities: component.capabilities.clone(),
             });
+        }
+        #[cfg(not(feature = "native"))]
+        if !self.components.is_empty() {
+            bail!("component wasm loading requires the `native` feature");
         }
 
         component_entries
@@ -606,6 +687,7 @@ impl PackBuilder {
         if !matches!(self.signing, Signing::None) {
             let digest = signature_digest_from_entries(&sbom_entries, &manifest_cbor, &sbom_bytes);
             let (signature_doc, chain_bytes) = match &self.signing {
+                #[cfg(feature = "native")]
                 Signing::Dev => dev_signature(&digest)?,
                 Signing::None => unreachable!(),
                 Signing::External(signer) => external_signature(&**signer, &digest)?,
@@ -638,6 +720,7 @@ impl PackBuilder {
         Ok(map)
     }
 
+    #[cfg(feature = "native")]
     pub fn build(self, out_path: impl AsRef<Path>) -> Result<BuildResult> {
         let entries = self.entries()?;
 
@@ -684,6 +767,7 @@ impl PackBuilder {
     }
 }
 
+#[cfg(feature = "native")]
 fn equals_ignore_case(expected: &str, actual: &str) -> bool {
     expected.trim().eq_ignore_ascii_case(actual.trim())
 }
@@ -817,9 +901,14 @@ pub fn validate_distribution(
 
 fn finalize_provenance(provenance: Option<Provenance>) -> Provenance {
     let builder_default = format!("greentic-pack@{}", env!("CARGO_PKG_VERSION"));
+
+    #[cfg(feature = "native")]
     let now = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+    #[cfg(not(feature = "native"))]
+    let now = "1970-01-01T00:00:00Z".to_string();
+
     match provenance {
         Some(mut prov) => {
             if prov.builder.trim().is_empty() {
@@ -866,6 +955,7 @@ pub(crate) fn signature_digest_from_entries(
     hasher.finalize()
 }
 
+#[cfg(feature = "native")]
 fn dev_signature(digest: &blake3::Hash) -> Result<(SignatureEnvelope, Option<Vec<u8>>)> {
     let mut secret = [0u8; 32];
     fill_random(&mut secret).map_err(|err| anyhow!("failed to generate dev signing key: {err}"))?;
@@ -913,6 +1003,7 @@ pub(crate) fn hex_hash(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
+#[cfg(feature = "native")]
 fn media_type_for(path: &str) -> &'static str {
     if path.ends_with(".ygtc") {
         "application/yaml"
@@ -931,6 +1022,7 @@ fn media_type_for(path: &str) -> &'static str {
     }
 }
 
+#[cfg(feature = "native")]
 fn write_zip(out_path: &Path, files: &[PendingFile]) -> Result<()> {
     let file = fs::File::create(out_path)
         .with_context(|| format!("failed to create {}", out_path.display()))?;
@@ -955,6 +1047,7 @@ fn write_zip(out_path: &Path, files: &[PendingFile]) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "native")]
 fn zip_timestamp() -> ZipDateTime {
     ZipDateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap_or_else(|_| ZipDateTime::default())
 }
