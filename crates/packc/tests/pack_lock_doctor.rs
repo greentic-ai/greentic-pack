@@ -60,6 +60,7 @@ fn build_pack_manifest(component_id: &str) -> PackManifest {
         signatures: PackSignatures::default(),
         bootstrap: None,
         extensions: None,
+        agents: Default::default(),
     }
 }
 

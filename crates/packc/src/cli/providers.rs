@@ -280,6 +280,7 @@ fn downgrade_legacy_manifest(
         signatures: PackSignatures::default(),
         bootstrap: None,
         extensions: None,
+        agents: Default::default(),
     })
 }
 
@@ -419,6 +420,7 @@ mod tests {
                     })),
                 },
             )])),
+            agents: Default::default(),
         }
     }
 
