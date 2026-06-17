@@ -658,7 +658,7 @@ impl PackBuilder {
         let manifest_hash = entries
             .get("manifest.cbor")
             .map(|b| hex_hash(b))
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow!("manifest.cbor missing from PackBuilder::entries()"))?;
 
         let pending: Vec<PendingFile> = entries
             .into_iter()
