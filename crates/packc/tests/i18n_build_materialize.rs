@@ -4,15 +4,21 @@
 //! These live in an integration-test crate (not inside `src/`) so that
 //! `#![forbid(unsafe_code)]` in the library does NOT apply here.  The tests
 //! use `unsafe { std::env::set_var(...) }` to wire a stub translator binary,
-//! which is intentional and safe in the single-threaded test context.
+//! which is intentional and safe when protected by env_lock().
 
 use packc::i18n_build::materialize_i18n;
 use std::fs;
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn write_card(pack_root: &Path) {
     let cards = pack_root.join("assets/cards");
@@ -41,12 +47,26 @@ fn install_stub_translator(dir: &Path) -> std::path::PathBuf {
     script
 }
 
+/// A translator stub that always fails (exits 1, writes nothing).
+/// This is used to test that when a translator is found but fails,
+/// the build succeeds and no locale files are written.
+fn install_failing_translator(dir: &Path) -> std::path::PathBuf {
+    let script = dir.join("failing-translator.sh");
+    fs::write(&script, "#!/bin/sh\nexit 1\n").unwrap();
+    let mut perms = fs::metadata(&script).unwrap().permissions();
+    use std::os::unix::fs::PermissionsExt;
+    perms.set_mode(0o755);
+    fs::set_permissions(&script, perms).unwrap();
+    script
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[test]
 fn empty_langs_is_a_noop() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     write_card(tmp.path());
     materialize_i18n(tmp.path(), &[]);
@@ -54,22 +74,26 @@ fn empty_langs_is_a_noop() {
 }
 
 #[test]
-fn missing_translator_writes_no_lang_files() {
+fn failing_translator_writes_no_lang_files() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     write_card(tmp.path());
-    // SAFETY: single-threaded test.
-    unsafe { std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", "/nonexistent/translator-xyz"); }
+    let failing = install_failing_translator(tmp.path());
+    // SAFETY: protected by env_lock() guard.
+    unsafe { std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", &failing); }
     materialize_i18n(tmp.path(), &["id".to_string()]);
     unsafe { std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN"); }
+    // The translator was found but failed → no locale file, build stays non-fatal.
     assert!(!tmp.path().join("assets/i18n/id.json").exists());
 }
 
 #[test]
 fn stub_translator_produces_lang_files_and_manifest() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     write_card(tmp.path());
     let stub = install_stub_translator(tmp.path());
-    // SAFETY: single-threaded test.
+    // SAFETY: protected by env_lock() guard.
     unsafe { std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", &stub); }
     materialize_i18n(tmp.path(), &["id".to_string(), "ja".to_string()]);
     unsafe { std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN"); }
