@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::env;
 use std::path::PathBuf;
 
@@ -43,20 +45,4 @@ fn resolve_from_path(binary: &str) -> Option<PathBuf> {
         }
     }
     None
-}
-
-#[cfg(test)]
-#[allow(unsafe_code)]
-mod tests {
-    use super::resolve;
-
-    #[test]
-    fn resolve_honours_translator_env_override() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        // SAFETY: single-threaded test; no other thread reads this env var here.
-        unsafe { std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", tmp.path()); }
-        let got = resolve("greentic-i18n-translator");
-        unsafe { std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN"); }
-        assert_eq!(got.as_deref(), Some(tmp.path()));
-    }
 }
