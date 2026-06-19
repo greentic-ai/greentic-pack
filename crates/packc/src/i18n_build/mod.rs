@@ -3,5 +3,7 @@
 //! translate via greentic-i18n-translator, and write assets/i18n/.
 
 mod extract;
+mod bundle;
 
-pub use extract::{ExtractConfig, ExtractedString, extract_from_directory, write_bundle};
+pub use bundle::{ExtractConfig, extract_from_directory, write_bundle};
+pub use extract::ExtractedString;
