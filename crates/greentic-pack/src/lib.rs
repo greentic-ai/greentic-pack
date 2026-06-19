@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod builder;
+pub mod builtin;
 pub mod events;
 pub mod kind;
 pub mod messaging;
