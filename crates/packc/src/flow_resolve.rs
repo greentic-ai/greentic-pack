@@ -188,10 +188,16 @@ pub fn enforce_sidecar_mappings(pack_dir: &Path, flow: &FlowConfig, compiled: &F
 }
 
 /// Compute which nodes in a flow lack resolve entries.
+///
+/// Builtin nodes (`emit.*`, `dw.agent[.x]`, `dw.agent_graph[.x]`,
+/// `session.wait`, `flow.call`, `provider.invoke`, `{sorla,operala,agentic}.call`)
+/// are executed by the runner engine and resolve to no pack component, so they
+/// never require a resolve-sidecar mapping and are excluded here.
 pub fn missing_node_mappings(flow: &Flow, doc: &FlowResolveV1) -> Vec<String> {
     flow.nodes
-        .keys()
-        .filter_map(|node| {
+        .iter()
+        .filter(|(_, def)| !crate::build::node_is_builtin(def))
+        .filter_map(|(node, _)| {
             let id = node.to_string();
             if doc.nodes.contains_key(id.as_str()) {
                 None
@@ -293,9 +299,12 @@ fn enforce_summary_mappings(
 }
 
 fn missing_summary_node_mappings(flow: &Flow, doc: &FlowResolveSummaryV1) -> Vec<String> {
+    // Builtin nodes resolve to no pack component (see `missing_node_mappings`),
+    // so they need no resolve-summary entry either.
     flow.nodes
-        .keys()
-        .filter_map(|node| {
+        .iter()
+        .filter(|(_, def)| !crate::build::node_is_builtin(def))
+        .filter_map(|(node, _)| {
             let id = node.to_string();
             if doc.nodes.contains_key(id.as_str()) {
                 None

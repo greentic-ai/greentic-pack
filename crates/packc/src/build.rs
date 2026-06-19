@@ -841,6 +841,12 @@ fn build_flows(
 
 fn apply_summary_component_ids(flow: &mut Flow, summary: &FlowResolveSummaryV1) -> Result<()> {
     for (node_id, node) in flow.nodes.iter_mut() {
+        // Builtin/dispatch nodes (dw.agent, emit.*, …) are engine-handled and
+        // carry no resolved pack component, so they have no summary entry and
+        // keep their compiled component id/operation untouched.
+        if node_is_builtin(node) {
+            continue;
+        }
         let resolved = summary.nodes.get(node_id.as_str()).ok_or_else(|| {
             anyhow!(
                 "flow resolve summary missing node {} (expected component id for node)",
@@ -1907,8 +1913,54 @@ fn collect_flow_component_ids(flows: &[PackFlowEntry]) -> BTreeSet<String> {
     ids
 }
 
-fn is_builtin_component_id(id: &str) -> bool {
-    matches!(id, "session.wait" | "flow.call" | "provider.invoke") || id.starts_with("emit.")
+/// Flow-node component ids that the runner engine handles itself (builtins)
+/// rather than resolving as pack components. These have no `.wasm` to fetch and
+/// must be skipped by component discovery / lock resolution.
+///
+/// This MUST mirror the runner's `NodeKind` dispatch (`greentic-runner-host`
+/// engine): `dw.agent`, `dw.agent_graph`, `sorla.call`, `operala.call`,
+/// `agentic.call`, `session.wait`, `flow.call`, `provider.invoke`, `emit.*`.
+/// The agent/dispatch kinds appear in flows as `dw.agent.<agent_id>` etc., so
+/// match both the bare kind and the dotted `<kind>.<suffix>` form.
+pub(crate) fn is_builtin_component_id(id: &str) -> bool {
+    const BUILTIN_KINDS: &[&str] = &[
+        "session.wait",
+        "flow.call",
+        "provider.invoke",
+        "dw.agent",
+        "dw.agent_graph",
+        "sorla.call",
+        "operala.call",
+        "agentic.call",
+    ];
+    id.starts_with("emit.")
+        || BUILTIN_KINDS.iter().any(|kind| {
+            id == *kind
+                || id
+                    .strip_prefix(kind)
+                    .is_some_and(|rest| rest.starts_with('.'))
+        })
+}
+
+/// The kind-bearing id of a compiled flow node. Builtin/dispatch nodes
+/// (`dw.agent.<id>`, `emit.response`, `sorla.call`, …) compile to the generic
+/// `component.exec` placeholder with the real kind carried in `operation`, so
+/// the operation is authoritative when the component id is empty/`component.exec`;
+/// otherwise the resolved component id is.
+pub(crate) fn node_effective_id(node: &greentic_types::Node) -> &str {
+    let id = node.component.id.as_str();
+    if id.is_empty() || id == "component.exec" {
+        node.component.operation.as_deref().unwrap_or(id)
+    } else {
+        id
+    }
+}
+
+/// Whether a compiled flow node is a runner builtin (engine-handled, resolves
+/// to no pack component). Used to exclude such nodes from component discovery,
+/// resolve-sidecar/summary coverage, and summary component-id back-fill.
+pub(crate) fn node_is_builtin(node: &greentic_types::Node) -> bool {
+    is_builtin_component_id(node_effective_id(node))
 }
 
 fn load_component_manifest_for_lock(
@@ -2245,6 +2297,41 @@ fn find_secret_requirements_file(pack_root: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::config::BootstrapConfig;
+
+    #[test]
+    fn builtin_component_ids_cover_runner_node_kinds() {
+        // Pre-existing builtins still classify.
+        for id in [
+            "session.wait",
+            "flow.call",
+            "provider.invoke",
+            "emit.response",
+        ] {
+            assert!(is_builtin_component_id(id), "{id} should be builtin");
+        }
+        // Agentic / dispatch node kinds — both bare and dotted `<kind>.<id>`.
+        for id in [
+            "dw.agent",
+            "dw.agent.smoke-agent",
+            "dw.agent_graph",
+            "dw.agent_graph.triage",
+            "sorla.call",
+            "operala.call",
+            "agentic.call",
+        ] {
+            assert!(is_builtin_component_id(id), "{id} should be builtin");
+        }
+        // Real pack components must NOT be treated as builtins.
+        for id in [
+            "qa.process",
+            "templating.handlebars",
+            "dw.agentish",
+            "agentic",
+        ] {
+            assert!(!is_builtin_component_id(id), "{id} must NOT be builtin");
+        }
+    }
+
     use crate::runtime::resolve_runtime;
     use greentic_pack::pack_lock::{LockedComponent, PackLockV1};
     use greentic_types::cbor::canonical;

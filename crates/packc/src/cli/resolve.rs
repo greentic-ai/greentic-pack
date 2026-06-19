@@ -295,11 +295,11 @@ async fn populate_component_contract(
     Ok(())
 }
 
+/// Delegates to the single source of truth in `build` so resolve and build
+/// agree on which flow nodes are runner builtins (incl. `dw.agent` and the
+/// other dispatch kinds), rather than maintaining a second list that can drift.
 fn is_builtin_component(component_id: &str) -> bool {
-    matches!(
-        component_id,
-        "session.wait" | "flow.call" | "provider.invoke"
-    ) || component_id.starts_with("emit.")
+    crate::build::is_builtin_component_id(component_id)
 }
 
 struct PackResolver {
