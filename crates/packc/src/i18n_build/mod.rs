@@ -98,20 +98,19 @@ fn translate_to_language(
 ) -> anyhow::Result<()> {
     use anyhow::{Context, bail};
 
-    let work_dir = std::env::temp_dir().join(format!("greentic-pack-translate-{lang}"));
-    std::fs::create_dir_all(&work_dir)
-        .with_context(|| format!("create translator work dir for {lang}"))?;
-    if !work_dir.join(".git").exists() {
+    let work_dir = tempfile::tempdir().context("create translator work dir")?;
+    let work_path = work_dir.path();
+    if !work_path.join(".git").exists() {
         let _ = Command::new("git")
             .arg("init")
             .arg("--quiet")
-            .current_dir(&work_dir)
+            .current_dir(work_path)
             .output();
     }
 
     let en_abs = std::fs::canonicalize(en_bundle).unwrap_or_else(|_| en_bundle.to_path_buf());
     let output = Command::new(translator)
-        .current_dir(&work_dir)
+        .current_dir(work_path)
         .arg("translate")
         .arg("--langs")
         .arg(lang)
@@ -121,8 +120,6 @@ fn translate_to_language(
         .arg("auto")
         .output()
         .context("failed to execute greentic-i18n-translator")?;
-
-    let _ = std::fs::remove_dir_all(&work_dir);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
