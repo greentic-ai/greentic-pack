@@ -176,6 +176,7 @@ fn build_describe_cache(component_id: &str) -> (Vec<u8>, String) {
         metadata: BTreeMap::new(),
         operations: vec![operation],
         config_schema,
+    outcomes: Vec::new(),
     };
     let bytes = canonical::to_canonical_cbor_allow_floats(&describe).expect("encode describe");
     let digest = hex::encode(Sha256::digest(&bytes));
