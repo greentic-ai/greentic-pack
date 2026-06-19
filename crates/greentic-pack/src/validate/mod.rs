@@ -421,6 +421,12 @@ impl PackValidator for ComponentReferencesExistValidator {
                 if node.component.pack_alias.is_some() {
                     continue;
                 }
+                // Runner builtins (dw.agent[.x], emit.*, session.wait, …) are
+                // engine-handled and resolve to no pack component, so they carry
+                // no manifest component reference to validate.
+                if crate::builtin::node_is_builtin(node) {
+                    continue;
+                }
                 let component_id = &node.component.id;
                 if !known.contains(component_id) && !source_ids.contains(component_id) {
                     diagnostics.push(Diagnostic {
