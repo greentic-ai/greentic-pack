@@ -1139,6 +1139,7 @@ mod tests {
             metadata: BTreeMap::new(),
             operations: Vec::new(),
             config_schema: SchemaIr::Bool,
+            outcomes: Vec::new(),
         };
         let bytes = canonical::to_canonical_cbor_allow_floats(&describe).expect("describe bytes");
         let wasm_path = temp.path().join("component.wasm");
@@ -1219,6 +1220,7 @@ mod tests {
             metadata: BTreeMap::new(),
             operations: Vec::new(),
             config_schema: SchemaIr::Bool,
+            outcomes: Vec::new(),
         };
 
         let first = compute_describe_hash(&describe).expect("first hash");

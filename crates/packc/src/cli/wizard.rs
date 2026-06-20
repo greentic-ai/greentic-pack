@@ -204,6 +204,7 @@ struct WizardExecutionPlan {
     sign_key_path: Option<String>,
     extension_operation: Option<ExtensionOperationRecord>,
     asset_staging: Vec<ResolvedAssetStagingEntry>,
+    i18n_langs: Vec<String>,
 }
 
 struct FlowSchemaContext {
@@ -911,6 +912,11 @@ fn pack_wizard_answers_schema() -> Value {
                     { "$ref": "#/$defs/greentic_component_wizard_qa_envelope" }
                 ]
             },
+            "langs": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Target locale codes to translate the pack's Adaptive Card strings into during build (e.g. [\"id\",\"ja\"]). Requires greentic-i18n-translator on PATH; missing/failed languages are skipped with a warning."
+            },
             "asset_staging": {
                 "type": "array",
                 "description": "External files or directories to copy into the generated pack root before delegate/build steps run. Relative sources resolve from the AnswerDocument location; destinations must stay inside pack_dir.",
@@ -1272,6 +1278,10 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
                 )
             })?;
     }
+    if !plan.i18n_langs.is_empty() {
+        // Non-fatal: writes pack_root/assets/i18n/*, reports skips to stderr.
+        crate::i18n_build::materialize_i18n(&plan.pack_root, &plan.i18n_langs);
+    }
     if plan.run_doctor || plan.run_build {
         let update_ok = run_process(
             &self_exe,
@@ -1379,6 +1389,15 @@ fn execution_plan_from_answers(
     let extension_operation = parse_extension_operation_record(answers)?;
     let asset_staging = parse_asset_staging_entries(answers, answers_base_dir, &pack_root)?;
     validate_scaffold_asset_staging_conflicts(create_pack_scaffold, &pack_root, &asset_staging)?;
+    let i18n_langs: Vec<String> = answers
+        .get("langs")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(WizardExecutionPlan {
         pack_dir,
         pack_root,
@@ -1393,6 +1412,7 @@ fn execution_plan_from_answers(
         sign_key_path,
         extension_operation,
         asset_staging,
+        i18n_langs,
     })
 }
 

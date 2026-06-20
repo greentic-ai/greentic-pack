@@ -86,6 +86,58 @@ What to verify:
 - Keep locale files sorted deterministically to reduce diff noise.
 - Add CI checks that run QA with at least one non-default locale.
 
+## Automated translation during build
+
+Instead of hand-authoring every locale file, you can have the build extract
+and translate strings automatically when running `wizard apply`.
+
+### Pass `langs` in your answers
+
+Add a `langs` key inside the `answers` object of your `wizard apply` answers
+file (the value is a JSON array of BCP-47 language tags):
+
+```json
+{
+  "answers": {
+    "langs": ["id", "ja", "fr"]
+  }
+}
+```
+
+### What the build does
+
+1. Extracts all translatable strings from `assets/cards/*.json` into
+   `assets/i18n/en.json` (the baseline locale).
+2. For each requested language, invokes the `greentic-i18n-translator` binary
+   to produce `assets/i18n/<lang>.json`.
+3. Writes `assets/i18n/_manifest.json` — a sorted JSON array of every locale
+   code present in the archive, always including `en`.
+
+If a locale file already exists (e.g. you shipped a hand-authored `es.json`),
+it is kept as-is and listed in the manifest without being re-translated
+(carry-over wins).
+
+### Translator binary requirement
+
+The build resolves the binary in this order:
+
+1. `GREENTIC_I18N_TRANSLATOR_BIN` env var (exact path)
+2. `GREENTIC_I18N_TRANSLATOR_DEV_BIN` env var (dev override)
+3. `greentic-i18n-translator` on `PATH`
+
+There is **no auto-install**. If the binary is absent or a language fails, the
+build still succeeds; the skipped language is reported on stderr (surfaced in
+the designer's wizard job progress view). All other languages and the full pack
+are unaffected.
+
+### When to use this vs. hand-authoring
+
+| Scenario | Recommendation |
+|---|---|
+| New pack, need a quick first-pass for several locales | Use `langs` |
+| Existing hand-reviewed translations you want to preserve | Keep the files; they are carried over automatically |
+| CI that must fail on missing translations | Hand-author + `greentic-pack lint` |
+
 ## Troubleshooting
 
 - `failed to load i18n bundle`: ensure `assets/i18n/<locale>.json` exists and is valid JSON.

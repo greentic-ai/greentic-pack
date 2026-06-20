@@ -27,6 +27,9 @@ fn override_binary(binary: &str) -> Option<PathBuf> {
     let keys: &[&str] = match binary {
         "greentic-flow" => &["GREENTIC_FLOW_BIN", "GREENTIC_FLOW_DEV_BIN"],
         "greentic-component" => &["GREENTIC_COMPONENT_BIN", "GREENTIC_COMPONENT_DEV_BIN"],
+        "greentic-i18n-translator" => {
+            &["GREENTIC_I18N_TRANSLATOR_BIN", "GREENTIC_I18N_TRANSLATOR_DEV_BIN"]
+        }
         _ => return None,
     };
     keys.iter()
