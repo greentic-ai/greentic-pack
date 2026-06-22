@@ -64,6 +64,7 @@ fn write_describe_sidecar(wasm_path: &Path, component_id: &str) {
         metadata: Default::default(),
         operations: vec![operation],
         config_schema,
+        outcomes: Vec::new(),
     };
     let bytes = canonical::to_canonical_cbor_allow_floats(&describe).expect("encode describe");
     let describe_path = format!("{}.describe.cbor", wasm_path.display());

@@ -2337,6 +2337,7 @@ mod tests {
             metadata: BTreeMap::new(),
             operations: vec![operation],
             config_schema,
+            outcomes: Vec::new(),
         };
         let bytes = canonical::to_canonical_cbor_allow_floats(&describe).expect("encode describe");
         let describe_path = PathBuf::from(format!("{}.describe.cbor", wasm_path.display()));
