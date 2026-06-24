@@ -3642,6 +3642,7 @@ fn ask_enum<R: BufRead, W: Write>(
         spec_json: serde_json::to_string(&spec).context("serialize enum QA spec")?,
         initial_answers_json: None,
         frontend: WizardFrontend::Text,
+        env_id: "default".to_string(),
         i18n: i18n.qa_i18n_config(),
         verbose: false,
     };
@@ -3740,6 +3741,7 @@ fn ask_enum_custom_labels_owned<R: BufRead, W: Write>(
         spec_json: serde_json::to_string(&spec).context("serialize custom enum QA spec")?,
         initial_answers_json: None,
         frontend: WizardFrontend::Text,
+        env_id: "default".to_string(),
         i18n: i18n.qa_i18n_config(),
         verbose: false,
     };
@@ -3839,6 +3841,7 @@ fn ask_text<R: BufRead, W: Write>(
         spec_json: serde_json::to_string(&spec).context("serialize text QA spec")?,
         initial_answers_json: None,
         frontend: WizardFrontend::Text,
+        env_id: "default".to_string(),
         i18n: i18n.qa_i18n_config(),
         verbose: false,
     };

@@ -73,6 +73,7 @@ fn write_describe_sidecar(wasm_path: &Path, component_id: &str, version: &str) {
             display_name: None,
         },
         provided_capabilities: Vec::new(),
+        outcomes: Vec::new(),
         required_capabilities: Vec::new(),
         metadata: BTreeMap::new(),
         operations: vec![operation],

@@ -60,6 +60,7 @@ fn write_describe_sidecar(wasm_path: &Path, component_id: &str) {
             display_name: None,
         },
         provided_capabilities: Vec::new(),
+        outcomes: Vec::new(),
         required_capabilities: Vec::new(),
         metadata: Default::default(),
         operations: vec![operation],
