@@ -5,7 +5,7 @@ use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
-use crate::cli::ext_resolver::resolve_ext_component;
+use crate::cli::ext_resolver::resolve_ext_component_with_dist;
 use crate::config::load_pack_config;
 use crate::flow_resolve::{
     ensure_sidecar_exists, read_flow_resolve_summary_for_flow, strip_file_uri_prefix,
@@ -347,8 +347,16 @@ impl ComponentResolver for PackResolver {
         }
 
         if req.reference.starts_with("ext://") {
-            let (bytes, verified_digest) = resolve_ext_component(&self.pack_dir, &req.reference)
-                .with_context(|| format!("resolve ext:// component ref '{}'", req.reference))?;
+            let offline = self.runtime.network_policy() == crate::runtime::NetworkPolicy::Offline;
+            let handle = Handle::try_current().ok();
+            let (bytes, verified_digest) = resolve_ext_component_with_dist(
+                &self.pack_dir,
+                &req.reference,
+                &self.runtime.cache_dir(),
+                offline,
+                handle.as_ref(),
+            )
+            .with_context(|| format!("resolve ext:// component ref '{}'", req.reference))?;
             return Ok(ResolvedComponent {
                 bytes,
                 resolved_digest: verified_digest,
