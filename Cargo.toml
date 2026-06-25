@@ -185,6 +185,3 @@ features = [
 
 # NOTE: This patch stays in the commit so packc can resolve ext:// with the
 # local greentic-flow that declares the Ext arm in resolve_summary. The
-# controller removes this [patch.crates-io] block before merging to crates.io.
-[patch.crates-io]
-greentic-flow = { path = "/home/bima-pangestu/projects/Works/greentic/greentic-flow" }
