@@ -6,7 +6,7 @@
 #![forbid(unsafe_code)]
 
 use packc::cli::ext_resolver::{
-    GtxpackComponentEntry, GtxpackDescribe, parse_ext_ref, resolve_ext_component,
+    GtxpackComponentEntry, GtxpackComponentSidecar, parse_ext_ref, resolve_ext_component,
 };
 use packc::extension_refs::{
     ExtensionDependency, ExtensionDependencySource, PackExtensionsFile, write_extensions_file,
@@ -23,8 +23,8 @@ use zip::write::{ExtendedFileOptions, FileOptions};
 const STUB_WASM: &[u8] = &[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
 
 /// Build a minimal extension `.gtxpack` (ZIP) into `dir/<filename>` containing:
-/// - `assets/component-<name>.wasm` with `wasm_bytes`
-/// - `describe.json` advertising asset path + digest
+/// - the wasm asset (at `wasm_asset_path`) with `wasm_bytes`
+/// - `component.json` (the packc-owned sidecar) advertising asset path + digest
 ///
 /// Returns (gtxpack_path, actual_digest_of_wasm_bytes).
 fn build_gtxpack(
@@ -36,14 +36,14 @@ fn build_gtxpack(
 ) -> (std::path::PathBuf, String) {
     let digest = format!("sha256:{}", hex::encode(Sha256::digest(wasm_bytes)));
 
-    let describe = GtxpackDescribe {
+    let sidecar = GtxpackComponentSidecar {
         component: GtxpackComponentEntry {
             id: extension_id.to_string(),
             asset: wasm_asset_path.to_string(),
             digest: digest.clone(),
         },
     };
-    let describe_json = serde_json::to_vec_pretty(&describe).expect("serialize describe.json");
+    let component_json = serde_json::to_vec_pretty(&sidecar).expect("serialize component.json");
 
     let gtxpack_path = dir.join(filename);
     let file = fs::File::create(&gtxpack_path).expect("create gtxpack");
@@ -52,9 +52,10 @@ fn build_gtxpack(
     let options = FileOptions::<ExtendedFileOptions>::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    zip.start_file("describe.json", options.clone())
-        .expect("start describe.json");
-    zip.write_all(&describe_json).expect("write describe.json");
+    zip.start_file("component.json", options.clone())
+        .expect("start component.json");
+    zip.write_all(&component_json)
+        .expect("write component.json");
 
     zip.start_file(wasm_asset_path, options.clone())
         .expect("start wasm asset");
@@ -146,15 +147,15 @@ fn unknown_extension_id_returns_error() {
     );
 }
 
-// ─── Test 3 — Missing embedded component (no describe.json) ──────────────────
+// ─── Test 3 — Missing embedded component (no component.json) ─────────────────
 
 #[test]
-fn missing_describe_json_returns_error() {
+fn missing_component_json_returns_error() {
     let tmp = TempDir::new().expect("tempdir");
     let pack_dir = tmp.path().join("pack");
     fs::create_dir_all(&pack_dir).expect("create pack dir");
 
-    // Build a .gtxpack WITHOUT describe.json (only the wasm asset).
+    // Build a .gtxpack WITHOUT component.json (only the wasm asset).
     let gtxpack_path = pack_dir.join("greentic.test-ext.gtxpack");
     {
         let file = fs::File::create(&gtxpack_path).expect("create gtxpack");
@@ -170,12 +171,12 @@ fn missing_describe_json_returns_error() {
     write_pack_extensions(&pack_dir, "greentic.test-ext", &gtxpack_path);
 
     let err = resolve_ext_component(&pack_dir, "ext://greentic.test-ext#component")
-        .expect_err("should fail without describe.json");
+        .expect_err("should fail without component.json");
 
     let msg = format!("{err:#}");
     assert!(
-        msg.contains("does not embed a runtime component") || msg.contains("describe.json"),
-        "error should mention missing component or describe.json; got: {msg}"
+        msg.contains("does not embed a runtime component") || msg.contains("component.json"),
+        "error should mention missing component or component.json; got: {msg}"
     );
 }
 
@@ -187,16 +188,16 @@ fn digest_mismatch_returns_error() {
     let pack_dir = tmp.path().join("pack");
     fs::create_dir_all(&pack_dir).expect("create pack dir");
 
-    // Build describe.json with a WRONG digest (not matching the wasm bytes).
+    // Build component.json with a WRONG digest (not matching the wasm bytes).
     let wrong_digest = format!("sha256:{}", "a".repeat(64));
-    let describe = GtxpackDescribe {
+    let sidecar = GtxpackComponentSidecar {
         component: GtxpackComponentEntry {
             id: "greentic.test-ext".to_string(),
             asset: "assets/component-foo.wasm".to_string(),
             digest: wrong_digest,
         },
     };
-    let describe_json = serde_json::to_vec_pretty(&describe).expect("serialize describe.json");
+    let component_json = serde_json::to_vec_pretty(&sidecar).expect("serialize component.json");
 
     let gtxpack_path = pack_dir.join("greentic.test-ext.gtxpack");
     {
@@ -204,9 +205,10 @@ fn digest_mismatch_returns_error() {
         let mut zip = ZipWriter::new(file);
         let options = FileOptions::<ExtendedFileOptions>::default()
             .compression_method(zip::CompressionMethod::Deflated);
-        zip.start_file("describe.json", options.clone())
+        zip.start_file("component.json", options.clone())
             .expect("start");
-        zip.write_all(&describe_json).expect("write describe");
+        zip.write_all(&component_json)
+            .expect("write component.json");
         zip.start_file("assets/component-foo.wasm", options.clone())
             .expect("start");
         zip.write_all(STUB_WASM).expect("write wasm");
@@ -270,4 +272,47 @@ fn local_ref_format_reference_unchanged() {
     // Here we simply verify the Ext variant parse round-trips cleanly.
     let r = parse_ext_ref("ext://greentic.test-ext#component").expect("valid");
     assert_eq!(r.extension_id, "greentic.test-ext");
+}
+
+// ─── Test 7 — Real producer output shape (ComponentExtension) ────────────────
+// Mirrors `greentic-component store publish` output: the runtime wasm is packed
+// as `component.wasm` at the ZIP root, and `component.json` advertises
+// `asset: "component.wasm"`. Locks the cross-repo Phase-2 contract.
+
+#[test]
+fn resolves_component_extension_producer_shape() {
+    let tmp = TempDir::new().expect("tempdir");
+    let pack_dir = tmp.path().join("pack");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    // Fixture mirroring the real producer: wasm at root as `component.wasm`,
+    // sidecar `component.json` pointing `asset` at that exact entry.
+    let (gtxpack_path, expected_digest) = build_gtxpack(
+        &pack_dir,
+        "greentic.component-http.gtxpack",
+        "greentic.component-http",
+        "component.wasm",
+        STUB_WASM,
+    );
+
+    write_pack_extensions(&pack_dir, "greentic.component-http", &gtxpack_path);
+
+    let (bytes, digest) =
+        resolve_ext_component(&pack_dir, "ext://greentic.component-http#component")
+            .expect("resolve ext component from producer-shaped gtxpack");
+
+    assert_eq!(
+        bytes, STUB_WASM,
+        "extracted bytes must match component.wasm"
+    );
+    assert_eq!(
+        digest, expected_digest,
+        "returned digest must match the sha256:<hex> of component.wasm"
+    );
+    let expected_hex = hex::encode(Sha256::digest(STUB_WASM));
+    assert_eq!(
+        digest,
+        format!("sha256:{expected_hex}"),
+        "verified digest must be sha256:<hex of component.wasm bytes>"
+    );
 }

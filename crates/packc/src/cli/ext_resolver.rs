@@ -5,31 +5,37 @@
 //! 1. Parse the `ext://<id>#component` ref — error if malformed.
 //! 2. Look up `<id>` in `pack.extensions.json` via [`read_extensions_file`].
 //! 3. Acquire the extension's `.gtxpack` from its declared `file://` or bare local source.
-//! 4. Read `describe.json` from the ZIP to obtain the component asset path and expected digest.
+//! 4. Read `component.json` from the ZIP to obtain the component asset path and expected digest.
 //! 5. Read the component wasm asset from the ZIP.
 //! 6. Verify SHA-256 digest — error on mismatch.
 //! 7. Return the extracted bytes.
 //!
-//! # `describe.json` schema (Phase 1)
+//! # `component.json` schema (Phase 2 sidecar)
 //!
-//! The resolver reads a `describe.json` at the root of the `.gtxpack` ZIP:
+//! The resolver reads a packc-owned `component.json` sidecar at the root of the
+//! `.gtxpack` ZIP. It is written alongside the canonical, store-validated `describe.json`
+//! (describe-v2) manifest, which itself cannot carry this metadata (its schema root is
+//! `additionalProperties: false`).
 //!
 //! ```json
 //! {
 //!   "component": {
-//!     "id": "greentic.test-ext",
-//!     "asset": "assets/component-foo.wasm",
+//!     "id": "greentic.component-http",
+//!     "asset": "component.wasm",
 //!     "digest": "sha256:<hex>"
 //!   }
 //! }
 //! ```
 //!
 //! Fields:
-//! - `component.id`     — must match the extension id declared in `pack.extensions.json`
-//! - `component.asset`  — path inside the ZIP to the runtime wasm asset
-//! - `component.digest` — `sha256:<hex>` digest of the wasm bytes
+//! - `component.id`     — the store id; informational (the resolver does not enforce
+//!   `id == extension_id`).
+//! - `component.asset`  — ZIP entry name of the runtime wasm. For a `ComponentExtension`
+//!   producer this is `component.wasm` at the root; other producers may use arbitrary
+//!   paths such as `assets/component-<name>.wasm`.
+//! - `component.digest` — `sha256:<hex>` digest of the wasm bytes.
 //!
-//! Phase 2 (extension build tooling) must emit exactly this shape.
+//! The Phase-2 producer (`greentic-component store publish`) must emit exactly this shape.
 
 #![forbid(unsafe_code)]
 
@@ -75,14 +81,14 @@ pub fn parse_ext_ref(raw: &str) -> Result<ExtRef> {
     })
 }
 
-/// Embedded-component descriptor from `describe.json` inside a `.gtxpack` ZIP.
+/// Embedded-component descriptor from the `component.json` sidecar inside a `.gtxpack` ZIP.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GtxpackDescribe {
+pub struct GtxpackComponentSidecar {
     /// Embedded runtime component descriptor.
     pub component: GtxpackComponentEntry,
 }
 
-/// Single embedded component entry in `describe.json`.
+/// Single embedded component entry in `component.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GtxpackComponentEntry {
     /// Extension id — should match `pack.extensions.json`.
@@ -94,7 +100,7 @@ pub struct GtxpackComponentEntry {
 }
 
 /// Resolve an `ext://<id>#component` reference by extracting the wasm from the extension's
-/// `.gtxpack` and verifying the digest against `describe.json`.
+/// `.gtxpack` and verifying the digest against the `component.json` sidecar.
 ///
 /// `pack_dir` is the directory containing `pack.extensions.json`.
 ///
@@ -143,8 +149,8 @@ fn resolve_extension_source(source: &ExtensionDependencySource) -> Result<PathBu
     );
 }
 
-/// Open the `.gtxpack` ZIP at `gtxpack_path`, read `describe.json` + the component wasm
-/// asset, verify the digest, and return (wasm_bytes, verified_digest).
+/// Open the `.gtxpack` ZIP at `gtxpack_path`, read the `component.json` sidecar + the
+/// component wasm asset, verify the digest, and return (wasm_bytes, verified_digest).
 fn extract_and_verify(extension_id: &str, gtxpack_path: &Path) -> Result<(Vec<u8>, String)> {
     let zip_bytes = std::fs::read(gtxpack_path)
         .with_context(|| format!("read extension .gtxpack at {}", gtxpack_path.display()))?;
@@ -152,11 +158,11 @@ fn extract_and_verify(extension_id: &str, gtxpack_path: &Path) -> Result<(Vec<u8
     let mut archive = zip::ZipArchive::new(cursor)
         .with_context(|| format!("open ZIP archive {}", gtxpack_path.display()))?;
 
-    // Read describe.json.
-    let describe: GtxpackDescribe = {
-        let mut entry = archive.by_name("describe.json").map_err(|_| {
+    // Read the component.json sidecar.
+    let sidecar: GtxpackComponentSidecar = {
+        let mut entry = archive.by_name("component.json").map_err(|_| {
             anyhow::anyhow!(
-                "extension '{}' does not embed a runtime component: 'describe.json' not found in {}",
+                "extension '{}' does not embed a runtime component: 'component.json' not found in {}",
                 extension_id,
                 gtxpack_path.display()
             )
@@ -164,16 +170,16 @@ fn extract_and_verify(extension_id: &str, gtxpack_path: &Path) -> Result<(Vec<u8
         let mut buf = Vec::new();
         entry
             .read_to_end(&mut buf)
-            .with_context(|| format!("read describe.json from {}", gtxpack_path.display()))?;
+            .with_context(|| format!("read component.json from {}", gtxpack_path.display()))?;
         serde_json::from_slice(&buf)
-            .with_context(|| format!("parse describe.json from {}", gtxpack_path.display()))?
+            .with_context(|| format!("parse component.json from {}", gtxpack_path.display()))?
     };
 
     // Validate the component entry.
-    let asset_path = describe.component.asset.as_str();
+    let asset_path = sidecar.component.asset.as_str();
     if asset_path.trim().is_empty() {
         bail!(
-            "extension '{}' does not embed a runtime component: 'describe.json' component.asset is empty",
+            "extension '{}' does not embed a runtime component: 'component.json' component.asset is empty",
             extension_id
         );
     }
@@ -202,11 +208,11 @@ fn extract_and_verify(extension_id: &str, gtxpack_path: &Path) -> Result<(Vec<u8
     // Compute actual digest.
     let actual_digest = format!("sha256:{}", hex::encode(Sha256::digest(&wasm_bytes)));
 
-    // Verify against describe.json advertised digest.
-    let expected_digest = describe.component.digest.as_str();
+    // Verify against the component.json advertised digest.
+    let expected_digest = sidecar.component.digest.as_str();
     if actual_digest != expected_digest {
         bail!(
-            "embedded component digest mismatch for extension '{}': describe.json advertises '{}' but extracted wasm hashes to '{}'",
+            "embedded component digest mismatch for extension '{}': component.json advertises '{}' but extracted wasm hashes to '{}'",
             extension_id,
             expected_digest,
             actual_digest
