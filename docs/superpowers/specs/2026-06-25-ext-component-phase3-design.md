@@ -61,9 +61,11 @@ GET {store_base}/api/v1/extensions/{name}/{version}/artifact
 - Optionally cross-check the response `x-artifact-sha256` against the bytes (whole-archive
   integrity), distinct from the **inner component** digest the sidecar verifies in
   `extract_and_verify`.
-- Cache the downloaded `.gtxpack` under the runtime cache dir keyed by `x-artifact-sha256` to
-  avoid re-downloading; in **offline** mode, use the cache and error on miss (mirror the
-  non-ext path's offline behavior at `resolve.rs:366-369`).
+- Cache the downloaded `.gtxpack` under the runtime cache dir (`<cache>/ext-store/`). As
+  implemented it is written under BOTH a `sha256-<archive-sha>.gtxpack` name AND a ref-keyed
+  `<name>@<version>.gtxpack` name — because **offline** lookup has only `name@version` (no
+  archive sha until a download happens). Offline mode serves the ref-keyed copy and errors on
+  miss (mirrors the non-ext path's offline behavior at `resolve.rs:366-369`).
 
 **`oci://` (secondary, no producer yet → best-effort/deferred).** The Phase-2 producer does not
 publish extensions to OCI, so this path is currently **untestable end-to-end**. Implement a thin
@@ -80,11 +82,14 @@ fragile path. Document the gap; revisit when an OCI extension producer exists. D
   - Refactor `extract_and_verify(extension_id, &Path)` → `extract_and_verify_bytes(extension_id, &[u8])`
     (the ZIP reader already wraps a `Cursor`); keep a `&Path` wrapper that reads then delegates,
     so the `file://` path is unchanged.
-  - Add an acquisition entry point that has access to the `DistClient`, the offline flag, and a
-    tokio `Handle` (for the store HTTP GET / any async). E.g.
-    `resolve_ext_component_with_dist(pack_dir, raw_ref, dist, offline, handle) -> Result<(Vec<u8>, String)>`,
-    with the existing `resolve_ext_component` kept for the file://-only/test path or made to
-    delegate.
+  - Add an acquisition entry point that has access to the runtime cache dir, the offline flag,
+    and an optional tokio `Handle`. As implemented:
+    `resolve_ext_component_with_dist(pack_dir, raw_ref, cache_dir: &Path, offline: bool, handle: Option<&Handle>) -> Result<(Vec<u8>, String)>`.
+    NOTE: the cache dir is threaded **explicitly** (not read from `DistClient`, which exposes no
+    public cache-dir accessor), and the `store://` path uses plain blocking `reqwest`, not
+    `DistClient` — so no `DistClient` is passed. The `handle` is plumbed for a future async
+    `oci://` path but is currently unused (the store GET runs blocking on a dedicated thread).
+    The existing `resolve_ext_component` is kept for the file://-only/test path.
   - `resolve_extension_source` gains `store://` (HTTP GET → bytes) and the guarded `oci://`
     branch; `file://`/bare unchanged.
 - `src/cli/resolve.rs`: the `ext://` branch at `resolve.rs:349-361` calls the new
