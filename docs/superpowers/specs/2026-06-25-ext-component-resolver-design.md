@@ -1,9 +1,11 @@
 # packc `ext://<id>#component` Resolver — Design (WS-D Phase 1)
 
 Date: 2026-06-25
-Status: **PARKED — gated on the greentic-types release-train** (see §"Release-train coupling — corrected").
-Design recorded for when the release-train unblocks. Do not implement the clean design until
-`greentic-types` can ship a new `1.2.0-research` line across the consumer graph.
+Status: **UNBLOCKED — implementation-ready.** The greentic-types release-train cascade is DONE:
+`greentic-types 1.2.0-research.2` (carrying the `Ext` variant) is published, and 8 consumers
+(interfaces/host/wasmtime/guest, config/config-types, qa, session, state, secrets, distributor-client)
+are republished at `.1` consuming it. greentic-flow + greentic-pack are the remaining repos to bump
+to `.2` AND implement the resolver (see §"Flow↔packc boundary" below — the one design decision, now DECIDED).
 Repo: greentic-pack (branch `research`)
 Part of: Component/Extension Distribution Unification RFC
 (`greentic-designer/docs/superpowers/specs/2026-06-22-component-extension-distribution-unification-proposal.md`),
@@ -112,6 +114,41 @@ greentic.http.gtxpack            (ZIP)
 
 The resolver depends only on `describe.json` (for the asset path + digest) and the named
 asset. It does not parse `extension.wasm`.
+
+## Flow↔packc boundary for `ext://` (resolve_summary layer) — DECIDED
+
+A subtlety not in the original draft: greentic-flow's `src/resolve_summary.rs` IS on packc's
+path — packc calls `greentic_flow::resolve_summary::write_flow_resolve_summary_for_flow`, which
+calls `resolve_source(source) -> (FlowResolveSummarySourceRefV1, wasm_path, digest)`. flow's
+`resolve_source` matches exhaustively on `ComponentSourceRefV1`, so adding `Ext` forces 3 arms
+(`component_id_from_source` ~L148, `resolve_source` ~L165, `summary_source_ref` ~L190). The
+non-mechanical one is `resolve_source`: it returns a wasm_path + digest, but flow has NO
+extension-acquisition and must NOT extract the `.gtxpack` (that is packc's job).
+
+**Decision (cleanest, no duplication): flow DECLARES, packc RESOLVES.**
+- flow `resolve_source` for `Ext { r#ref, digest }`:
+  - `summary_ref` → `FlowResolveSummarySourceRefV1::Ext { r#ref }` (declaration only).
+  - `digest` → pass through the ref's optional pinned `digest` if present, else **deferred**
+    (empty string sentinel `""` — meaning "computed by packc at embed"). flow does NOT open the
+    extension.
+  - `wasm_path` → not meaningful for `ext://`; return a sentinel/unused path (it is only consumed
+    for the `Local` byte-embed, which `ext://` does not take at the flow layer). Prefer refactoring
+    so the `ext://` arm doesn't need a real path — e.g. flow's resolve treats `ext://` like the
+    remote arms (which also don't produce a local wasm at flow time): mirror how `Oci/Repo/Store`
+    return via `resolve_remote` WITHOUT a local file, OR return the deferred tuple. Match whatever
+    the remote arms already do for "not-locally-materialised" (inspect `resolve_remote`'s return).
+  - `component_id_from_source` (~L148): `Ext { r#ref, .. } => r#ref` (name extracted from
+    `ext://<id>#component` by the existing split logic; `<id>` is the component name source).
+- packc `PackResolver::resolve` (the §Design resolver) OWNS `ext://` fully: locate the extension
+  via `pack.extensions.json`, extract `assets/component-<name>.wasm`, compute the real digest,
+  VERIFY against the extension `describe.json`'s advertised digest (and against the summary's
+  pinned digest if non-deferred), embed as `Local`. The lock's digest for an `ext://` node is
+  written HERE.
+
+Rationale: flow stays a pure declaration layer (no new acquisition dependency); packc is the
+single place that touches `.gtxpack` bytes (already true for the Local-embed path). Mirror
+whatever flow's remote arms (`Oci/Repo/Store`) do for the "resolved-later, no local file" shape so
+the `Ext` arm is consistent — confirm by reading `resolve_remote`'s exact return before coding.
 
 ## Error handling
 
