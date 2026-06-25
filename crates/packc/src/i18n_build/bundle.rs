@@ -71,8 +71,7 @@ pub fn extract_from_directory(config: &ExtractConfig) -> Result<Vec<ExtractedStr
             format!("{}.{}", config.prefix, card_id)
         };
 
-        let strings =
-            extract_from_value(&value, &full_prefix, "", path, config.skip_i18n_patterns);
+        let strings = extract_from_value(&value, &full_prefix, "", path, config.skip_i18n_patterns);
         all_strings.extend(strings);
     }
 
@@ -97,8 +96,7 @@ pub fn write_bundle(strings: &[ExtractedString], output: &Path) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    fs::write(output, contents)
-        .with_context(|| format!("failed to write {}", output.display()))?;
+    fs::write(output, contents).with_context(|| format!("failed to write {}", output.display()))?;
 
     Ok(())
 }
@@ -179,8 +177,7 @@ mod tests {
             "greentic": { "cardId": "my-custom-id" },
             "body": []
         });
-        let id =
-            determine_card_id(Path::new("some-filename.json"), &card, Path::new("")).unwrap();
+        let id = determine_card_id(Path::new("some-filename.json"), &card, Path::new("")).unwrap();
         assert_eq!(id, "my_custom_id");
     }
 

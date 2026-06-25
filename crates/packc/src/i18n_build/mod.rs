@@ -2,8 +2,8 @@
 //! Build-time i18n materialisation for packs: extract card strings,
 //! translate via greentic-i18n-translator, and write assets/i18n/.
 
-mod extract;
 mod bundle;
+mod extract;
 
 pub use bundle::{ExtractConfig, extract_from_directory, write_bundle};
 pub use extract::ExtractedString;
@@ -52,7 +52,10 @@ pub fn materialize_i18n(pack_root: &Path, langs: &[String]) {
         }
     };
     if strings.is_empty() {
-        eprintln!("[i18n] no translatable strings found in {}", config.cards_dir.display());
+        eprintln!(
+            "[i18n] no translatable strings found in {}",
+            config.cards_dir.display()
+        );
         return;
     }
     if let Err(err) = write_bundle(&strings, &en_path) {
@@ -91,11 +94,7 @@ pub fn materialize_i18n(pack_root: &Path, langs: &[String]) {
     eprintln!("[i18n] materialised locales: {}", codes.join(", "));
 }
 
-fn translate_to_language(
-    translator: &Path,
-    lang: &str,
-    en_bundle: &Path,
-) -> anyhow::Result<()> {
+fn translate_to_language(translator: &Path, lang: &str, en_bundle: &Path) -> anyhow::Result<()> {
     use anyhow::{Context, bail};
 
     let work_dir = tempfile::tempdir().context("create translator work dir")?;
@@ -123,7 +122,10 @@ fn translate_to_language(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("translator exited non-zero for {lang}: {}", stderr.trim_end());
+        bail!(
+            "translator exited non-zero for {lang}: {}",
+            stderr.trim_end()
+        );
     }
     Ok(())
 }

@@ -96,6 +96,9 @@ fn wizard_apply_with_langs_packs_locale_files() {
         "assets/i18n/ja.json",
         "assets/i18n/_manifest.json",
     ] {
-        assert!(names.iter().any(|n| n == want), "missing {want} in {names:?}");
+        assert!(
+            names.iter().any(|n| n == want),
+            "missing {want} in {names:?}"
+        );
     }
 }

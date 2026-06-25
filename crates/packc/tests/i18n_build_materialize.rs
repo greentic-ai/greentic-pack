@@ -80,9 +80,13 @@ fn failing_translator_writes_no_lang_files() {
     write_card(tmp.path());
     let failing = install_failing_translator(tmp.path());
     // SAFETY: protected by env_lock() guard.
-    unsafe { std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", &failing); }
+    unsafe {
+        std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", &failing);
+    }
     materialize_i18n(tmp.path(), &["id".to_string()]);
-    unsafe { std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN"); }
+    unsafe {
+        std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN");
+    }
     // The translator was found but failed → no locale file, build stays non-fatal.
     assert!(!tmp.path().join("assets/i18n/id.json").exists());
 }
@@ -94,9 +98,13 @@ fn stub_translator_produces_lang_files_and_manifest() {
     write_card(tmp.path());
     let stub = install_stub_translator(tmp.path());
     // SAFETY: protected by env_lock() guard.
-    unsafe { std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", &stub); }
+    unsafe {
+        std::env::set_var("GREENTIC_I18N_TRANSLATOR_BIN", &stub);
+    }
     materialize_i18n(tmp.path(), &["id".to_string(), "ja".to_string()]);
-    unsafe { std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN"); }
+    unsafe {
+        std::env::remove_var("GREENTIC_I18N_TRANSLATOR_BIN");
+    }
 
     let i18n = tmp.path().join("assets/i18n");
     assert!(i18n.join("en.json").is_file());
@@ -104,5 +112,8 @@ fn stub_translator_produces_lang_files_and_manifest() {
     assert!(i18n.join("ja.json").is_file());
     let manifest: Vec<String> =
         serde_json::from_str(&fs::read_to_string(i18n.join("_manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest, vec!["en".to_string(), "id".to_string(), "ja".to_string()]);
+    assert_eq!(
+        manifest,
+        vec!["en".to_string(), "id".to_string(), "ja".to_string()]
+    );
 }
