@@ -29,6 +29,10 @@ use crate::cli::wizard_catalog::{
 };
 use crate::cli::wizard_i18n::{WizardI18n, detect_requested_locale};
 use crate::cli::wizard_ui;
+use crate::extension_refs::{
+    ExtensionDependency, PackExtensionsFile, default_extensions_file_path, read_extensions_file,
+    write_extensions_file,
+};
 use crate::extensions::{CAPABILITIES_EXTENSION_KEY, DEPLOYER_EXTENSION_KEY};
 use crate::runtime::RuntimeContext;
 
@@ -205,6 +209,7 @@ struct WizardExecutionPlan {
     extension_operation: Option<ExtensionOperationRecord>,
     asset_staging: Vec<ResolvedAssetStagingEntry>,
     i18n_langs: Vec<String>,
+    extension_dependencies: Vec<ExtensionDependency>,
 }
 
 struct FlowSchemaContext {
@@ -1257,6 +1262,7 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
     if let Some(extension) = plan.extension_operation.as_ref() {
         apply_extension_operation(&plan.pack_dir, extension)?;
     }
+    upsert_extension_dependencies(&plan.pack_dir, &plan.extension_dependencies)?;
     if !plan.asset_staging.is_empty() {
         stage_assets_into_pack(&plan.pack_root, &plan.asset_staging)?;
     }
@@ -1398,6 +1404,7 @@ fn execution_plan_from_answers(
                 .collect()
         })
         .unwrap_or_default();
+    let extension_dependencies = parse_extension_dependencies(answers)?;
     Ok(WizardExecutionPlan {
         pack_dir,
         pack_root,
@@ -1413,7 +1420,78 @@ fn execution_plan_from_answers(
         extension_operation,
         asset_staging,
         i18n_langs,
+        extension_dependencies,
     })
+}
+
+/// Parse the `extension_dependencies` answer (an array of packc `ExtensionDependency`
+/// serde shapes) supplied by the designer→packc pipeline. Absent or empty yields an
+/// empty vector, which the apply step treats as a no-op.
+fn parse_extension_dependencies(
+    answers: &BTreeMap<String, Value>,
+) -> Result<Vec<ExtensionDependency>> {
+    let Some(value) = answers.get("extension_dependencies") else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_array()
+        .ok_or_else(|| anyhow!("answers.extension_dependencies must be an array"))?;
+    let mut dependencies = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let dependency: ExtensionDependency =
+            serde_json::from_value(item.clone()).with_context(|| {
+                format!(
+                    "answers.extension_dependencies[{index}] is not a valid extension dependency"
+                )
+            })?;
+        dependencies.push(dependency);
+    }
+    Ok(dependencies)
+}
+
+/// Upsert the supplied extension dependencies into `<pack_dir>/pack.extensions.json`.
+///
+/// Merge rule (dedupe by `id`, supplied wins):
+/// - Existing entries whose `id` is not supplied are preserved as-is.
+/// - For a supplied `id`, the supplied entry replaces any existing entry with the same
+///   `id`; when their `source` differs, the conflict is logged to stderr.
+/// - An empty `dependencies` slice is a no-op and never creates or clobbers a file.
+fn upsert_extension_dependencies(
+    pack_dir: &Path,
+    dependencies: &[ExtensionDependency],
+) -> Result<()> {
+    if dependencies.is_empty() {
+        return Ok(());
+    }
+
+    let path = default_extensions_file_path(pack_dir);
+    let mut merged: Vec<ExtensionDependency> = if path.exists() {
+        read_extensions_file(&path)
+            .with_context(|| format!("read existing {}", path.display()))?
+            .extensions
+    } else {
+        Vec::new()
+    };
+
+    for supplied in dependencies {
+        if let Some(existing) = merged.iter_mut().find(|item| item.id == supplied.id) {
+            if existing.source.kind != supplied.source.kind
+                || existing.source.reference != supplied.source.reference
+            {
+                eprintln!(
+                    "pack.extensions.json: replacing extension `{}` source `{}` with supplied `{}`",
+                    supplied.id, existing.source.reference, supplied.source.reference
+                );
+            }
+            *existing = supplied.clone();
+        } else {
+            merged.push(supplied.clone());
+        }
+    }
+
+    let file = PackExtensionsFile::new(merged);
+    write_extensions_file(&path, &file).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }
 
 fn answer_bool(answers: &BTreeMap<String, Value>, key: &str, default: bool) -> Result<bool> {

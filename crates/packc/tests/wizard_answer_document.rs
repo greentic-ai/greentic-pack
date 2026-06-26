@@ -3295,6 +3295,291 @@ fn wizard_apply_messaging_webchat_gui_writes_provider_extension_entry() {
     assert!(pack_yaml.contains("provider_type: messaging-webchat-gui"));
 }
 
+fn write_extension_dependency_answers(
+    answers_path: &Path,
+    pack_dir: &Path,
+    extension_dependencies: Value,
+) {
+    fs::write(
+        answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false,
+                "extension_dependencies": extension_dependencies
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+}
+
+fn http_store_dependency() -> Value {
+    // Exactly packc's `ExtensionDependency` serde shape. A version-tag store ref
+    // (vs a `@sha256:` digest) is only valid with `allow_tags: true`, which the
+    // resolver's own fixtures use too.
+    json!({
+        "id": "greentic.http",
+        "role": "capability",
+        "source": {
+            "kind": "store",
+            "ref": "store://greentic.http@1.2.0",
+            "allow_tags": true
+        }
+    })
+}
+
+fn read_extensions_json(pack_dir: &Path) -> Value {
+    serde_json::from_slice(
+        &fs::read(pack_dir.join("pack.extensions.json")).expect("read pack.extensions.json"),
+    )
+    .expect("parse pack.extensions.json")
+}
+
+#[test]
+fn wizard_apply_writes_extension_dependencies_file_from_answers() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "wizard apply should succeed");
+
+    let doc = read_extensions_json(&pack_dir);
+    assert_eq!(doc.get("version").and_then(Value::as_u64), Some(1));
+    let extensions = doc
+        .get("extensions")
+        .and_then(Value::as_array)
+        .expect("extensions array");
+    assert_eq!(extensions.len(), 1, "exactly one dependency expected");
+    let dep = &extensions[0];
+    assert_eq!(dep.get("id").and_then(Value::as_str), Some("greentic.http"));
+    assert_eq!(dep.get("role").and_then(Value::as_str), Some("capability"));
+    let source = dep
+        .get("source")
+        .and_then(Value::as_object)
+        .expect("source");
+    assert_eq!(source.get("kind").and_then(Value::as_str), Some("store"));
+    assert_eq!(
+        source.get("ref").and_then(Value::as_str),
+        Some("store://greentic.http@1.2.0")
+    );
+    assert_eq!(
+        source.get("allow_tags").and_then(Value::as_bool),
+        Some(true)
+    );
+}
+
+#[test]
+fn wizard_apply_extension_dependencies_is_idempotent() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
+
+    let first = run_wizard_answers("apply", &answers_path);
+    assert!(first.status.success(), "first apply should succeed");
+    let second = run_wizard_answers("apply", &answers_path);
+    assert!(second.status.success(), "second apply should succeed");
+
+    let extensions = read_extensions_json(&pack_dir)
+        .get("extensions")
+        .and_then(Value::as_array)
+        .expect("extensions array")
+        .clone();
+    assert_eq!(
+        extensions.len(),
+        1,
+        "applying the same dependency twice must not duplicate it"
+    );
+}
+
+#[test]
+fn wizard_apply_extension_dependencies_preserves_existing_manual_entries() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    // A hand-authored pack.extensions.json with an unrelated entry.
+    fs::write(
+        pack_dir.join("pack.extensions.json"),
+        serde_json::to_vec_pretty(&json!({
+            "version": 1,
+            "extensions": [
+                {
+                    "id": "greentic.deployer.v1",
+                    "role": "deployer",
+                    "source": {
+                        "kind": "file",
+                        "ref": "file:///tmp/deployer.json",
+                        "allow_tags": false
+                    }
+                }
+            ]
+        }))
+        .expect("serialize existing file"),
+    )
+    .expect("write existing pack.extensions.json");
+
+    write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "wizard apply should succeed");
+
+    let extensions = read_extensions_json(&pack_dir)
+        .get("extensions")
+        .and_then(Value::as_array)
+        .expect("extensions array")
+        .clone();
+    let ids: Vec<&str> = extensions
+        .iter()
+        .filter_map(|e| e.get("id").and_then(Value::as_str))
+        .collect();
+    assert!(
+        ids.contains(&"greentic.deployer.v1"),
+        "manual entry must be preserved: {ids:?}"
+    );
+    assert!(
+        ids.contains(&"greentic.http"),
+        "supplied entry must be added: {ids:?}"
+    );
+    assert_eq!(extensions.len(), 2, "exactly two entries expected: {ids:?}");
+}
+
+#[test]
+fn wizard_apply_empty_extension_dependencies_leaves_existing_file_untouched() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    let original = serde_json::to_vec_pretty(&json!({
+        "version": 1,
+        "extensions": [
+            {
+                "id": "greentic.deployer.v1",
+                "role": "deployer",
+                "source": {
+                    "kind": "file",
+                    "ref": "file:///tmp/deployer.json",
+                    "allow_tags": false
+                }
+            }
+        ]
+    }))
+    .expect("serialize existing file");
+    fs::write(pack_dir.join("pack.extensions.json"), &original)
+        .expect("write existing pack.extensions.json");
+
+    write_extension_dependency_answers(&answers_path, &pack_dir, json!([]));
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "wizard apply should succeed");
+
+    let after = fs::read(pack_dir.join("pack.extensions.json")).expect("read after");
+    assert_eq!(
+        after, original,
+        "empty extension_dependencies must not clobber an existing file"
+    );
+}
+
+#[test]
+fn wizard_apply_absent_extension_dependencies_creates_no_file() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    // No extension_dependencies key at all.
+    fs::write(
+        &answers_path,
+        serde_json::to_vec_pretty(&json!({
+            "wizard_id": "greentic-pack.wizard.run",
+            "schema_id": "greentic-pack.wizard.answers",
+            "schema_version": "1.0.0",
+            "locale": "en-GB",
+            "answers": {
+                "pack_dir": pack_dir,
+                "run_doctor": false,
+                "run_build": false,
+                "sign": false
+            },
+            "locks": {}
+        }))
+        .expect("serialize answers"),
+    )
+    .expect("write answers");
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "wizard apply should succeed");
+    assert!(
+        !pack_dir.join("pack.extensions.json").exists(),
+        "absent extension_dependencies must not create a file"
+    );
+}
+
+#[test]
+fn wizard_apply_extension_dependencies_supplied_entry_wins_on_conflict() {
+    let temp = TempDir::new().expect("tempdir");
+    let pack_dir = temp.path().join("pack");
+    let answers_path = temp.path().join("answers.json");
+    fs::create_dir_all(&pack_dir).expect("create pack dir");
+
+    // Pre-existing entry with the SAME id but a different source ref.
+    fs::write(
+        pack_dir.join("pack.extensions.json"),
+        serde_json::to_vec_pretty(&json!({
+            "version": 1,
+            "extensions": [
+                {
+                    "id": "greentic.http",
+                    "role": "capability",
+                    "source": {
+                        "kind": "store",
+                        "ref": "store://greentic.http@1.0.0",
+                        "allow_tags": true
+                    }
+                }
+            ]
+        }))
+        .expect("serialize existing file"),
+    )
+    .expect("write existing pack.extensions.json");
+
+    write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
+
+    let output = run_wizard_answers("apply", &answers_path);
+    assert!(output.status.success(), "wizard apply should succeed");
+
+    let extensions = read_extensions_json(&pack_dir)
+        .get("extensions")
+        .and_then(Value::as_array)
+        .expect("extensions array")
+        .clone();
+    assert_eq!(extensions.len(), 1, "conflict must dedupe by id");
+    assert_eq!(
+        extensions[0]
+            .get("source")
+            .and_then(|s| s.get("ref"))
+            .and_then(Value::as_str),
+        Some("store://greentic.http@1.2.0"),
+        "supplied dependency must win over conflicting existing entry"
+    );
+}
+
 fn write_script(path: &std::path::Path, body: &str) {
     fs::write(path, body).expect("write script");
     let mut perms = fs::metadata(path).expect("metadata").permissions();
