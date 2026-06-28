@@ -1153,6 +1153,7 @@ mod tests {
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            agents: BTreeMap::new(),
         };
         let lock = PackLockV1::new(BTreeMap::new());
         let args = QaArgs {
@@ -1338,6 +1339,7 @@ mod tests {
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            agents: BTreeMap::new(),
         };
         let lock = PackLockV1::new(BTreeMap::new());
         let args = QaArgs {
@@ -1478,6 +1480,7 @@ mod tests {
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            agents: BTreeMap::new(),
         };
         let lock = PackLockV1::new(BTreeMap::from([
             (
@@ -1598,6 +1601,7 @@ mod tests {
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            agents: BTreeMap::new(),
         };
 
         let map = index_component_paths(&cfg, Path::new("/work/demo"));
