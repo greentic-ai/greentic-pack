@@ -1359,6 +1359,12 @@ fn derive_pack_capabilities(
 fn map_kind(raw: &str) -> Result<PackKind> {
     match raw.to_ascii_lowercase().as_str() {
         "application" => Ok(PackKind::Application),
+        // `greentic_types::PackKind` (the manifest kind) has no `DwApplication`
+        // variant in any published version, and adding one is a greentic-types
+        // cascade change out of scope here. An AgenticWorker pack carries its
+        // "dw-ness" via the `dw-agents.json` / `secrets-policy.json` sidecars
+        // and the AgenticWorker store describe — not the manifest kind — so we
+        // accept `kind: dw-application` and record it as `Application`.
         "dw-application" => Ok(PackKind::Application),
         "provider" => Ok(PackKind::Provider),
         "infrastructure" => Ok(PackKind::Infrastructure),
