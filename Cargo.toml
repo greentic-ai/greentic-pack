@@ -137,7 +137,7 @@ features = [
 [workspace.dependencies.greentic-pack]
 package = "greentic-pack-lib"
 path = "crates/greentic-pack"
-version = "=1.2.0-research.4"
+version = "=1.2.0"
 
 [workspace.dependencies.tokio]
 version = "1"
@@ -148,7 +148,7 @@ features = [
 ]
 
 [workspace.dependencies.pack_component_template]
-version = "=1.2.0-research.4"
+version = "=1.2.0"
 path = "crates/pack_component_template"
 
 [workspace.dependencies.rcgen]
