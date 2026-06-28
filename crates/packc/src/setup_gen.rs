@@ -175,9 +175,288 @@ pub fn extract_tool_secret_requirements(
     Ok(out)
 }
 
+use std::collections::BTreeMap;
+use tracing::warn;
+
+/// A pending question keyed by its secret key, before collision resolution.
+struct Pending {
+    secret_key: String, // canonical secret key (e.g. "llm/deepseek", "tavily/api_key")
+    provider: String,   // "llm" provider id, or the tool secret's first segment
+    last_segment: String, // default question name (segment after the last "/")
+    question: SetupQuestionOut,
+    requirement: SecretRequirementOut,
+}
+
+fn last_segment(key: &str) -> &str {
+    key.rsplit('/').next().unwrap_or(key)
+}
+
+fn llm_question(provider: &str, credential_ref: &str) -> Pending {
+    let secret_key = format!("llm/{credential_ref}");
+    let (title, help, docs_url, placeholder) = match llm_overlay(provider) {
+        Some(o) => (
+            format!("{} API key", o.label),
+            Some("LLM API key for the agentic worker's reasoning loop.".to_string()),
+            Some(o.docs_url),
+            Some(o.placeholder),
+        ),
+        None => {
+            warn!(
+                provider,
+                "no LLM overlay; emitting a minimal credential question"
+            );
+            (
+                format!("{provider} API key"),
+                Some("LLM API key for the agentic worker's reasoning loop.".to_string()),
+                None,
+                None,
+            )
+        }
+    };
+    Pending {
+        secret_key: secret_key.clone(),
+        provider: "llm".to_string(),
+        last_segment: credential_ref.to_string(),
+        question: SetupQuestionOut {
+            name: credential_ref.to_string(),
+            title,
+            kind: "string".to_string(),
+            required: true,
+            secret: true,
+            help,
+            group: Some("LLM".to_string()),
+            docs_url,
+            placeholder,
+        },
+        requirement: SecretRequirementOut {
+            key: secret_key,
+            required: true,
+            description: None,
+        },
+    }
+}
+
+fn tool_question(req: &ToolSecretReq) -> Pending {
+    let provider = req.key.split('/').next().unwrap_or("").to_string();
+    let seg = last_segment(&req.key).to_string();
+    Pending {
+        secret_key: req.key.clone(),
+        provider,
+        last_segment: seg.clone(),
+        question: SetupQuestionOut {
+            name: seg.clone(),
+            title: format!("{} key", titleize(&seg)),
+            kind: "string".to_string(),
+            required: req.required,
+            secret: true,
+            help: req.description.clone(),
+            group: Some("Tools".to_string()),
+            docs_url: None,
+            placeholder: None,
+        },
+        requirement: SecretRequirementOut {
+            key: req.key.clone(),
+            required: req.required,
+            description: req.description.clone(),
+        },
+    }
+}
+
+fn titleize(s: &str) -> String {
+    s.split(['_', '-', ' '])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().chain(c).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Build setup.yaml + secret-requirements.json from a pack's agents and the
+/// resolved tool secret requirements. Returns `None` when there is nothing to
+/// emit. Component requirements are merged into secret-requirements.json.
+pub fn generate(
+    pack_id: &str,
+    agents: &BTreeMap<String, serde_json::Value>,
+    tool_reqs_by_ext: &BTreeMap<String, Vec<ToolSecretReq>>,
+    component_reqs: &[SecretRequirementOut],
+) -> anyhow::Result<Option<GeneratedSetup>> {
+    let mut pending: Vec<Pending> = Vec::new();
+    let mut seen_keys = std::collections::BTreeSet::new();
+
+    for agent in agents.values() {
+        // LLM question
+        if let Some(cred) = agent
+            .get("llm")
+            .and_then(|l| l.get("credential_ref"))
+            .and_then(|c| c.as_str())
+        {
+            let provider = agent["llm"]
+                .get("provider")
+                .and_then(|p| p.as_str())
+                .unwrap_or("");
+            let p = llm_question(provider, cred);
+            if seen_keys.insert(p.secret_key.clone()) {
+                pending.push(p);
+            }
+        }
+        // Tool questions
+        if let Some(tools) = agent.get("tools").and_then(|t| t.as_array()) {
+            for tool in tools {
+                let ext_id = tool
+                    .get("extension_id")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("");
+                let tool_name = tool.get("tool_name").and_then(|n| n.as_str()).unwrap_or("");
+                let Some(reqs) = tool_reqs_by_ext.get(ext_id) else {
+                    continue;
+                };
+                for req in reqs {
+                    // The resolver already filtered to used tools; key-dedupe here.
+                    let _ = tool_name;
+                    if seen_keys.insert(req.key.clone()) {
+                        pending.push(tool_question(req));
+                    }
+                }
+            }
+        }
+    }
+
+    if pending.is_empty() && component_reqs.is_empty() {
+        return Ok(None);
+    }
+
+    // Resolve question-name collisions: if two pending share a question name,
+    // disambiguate both to "<provider>_<segment>".
+    let mut name_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for p in &pending {
+        *name_counts.entry(p.question.name.clone()).or_default() += 1;
+    }
+    for p in &mut pending {
+        if name_counts.get(&p.question.name).copied().unwrap_or(0) > 1 {
+            p.question.name = format!("{}_{}", p.provider, p.last_segment);
+        }
+    }
+
+    let questions: Vec<SetupQuestionOut> = pending.iter().map(|p| p.question.clone()).collect();
+    let mut requirements: Vec<SecretRequirementOut> =
+        pending.iter().map(|p| p.requirement.clone()).collect();
+    // Merge component-derived requirements (dedupe by key).
+    for cr in component_reqs {
+        if !requirements.iter().any(|r| r.key == cr.key) {
+            requirements.push(cr.clone());
+        }
+    }
+
+    let spec = SetupSpecOut {
+        title: Some(format!("{pack_id} — credentials")),
+        description: Some("API keys for the agentic worker and its tools.".to_string()),
+        questions,
+    };
+    Ok(Some(GeneratedSetup {
+        setup_yaml: spec.to_yaml()?,
+        secret_requirements_json: serde_json::to_string_pretty(&requirements)?,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
+    fn tavily_agents() -> BTreeMap<String, serde_json::Value> {
+        let agent = serde_json::json!({
+            "agent_id": "demo_assistant",
+            "llm": {"provider": "deepseek", "model": "deepseek-chat", "credential_ref": "deepseek"},
+            "tools": [
+                {"extension_id": "greentic.tavily", "tool_name": "tavily_search"},
+                {"extension_id": "greentic.tavily", "tool_name": "tavily_extract"}
+            ]
+        });
+        BTreeMap::from([("demo_assistant".to_string(), agent)])
+    }
+
+    fn tavily_tool_reqs() -> BTreeMap<String, Vec<ToolSecretReq>> {
+        BTreeMap::from([(
+            "greentic.tavily".to_string(),
+            vec![ToolSecretReq {
+                key: "tavily/api_key".to_string(),
+                required: true,
+                description: Some("Tavily web-search API key.".to_string()),
+                format: Some("text".to_string()),
+            }],
+        )])
+    }
+
+    #[test]
+    fn generate_produces_llm_and_tool_questions() {
+        let output = generate(
+            "agentic-research-tavily-demo",
+            &tavily_agents(),
+            &tavily_tool_reqs(),
+            &[],
+        )
+        .unwrap()
+        .expect("some output");
+
+        let spec: serde_json::Value = serde_yaml_bw::from_str(&output.setup_yaml).unwrap();
+        let q = spec["questions"].as_array().unwrap();
+        assert_eq!(q.len(), 2, "one LLM + one tool (deduped)");
+
+        let llm = q.iter().find(|x| x["name"] == "deepseek").unwrap();
+        assert_eq!(llm["group"], "LLM");
+        assert_eq!(llm["title"], "DeepSeek API key");
+        assert_eq!(llm["docs_url"], "https://platform.deepseek.com");
+        assert_eq!(llm["secret"], true);
+
+        let tool = q.iter().find(|x| x["name"] == "api_key").unwrap();
+        assert_eq!(tool["group"], "Tools");
+        assert_eq!(tool["help"], "Tavily web-search API key.");
+
+        let reqs: Vec<serde_json::Value> =
+            serde_json::from_str(&output.secret_requirements_json).unwrap();
+        let keys: Vec<&str> = reqs.iter().map(|r| r["key"].as_str().unwrap()).collect();
+        assert!(keys.contains(&"llm/deepseek"));
+        assert!(keys.contains(&"tavily/api_key"));
+    }
+
+    #[test]
+    fn generate_disambiguates_colliding_tool_names() {
+        let mut tool_reqs = tavily_tool_reqs();
+        tool_reqs.insert(
+            "other.search".to_string(),
+            vec![ToolSecretReq {
+                key: "other/api_key".to_string(),
+                required: true,
+                description: None,
+                format: None,
+            }],
+        );
+        let mut agents = tavily_agents();
+        // add a second agent using other.search so both api_key secrets surface
+        agents.insert(
+            "a2".to_string(),
+            serde_json::json!({
+                "agent_id": "a2",
+                "llm": {"provider": "openai", "credential_ref": "openai"},
+                "tools": [{"extension_id": "other.search", "tool_name": "search"}]
+            }),
+        );
+        let output = generate("p", &agents, &tool_reqs, &[]).unwrap().unwrap();
+        let spec: serde_json::Value = serde_yaml_bw::from_str(&output.setup_yaml).unwrap();
+        let names: Vec<&str> = spec["questions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|q| q["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"tavily_api_key"));
+        assert!(names.contains(&"other_api_key"));
+    }
 
     #[test]
     fn llm_overlay_known_and_unknown() {
