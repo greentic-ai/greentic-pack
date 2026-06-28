@@ -303,28 +303,73 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
 
     if let Some(gtpack_out) = opts.gtpack_out.as_ref() {
         let mut build = build;
-        // The effective secret-requirements list that ships as the
-        // `secrets-policy.json` sidecar for a `dw-application` pack — the LLM +
-        // per-tool secrets the worker actually needs. This is NOT the
-        // component-only `secret_requirements` aggregated above (which is empty
-        // for an agent-only pack), per the design spec.
-        //
-        // NOTE: `research` also auto-derives this from `setup_gen` +
-        // `ext_resolver` when no hand-authored file exists. Those modules are
-        // part of a separate research feature that is not present on this
-        // (`develop`) lineage, so the auto-derive fallback is intentionally
-        // omitted here: `dw_secret_requirements` is sourced solely from a
-        // hand-authored `assets/secret-requirements.json` when present.
-        let mut dw_secret_requirements: Vec<SecretRequirement> = Vec::new();
-        let hand_req_path = opts.pack_dir.join("assets/secret-requirements.json");
-        if hand_req_path.exists() {
-            let bytes = fs::read(&hand_req_path)
-                .context("read hand-authored assets/secret-requirements.json")?;
-            dw_secret_requirements = serde_json::from_slice(&bytes)
-                .context("parse secret-requirements.json for secrets-policy")?;
-        }
 
-        if opts.dev && !secret_requirements.is_empty() {
+        // The effective secret-requirements list that ships as
+        // `secret-requirements.json` — the LLM + per-tool secrets the pack
+        // actually needs. This (not the component-only `secret_requirements`
+        // aggregated above, which is empty for an agent-only pack) is the
+        // source for the `secrets-policy.json` sidecar, per the design spec.
+        let mut dw_secret_requirements: Vec<SecretRequirement> = Vec::new();
+
+        // Auto-derive the credential setup form from agents + tool extensions.
+        if !config.agents.is_empty() {
+            let component_reqs: Vec<crate::setup_gen::SecretRequirementOut> = secret_requirements
+                .iter()
+                .map(|r| crate::setup_gen::SecretRequirementOut {
+                    key: r.key.clone().into(),
+                    required: r.required,
+                    description: r.description.clone(),
+                })
+                .collect();
+
+            let cache_dir = opts.pack_dir.join(".packc");
+            let offline = opts.runtime.network_policy() == NetworkPolicy::Offline;
+            let tool_reqs = crate::cli::ext_resolver::resolve_agent_tool_requirements(
+                &opts.pack_dir,
+                &config.agents,
+                &cache_dir,
+                offline,
+            )?;
+
+            if let Some(generated) = crate::setup_gen::generate(
+                &config.pack_id,
+                &config.agents,
+                &tool_reqs,
+                &component_reqs,
+            )? {
+                // Override: a hand-authored assets/setup.yaml in the pack source wins.
+                let hand_authored = opts.pack_dir.join("assets/setup.yaml").exists();
+                if !hand_authored {
+                    let p = opts.pack_dir.join(".packc/setup.yaml");
+                    write_bytes(&p, generated.setup_yaml.as_bytes())?;
+                    build.assets.push(AssetFile {
+                        logical_path: "setup.yaml".to_string(),
+                        source: p,
+                    });
+                }
+                // Override: a hand-authored assets/secret-requirements.json in the pack source wins.
+                let hand_req_path = opts.pack_dir.join("assets/secret-requirements.json");
+                let hand_req = hand_req_path.exists();
+                // The effective secret-requirements bytes that ship in the pack:
+                // the hand-authored file when present, otherwise the generated
+                // body. The `secrets-policy.json` sidecar mirrors exactly these.
+                let effective_secret_req_json: Vec<u8> = if hand_req {
+                    fs::read(&hand_req_path)
+                        .context("read hand-authored assets/secret-requirements.json")?
+                } else {
+                    let rp = opts.pack_dir.join(".packc/secret-requirements.json");
+                    write_bytes(&rp, generated.secret_requirements_json.as_bytes())?;
+                    build.assets.push(AssetFile {
+                        logical_path: "secret-requirements.json".to_string(),
+                        source: rp,
+                    });
+                    generated.secret_requirements_json.clone().into_bytes()
+                };
+                dw_secret_requirements = serde_json::from_slice(&effective_secret_req_json)
+                    .context("parse secret-requirements.json for secrets-policy")?;
+            }
+        } else if opts.dev && !secret_requirements.is_empty() {
+            // No agents: preserve the existing dev-only component requirements file.
             let logical = "secret-requirements.json".to_string();
             let req_path =
                 write_secret_requirements_file(&opts.pack_dir, &secret_requirements, &logical)?;

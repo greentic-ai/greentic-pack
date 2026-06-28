@@ -10,6 +10,7 @@ use tokio::runtime::Runtime;
 pub mod add_extension;
 pub mod components;
 pub mod config;
+pub mod ext_resolver;
 pub mod extensions_lock;
 pub mod gui;
 pub mod info;
