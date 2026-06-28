@@ -17,4 +17,6 @@ pub mod runtime;
 pub mod telemetry;
 pub mod validator;
 
+pub mod setup_gen;
+
 pub use cli::BuildArgs;
