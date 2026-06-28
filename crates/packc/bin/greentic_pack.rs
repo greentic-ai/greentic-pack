@@ -152,6 +152,7 @@ fn is_known_root_command(command: &str) -> bool {
             | "add-extension"
             | "wizard"
             | "resolve"
+            | "publish-agent"
     )
 }
 
