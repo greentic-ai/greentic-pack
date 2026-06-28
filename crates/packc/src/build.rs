@@ -1359,6 +1359,7 @@ fn derive_pack_capabilities(
 fn map_kind(raw: &str) -> Result<PackKind> {
     match raw.to_ascii_lowercase().as_str() {
         "application" => Ok(PackKind::Application),
+        "dw-application" => Ok(PackKind::Application),
         "provider" => Ok(PackKind::Provider),
         "infrastructure" => Ok(PackKind::Infrastructure),
         "library" => Ok(PackKind::Library),
