@@ -57,6 +57,56 @@ fn is_true(b: &bool) -> bool {
     *b
 }
 
+/// Display metadata for an LLM provider's API-key question. Keyed by the
+/// provider id used in `pack.yaml agents[].llm.provider` (matches
+/// `greentic_llm::ProviderKind::as_str()`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProviderOverlay {
+    pub label: String,
+    pub docs_url: String,
+    pub placeholder: String,
+}
+
+fn overlay(label: &str, docs_url: &str, placeholder: &str) -> ProviderOverlay {
+    ProviderOverlay {
+        label: label.to_string(),
+        docs_url: docs_url.to_string(),
+        placeholder: placeholder.to_string(),
+    }
+}
+
+/// Polished display metadata for the popular providers. Returns `None` for
+/// providers without a curated entry (the caller emits a minimal question).
+/// Task 5's drift-test asserts every `greentic_llm::ProviderKind` is either
+/// covered here or in that test's explicit minimal allow-list.
+pub fn llm_overlay(provider: &str) -> Option<ProviderOverlay> {
+    Some(match provider {
+        "openai" => overlay("OpenAI", "https://platform.openai.com/api-keys", "sk-..."),
+        "anthropic" => overlay(
+            "Anthropic",
+            "https://console.anthropic.com/settings/keys",
+            "sk-ant-...",
+        ),
+        "deepseek" => overlay("DeepSeek", "https://platform.deepseek.com", "sk-..."),
+        "gemini" => overlay(
+            "Google Gemini",
+            "https://aistudio.google.com/app/apikey",
+            "AIza...",
+        ),
+        "cohere" => overlay("Cohere", "https://dashboard.cohere.com/api-keys", "..."),
+        "groq" => overlay("Groq", "https://console.groq.com/keys", "gsk_..."),
+        "perplexity" => overlay(
+            "Perplexity",
+            "https://www.perplexity.ai/settings/api",
+            "pplx-...",
+        ),
+        "xai" => overlay("xAI", "https://console.x.ai", "xai-..."),
+        "mistral" => overlay("Mistral", "https://console.mistral.ai/api-keys", "..."),
+        "openrouter" => overlay("OpenRouter", "https://openrouter.ai/keys", "sk-or-..."),
+        _ => return None,
+    })
+}
+
 /// The two generated asset bodies, ready to write into the pack.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratedSetup {
@@ -128,6 +178,15 @@ pub fn extract_tool_secret_requirements(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llm_overlay_known_and_unknown() {
+        let d = llm_overlay("deepseek").expect("deepseek known");
+        assert_eq!(d.label, "DeepSeek");
+        assert!(d.docs_url.starts_with("https://"));
+        assert!(d.placeholder.starts_with("sk-"));
+        assert!(llm_overlay("totally-unknown-provider").is_none());
+    }
 
     const TAVILY_DESCRIBE: &str = r#"{
       "contributions": {
