@@ -300,6 +300,13 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
     if let Some(gtpack_out) = opts.gtpack_out.as_ref() {
         let mut build = build;
 
+        // The effective secret-requirements list that ships as
+        // `secret-requirements.json` — the LLM + per-tool secrets the pack
+        // actually needs. This (not the component-only `secret_requirements`
+        // aggregated above, which is empty for an agent-only pack) is the
+        // source for the `secrets-policy.json` sidecar, per the design spec.
+        let mut dw_secret_requirements: Vec<SecretRequirement> = Vec::new();
+
         // Auto-derive the credential setup form from agents + tool extensions.
         if !config.agents.is_empty() {
             let component_reqs: Vec<crate::setup_gen::SecretRequirementOut> = secret_requirements
@@ -337,18 +344,25 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
                     });
                 }
                 // Override: a hand-authored assets/secret-requirements.json in the pack source wins.
-                let hand_req = opts
-                    .pack_dir
-                    .join("assets/secret-requirements.json")
-                    .exists();
-                if !hand_req {
+                let hand_req_path = opts.pack_dir.join("assets/secret-requirements.json");
+                let hand_req = hand_req_path.exists();
+                // The effective secret-requirements bytes that ship in the pack:
+                // the hand-authored file when present, otherwise the generated
+                // body. The `secrets-policy.json` sidecar mirrors exactly these.
+                let effective_secret_req_json: Vec<u8> = if hand_req {
+                    fs::read(&hand_req_path)
+                        .context("read hand-authored assets/secret-requirements.json")?
+                } else {
                     let rp = opts.pack_dir.join(".packc/secret-requirements.json");
                     write_bytes(&rp, generated.secret_requirements_json.as_bytes())?;
                     build.assets.push(AssetFile {
                         logical_path: "secret-requirements.json".to_string(),
                         source: rp,
                     });
-                }
+                    generated.secret_requirements_json.clone().into_bytes()
+                };
+                dw_secret_requirements = serde_json::from_slice(&effective_secret_req_json)
+                    .context("parse secret-requirements.json for secrets-policy")?;
             }
         } else if opts.dev && !secret_requirements.is_empty() {
             // No agents: preserve the existing dev-only component requirements file.
@@ -368,7 +382,7 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
                     .push(("dw-agents.json".to_string(), bytes));
             }
             if let Some(bytes) =
-                crate::agent_pack::secrets_policy_sidecar_bytes(&secret_requirements)?
+                crate::agent_pack::secrets_policy_sidecar_bytes(&dw_secret_requirements)?
             {
                 build
                     .dw_sidecars
