@@ -303,6 +303,27 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
 
     if let Some(gtpack_out) = opts.gtpack_out.as_ref() {
         let mut build = build;
+        // The effective secret-requirements list that ships as the
+        // `secrets-policy.json` sidecar for a `dw-application` pack — the LLM +
+        // per-tool secrets the worker actually needs. This is NOT the
+        // component-only `secret_requirements` aggregated above (which is empty
+        // for an agent-only pack), per the design spec.
+        //
+        // NOTE: `research` also auto-derives this from `setup_gen` +
+        // `ext_resolver` when no hand-authored file exists. Those modules are
+        // part of a separate research feature that is not present on this
+        // (`develop`) lineage, so the auto-derive fallback is intentionally
+        // omitted here: `dw_secret_requirements` is sourced solely from a
+        // hand-authored `assets/secret-requirements.json` when present.
+        let mut dw_secret_requirements: Vec<SecretRequirement> = Vec::new();
+        let hand_req_path = opts.pack_dir.join("assets/secret-requirements.json");
+        if hand_req_path.exists() {
+            let bytes = fs::read(&hand_req_path)
+                .context("read hand-authored assets/secret-requirements.json")?;
+            dw_secret_requirements = serde_json::from_slice(&bytes)
+                .context("parse secret-requirements.json for secrets-policy")?;
+        }
+
         if opts.dev && !secret_requirements.is_empty() {
             let logical = "secret-requirements.json".to_string();
             let req_path =
@@ -312,6 +333,22 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
                 source: req_path,
             });
         }
+
+        if config.kind.eq_ignore_ascii_case("dw-application") {
+            if let Some(bytes) = crate::agent_pack::dw_agents_sidecar_bytes(&config.agents)? {
+                build
+                    .dw_sidecars
+                    .push(("dw-agents.json".to_string(), bytes));
+            }
+            if let Some(bytes) =
+                crate::agent_pack::secrets_policy_sidecar_bytes(&dw_secret_requirements)?
+            {
+                build
+                    .dw_sidecars
+                    .push(("secrets-policy.json".to_string(), bytes));
+            }
+        }
+
         let warnings = package_gtpack(gtpack_out, &manifest_bytes, &build, opts.bundle, opts.dev)?;
         for warning in warnings {
             warn!(warning);
@@ -331,6 +368,9 @@ struct BuildProducts {
     flow_files: Vec<FlowFile>,
     assets: Vec<AssetFile>,
     extra_files: Vec<ExtraFile>,
+    /// Sidecar files added verbatim to the gtpack archive; keyed by zip entry name.
+    /// Populated only for `dw-application` packs (e.g. `dw-agents.json`).
+    dw_sidecars: Vec<(String, Vec<u8>)>,
 }
 
 #[derive(Clone)]
@@ -429,6 +469,7 @@ fn assemble_manifest(
         flow_files,
         assets,
         extra_files,
+        dw_sidecars: Vec::new(),
     })
 }
 
@@ -1335,6 +1376,13 @@ fn derive_pack_capabilities(
 fn map_kind(raw: &str) -> Result<PackKind> {
     match raw.to_ascii_lowercase().as_str() {
         "application" => Ok(PackKind::Application),
+        // `greentic_types::PackKind` (the manifest kind) has no `DwApplication`
+        // variant in any published version, and adding one is a greentic-types
+        // cascade change out of scope here. An AgenticWorker pack carries its
+        // "dw-ness" via the `dw-agents.json` / `secrets-policy.json` sidecars
+        // and the AgenticWorker store describe — not the manifest kind — so we
+        // accept `kind: dw-application` and record it as `Application`.
+        "dw-application" => Ok(PackKind::Application),
         "provider" => Ok(PackKind::Provider),
         "infrastructure" => Ok(PackKind::Infrastructure),
         "library" => Ok(PackKind::Library),
@@ -1572,6 +1620,16 @@ fn package_gtpack(
             "application/octet-stream",
         );
         write_zip_entry(&mut writer, &logical, &bytes, options)?;
+    }
+
+    // Write dw-application sidecars (e.g. dw-agents.json) before finalising the SBOM.
+    let mut dw_sidecars = build.dw_sidecars.clone();
+    dw_sidecars.sort_by(|a, b| a.0.cmp(&b.0));
+    for (logical, bytes) in dw_sidecars {
+        if written_paths.insert(logical.clone()) {
+            record_sbom_entry(&mut sbom_entries, &logical, &bytes, "application/json");
+            write_zip_entry(&mut writer, &logical, &bytes, options)?;
+        }
     }
 
     sbom_entries.sort_by(|a, b| a.path.cmp(&b.path));
@@ -2633,6 +2691,7 @@ mod tests {
             flow_files: Vec::new(),
             assets: Vec::new(),
             extra_files: Vec::new(),
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("demo.gtpack");
@@ -2700,6 +2759,7 @@ mod tests {
                     source: pack_manifest_json,
                 },
             ],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("prod.gtpack");
@@ -2760,6 +2820,7 @@ mod tests {
                     source: root_asset,
                 },
             ],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("conflict.gtpack");
@@ -2810,6 +2871,7 @@ mod tests {
                 logical_path: "notes.txt".to_string(),
                 source: root_asset,
             }],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("root-assets.gtpack");
@@ -2867,6 +2929,7 @@ mod tests {
                 logical_path: "secret-requirements.json".to_string(),
                 source: secret_file,
             }],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("secrets.gtpack");
@@ -3415,6 +3478,7 @@ flows:
             flows: Vec::new(),
             assets: Vec::new(),
             extensions: None,
+            agents: BTreeMap::new(),
         }
     }
 

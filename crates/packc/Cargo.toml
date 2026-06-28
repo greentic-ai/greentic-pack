@@ -65,7 +65,7 @@ indexmap = { workspace = true }
 pack_component_template = { workspace = true }
 pkcs8 = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["multipart"] }
 schemars = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }

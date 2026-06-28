@@ -20,6 +20,7 @@ pub mod inspect_lock;
 pub mod lint;
 pub mod plan;
 pub mod providers;
+pub mod publish_agent;
 pub mod qa;
 pub mod resolve;
 pub mod sign;
@@ -120,6 +121,8 @@ pub enum Command {
     Wizard(self::wizard::WizardArgs),
     /// Resolve component references and write pack.lock.cbor
     Resolve(self::resolve::ResolveArgs),
+    /// Publish a built dw-application pack to the store as an AgenticWorker.
+    PublishAgent(self::publish_agent::PublishAgentArgs),
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -391,6 +394,7 @@ pub async fn run_with_cli(cli: Cli, warn_inspect_alias: bool) -> Result<()> {
         }
         Command::Wizard(args) => self::wizard::handle(args, &runtime, wizard_locale.as_deref())?,
         Command::Resolve(args) => self::resolve::handle(args, &runtime, true).await?,
+        Command::PublishAgent(args) => self::publish_agent::run(args).await?,
     }
 
     Ok(())

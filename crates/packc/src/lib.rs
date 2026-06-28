@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod agent_pack;
 pub mod build;
 pub mod cli;
 pub mod cli_i18n;
@@ -15,5 +16,7 @@ pub mod path_safety;
 pub mod runtime;
 pub mod telemetry;
 pub mod validator;
+
+pub mod store_client;
 
 pub use cli::BuildArgs;
