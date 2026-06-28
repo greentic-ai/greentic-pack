@@ -32,7 +32,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 ci/local_check.sh
 ```
 
-`ci/local_check.sh` runs: format check, interfaces bindings import guard, clippy, build, tests, builder demo determinism, and canonical gtpack generation. Control with env vars: `LOCAL_CHECK_ONLINE=1`, `LOCAL_CHECK_STRICT=0`, `LOCAL_CHECK_VERBOSE=0`.
+`ci/local_check.sh` runs: format check, interfaces bindings import guard, clippy, build, tests, builder demo determinism, and canonical gtpack generation. It auto-installs `greentic-component` via `cargo binstall` if missing. Control with env vars: `LOCAL_CHECK_ONLINE=1`, `LOCAL_CHECK_STRICT=0`, `LOCAL_CHECK_VERBOSE=0`.
+
+`ci/check_no_duplicate_canonical_wit.sh` guards against accidentally defining canonical `greentic:component` WIT in this repo (greentic-pack must not own that package).
 
 ## Workspace Structure
 
@@ -43,7 +45,7 @@ ci/local_check.sh
 | `crates/pack_component` | `pack_component` | Generated Wasm component exposing pack via `greentic:pack-export` interface |
 | `crates/pack_component_template` | `pack_component_template` | Template strings for generating component crate code |
 
-`examples/` contains demo packs (weather, qa, billing, search, reco). `docs/` has usage guides, pack format specs, and CLI reference.
+`examples/` contains demo packs (weather, qa, billing, search, reco, adaptive-mcp-oauth-demo). `docs/` has usage guides, pack format specs, and CLI reference.
 
 ## Architecture
 
