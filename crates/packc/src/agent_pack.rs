@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use anyhow::{Context, Result};
 use greentic_types::secrets::SecretRequirement;
 use serde::Serialize;
+use serde_json::{Value, json};
 
 /// Serialize the `agents:` map to the `dw-agents.json` sidecar bytes
 /// (bare `{ "<agent_id>": <AgentConfig> }` JSON). Returns `None` when the map is
@@ -80,4 +81,56 @@ pub fn secrets_policy_sidecar_bytes(requirements: &[SecretRequirement]) -> Resul
     };
     let bytes = serde_json::to_vec(&policy).context("serialize secrets-policy.json")?;
     Ok(Some(bytes))
+}
+
+/// Inputs for the store describe document. `manifest_sha256` is the
+/// lowercase-hex SHA-256 of the FINAL `.gtpack` bytes (== `artifactSha256`).
+pub struct DescribeMeta {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub summary: String,
+    pub manifest_sha256: String,
+}
+
+/// Author a `describe-v2` document for an Agentic Worker. Byte-faithful to
+/// greentic-designer `orchestrate::dw_publish::agentic_worker_describe`.
+pub fn agentic_worker_describe(meta: &DescribeMeta) -> Value {
+    json!({
+        "apiVersion": "greentic.ai/v2",
+        "kind": "AgenticWorker",
+        "compat": {
+            "min_designer_version": ">=1.2.0",
+            "min_runner_version": "^0.12.0",
+            "contract_version": "1.2.0"
+        },
+        "metadata": {
+            "id": meta.id,
+            "name": meta.name,
+            "version": meta.version,
+            "summary": meta.summary,
+            "author": { "name": "Greentic" },
+            "license": "MIT"
+        },
+        "engine": { "greenticDesigner": ">=1.2.0", "extRuntime": "^1.2.0" },
+        "capabilities": { "offered": [], "required": [] },
+        "runtime": {
+            "memoryLimitMB": 32,
+            "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] },
+            "components": {
+                "worker": {
+                    "gtpack": {
+                        "file": "worker.wasm",
+                        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                        "pack_id": meta.id,
+                        "component_version": meta.version
+                    },
+                    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "world": format!("greentic:{}/extension@{}", meta.id, meta.version)
+                }
+            }
+        },
+        "contributions": {},
+        "manifestSha256": meta.manifest_sha256
+    })
 }
