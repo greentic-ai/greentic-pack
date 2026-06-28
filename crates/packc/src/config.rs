@@ -26,6 +26,12 @@ pub struct PackConfig {
     pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bootstrap: Option<BootstrapConfig>,
+    /// Pack-level capability declarations. These let a pack advertise
+    /// intent that is independent of any single component — fast2flow
+    /// opt-in, for example, is per-pack, not per-component. Merged with
+    /// the auto-derived per-component caps at manifest-build time.
+    #[serde(default)]
+    pub capabilities: Vec<PackCapabilityConfig>,
     #[serde(default)]
     pub components: Vec<ComponentConfig>,
     #[serde(default)]
@@ -61,6 +67,13 @@ pub struct PackConfig {
     /// ```
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub agents: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PackCapabilityConfig {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -518,5 +531,45 @@ extensions:
                 .map(Vec::len),
             Some(1)
         );
+    }
+
+    #[test]
+    fn pack_capabilities_round_trip() {
+        let cfg: PackConfig = serde_yaml_bw::from_str(
+            r#"
+pack_id: example.pack
+version: 0.1.0
+kind: application
+publisher: Greentic
+capabilities:
+  - name: greentic.cap.fast2flow.v1
+    description: opts into fast2flow free-text routing
+  - name: greentic.cap.observer.v1
+"#,
+        )
+        .expect("deserialize pack config with capabilities");
+        assert_eq!(cfg.capabilities.len(), 2);
+        assert_eq!(cfg.capabilities[0].name, "greentic.cap.fast2flow.v1");
+        assert_eq!(
+            cfg.capabilities[0].description.as_deref(),
+            Some("opts into fast2flow free-text routing")
+        );
+        assert_eq!(cfg.capabilities[1].name, "greentic.cap.observer.v1");
+        assert!(cfg.capabilities[1].description.is_none());
+    }
+
+    #[test]
+    fn pack_capabilities_default_empty() {
+        // Existing packs without the new field should keep parsing.
+        let cfg: PackConfig = serde_yaml_bw::from_str(
+            r#"
+pack_id: example.pack
+version: 0.1.0
+kind: application
+publisher: Greentic
+"#,
+        )
+        .expect("deserialize pack config without capabilities");
+        assert!(cfg.capabilities.is_empty());
     }
 }
