@@ -46,6 +46,27 @@ pub struct PackConfig {
         deserialize_with = "deserialize_extensions"
     )]
     pub extensions: Option<BTreeMap<String, ExtensionRef>>,
+    /// Per-agent config blobs to embed in the pack manifest.
+    ///
+    /// Keyed by `agent_id`; values are opaque JSON blobs produced by the
+    /// designer (e.g. from a `greentic_aw_runtime::AgentConfig`).  packc does
+    /// NOT interpret these — they are passed through verbatim into
+    /// `greentic_types::PackManifest::agents`.
+    ///
+    /// In `pack.yaml`:
+    ///
+    /// ```yaml
+    /// agents:
+    ///   greeter:
+    ///     agent_id: greeter
+    ///     system_prompt: "You are a helpful greeter."
+    ///     tools: []
+    ///     llm:
+    ///       provider: openai
+    ///       model: gpt-4o-mini
+    /// ```
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agents: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
