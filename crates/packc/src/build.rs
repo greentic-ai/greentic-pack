@@ -361,12 +361,19 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
             });
         }
 
-        if config.kind.eq_ignore_ascii_case("dw-application")
-            && let Some(bytes) = crate::agent_pack::dw_agents_sidecar_bytes(&config.agents)?
-        {
-            build
-                .dw_sidecars
-                .push(("dw-agents.json".to_string(), bytes));
+        if config.kind.eq_ignore_ascii_case("dw-application") {
+            if let Some(bytes) = crate::agent_pack::dw_agents_sidecar_bytes(&config.agents)? {
+                build
+                    .dw_sidecars
+                    .push(("dw-agents.json".to_string(), bytes));
+            }
+            if let Some(bytes) =
+                crate::agent_pack::secrets_policy_sidecar_bytes(&secret_requirements)?
+            {
+                build
+                    .dw_sidecars
+                    .push(("secrets-policy.json".to_string(), bytes));
+            }
         }
 
         let warnings = package_gtpack(gtpack_out, &manifest_bytes, &build, opts.bundle, opts.dev)?;
