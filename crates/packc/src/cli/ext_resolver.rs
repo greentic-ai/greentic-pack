@@ -495,7 +495,7 @@ pub fn resolve_agent_tool_requirements(
 
     // Collect extension_id -> set(tool_name) actually used across all agents.
     let mut used: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for agent in agents.values() {
+    for (agent_name, agent) in agents {
         let Some(tools) = agent.get("tools").and_then(|t| t.as_array()) else {
             continue;
         };
@@ -504,6 +504,10 @@ pub fn resolve_agent_tool_requirements(
                 tool.get("extension_id").and_then(|e| e.as_str()),
                 tool.get("tool_name").and_then(|n| n.as_str()),
             ) else {
+                tracing::warn!(
+                    agent = %agent_name,
+                    "skipping malformed agent tool entry: missing extension_id or tool_name"
+                );
                 continue;
             };
             used.entry(ext_id.to_string())
