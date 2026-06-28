@@ -245,7 +245,7 @@ fn tool_question(req: &ToolSecretReq) -> Pending {
         last_segment: seg.clone(),
         question: SetupQuestionOut {
             name: seg.clone(),
-            title: format!("{} key", titleize(&seg)),
+            title: title_for_secret_segment(&seg),
             kind: "string".to_string(),
             required: req.required,
             secret: true,
@@ -274,6 +274,19 @@ fn titleize(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Human-readable title for a credential question derived from a secret key's
+/// last segment. Appends " key" so a bare segment like `token` reads as
+/// "Token key", but never doubles it when the segment already ends in "key"
+/// (e.g. `api_key` → "Api Key", not "Api Key key").
+fn title_for_secret_segment(segment: &str) -> String {
+    let titled = titleize(segment);
+    if titled.to_ascii_lowercase().ends_with("key") {
+        titled
+    } else {
+        format!("{titled} key")
+    }
 }
 
 /// Build setup.yaml + secret-requirements.json from a pack's agents and the
@@ -414,12 +427,23 @@ mod tests {
         let tool = q.iter().find(|x| x["name"] == "api_key").unwrap();
         assert_eq!(tool["group"], "Tools");
         assert_eq!(tool["help"], "Tavily web-search API key.");
+        // A segment that already ends in "key" must not be doubled into
+        // "Api Key key" — the derived title reads as a single "key".
+        assert_eq!(tool["title"], "Api Key");
 
         let reqs: Vec<serde_json::Value> =
             serde_json::from_str(&output.secret_requirements_json).unwrap();
         let keys: Vec<&str> = reqs.iter().map(|r| r["key"].as_str().unwrap()).collect();
         assert!(keys.contains(&"llm/deepseek"));
         assert!(keys.contains(&"tavily/api_key"));
+    }
+
+    #[test]
+    fn tool_title_appends_key_only_when_segment_lacks_it() {
+        // Already ends in "key": no doubling.
+        assert_eq!(title_for_secret_segment("api_key"), "Api Key");
+        // Bare segment: append " key" so it reads as a credential.
+        assert_eq!(title_for_secret_segment("token"), "Token key");
     }
 
     #[test]
