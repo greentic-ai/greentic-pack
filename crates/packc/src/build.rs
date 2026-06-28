@@ -361,6 +361,14 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
             });
         }
 
+        if config.kind.eq_ignore_ascii_case("dw-application")
+            && let Some(bytes) = crate::agent_pack::dw_agents_sidecar_bytes(&config.agents)?
+        {
+            build
+                .dw_sidecars
+                .push(("dw-agents.json".to_string(), bytes));
+        }
+
         let warnings = package_gtpack(gtpack_out, &manifest_bytes, &build, opts.bundle, opts.dev)?;
         for warning in warnings {
             warn!(warning);
@@ -380,6 +388,9 @@ struct BuildProducts {
     flow_files: Vec<FlowFile>,
     assets: Vec<AssetFile>,
     extra_files: Vec<ExtraFile>,
+    /// Sidecar files added verbatim to the gtpack archive; keyed by zip entry name.
+    /// Populated only for `dw-application` packs (e.g. `dw-agents.json`).
+    dw_sidecars: Vec<(String, Vec<u8>)>,
 }
 
 #[derive(Clone)]
@@ -478,6 +489,7 @@ fn assemble_manifest(
         flow_files,
         assets,
         extra_files,
+        dw_sidecars: Vec::new(),
     })
 }
 
@@ -1605,6 +1617,16 @@ fn package_gtpack(
         write_zip_entry(&mut writer, &logical, &bytes, options)?;
     }
 
+    // Write dw-application sidecars (e.g. dw-agents.json) before finalising the SBOM.
+    let mut dw_sidecars = build.dw_sidecars.clone();
+    dw_sidecars.sort_by(|a, b| a.0.cmp(&b.0));
+    for (logical, bytes) in dw_sidecars {
+        if written_paths.insert(logical.clone()) {
+            record_sbom_entry(&mut sbom_entries, &logical, &bytes, "application/json");
+            write_zip_entry(&mut writer, &logical, &bytes, options)?;
+        }
+    }
+
     sbom_entries.sort_by(|a, b| a.path.cmp(&b.path));
     let sbom_doc = SbomDocument {
         format: SBOM_FORMAT.to_string(),
@@ -2717,6 +2739,7 @@ mod tests {
             flow_files: Vec::new(),
             assets: Vec::new(),
             extra_files: Vec::new(),
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("demo.gtpack");
@@ -2784,6 +2807,7 @@ mod tests {
                     source: pack_manifest_json,
                 },
             ],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("prod.gtpack");
@@ -2844,6 +2868,7 @@ mod tests {
                     source: root_asset,
                 },
             ],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("conflict.gtpack");
@@ -2894,6 +2919,7 @@ mod tests {
                 logical_path: "notes.txt".to_string(),
                 source: root_asset,
             }],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("root-assets.gtpack");
@@ -2951,6 +2977,7 @@ mod tests {
                 logical_path: "secret-requirements.json".to_string(),
                 source: secret_file,
             }],
+            dw_sidecars: Vec::new(),
         };
 
         let out = temp.path().join("secrets.gtpack");

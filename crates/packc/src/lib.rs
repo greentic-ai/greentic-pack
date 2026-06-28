@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod agent_pack;
 pub mod build;
 pub mod cli;
 pub mod cli_i18n;
