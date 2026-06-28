@@ -4,7 +4,8 @@
 //! agents use. Pure logic; all I/O (resolving `describe.json`) lives in the
 //! caller (`cli::ext_resolver`).
 
-use serde::Serialize;
+use anyhow::Context;
+use serde::{Deserialize, Serialize};
 
 /// One credential question. Field set/names match greentic-setup's
 /// `SetupQuestion` reader; `None` optionals are omitted (the reader defaults
@@ -63,9 +64,98 @@ pub struct GeneratedSetup {
     pub secret_requirements_json: String,
 }
 
+/// One secret a tool needs, as declared in the extension's `describe.json`
+/// `contributions.tools[].secret_requirements`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ToolSecretReq {
+    pub key: String,
+    #[serde(default = "default_required")]
+    pub required: bool,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+fn default_required() -> bool {
+    true
+}
+
+// Minimal view of describe.json — only the fields we consume.
+#[derive(Deserialize, Default)]
+struct DescribeMinimal {
+    #[serde(default)]
+    contributions: DescribeContributions,
+}
+
+#[derive(Deserialize, Default)]
+struct DescribeContributions {
+    #[serde(default)]
+    tools: Vec<DescribeTool>,
+}
+
+#[derive(Deserialize)]
+struct DescribeTool {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    secret_requirements: Vec<ToolSecretReq>,
+}
+
+/// Collect the secret requirements of the named tools from a `describe.json`
+/// body, deduped by `key` (first occurrence wins), preserving discovery order.
+pub fn extract_tool_secret_requirements(
+    describe_json: &[u8],
+    used_tool_names: &[String],
+) -> anyhow::Result<Vec<ToolSecretReq>> {
+    let describe: DescribeMinimal =
+        serde_json::from_slice(describe_json).context("parse extension describe.json")?;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for tool in &describe.contributions.tools {
+        if !used_tool_names.iter().any(|t| t == &tool.name) {
+            continue;
+        }
+        for req in &tool.secret_requirements {
+            if seen.insert(req.key.clone()) {
+                out.push(req.clone());
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TAVILY_DESCRIBE: &str = r#"{
+      "contributions": {
+        "tools": [
+          {"name": "tavily_search",  "secret_requirements": [
+            {"key": "tavily/api_key", "required": true, "description": "Search key", "format": "text"}]},
+          {"name": "tavily_extract", "secret_requirements": [
+            {"key": "tavily/api_key", "required": true, "description": "Extract key", "format": "text"}]}
+        ]
+      }
+    }"#;
+
+    #[test]
+    fn extracts_and_dedupes_tool_secrets_for_used_tools() {
+        let used = vec!["tavily_search".to_string(), "tavily_extract".to_string()];
+        let reqs = extract_tool_secret_requirements(TAVILY_DESCRIBE.as_bytes(), &used).unwrap();
+        assert_eq!(reqs.len(), 1, "same key on two tools dedupes to one");
+        assert_eq!(reqs[0].key, "tavily/api_key");
+        assert_eq!(reqs[0].description.as_deref(), Some("Search key"));
+    }
+
+    #[test]
+    fn ignores_secrets_of_unused_tools() {
+        let used = vec!["tavily_extract".to_string()];
+        let reqs = extract_tool_secret_requirements(TAVILY_DESCRIBE.as_bytes(), &used).unwrap();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].description.as_deref(), Some("Extract key"));
+    }
 
     #[test]
     fn setup_spec_serializes_and_round_trips_with_optional_fields_omitted() {
