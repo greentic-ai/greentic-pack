@@ -4,8 +4,11 @@
 //! agents use. Pure logic; all I/O (resolving `describe.json`) lives in the
 //! caller (`cli::ext_resolver`).
 
+use std::collections::BTreeMap;
+
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 /// One credential question. Field set/names match greentic-setup's
 /// `SetupQuestion` reader; `None` optionals are omitted (the reader defaults
@@ -175,9 +178,6 @@ pub fn extract_tool_secret_requirements(
     Ok(out)
 }
 
-use std::collections::BTreeMap;
-use tracing::warn;
-
 /// A pending question keyed by its secret key, before collision resolution.
 struct Pending {
     secret_key: String, // canonical secret key (e.g. "llm/deepseek", "tavily/api_key")
@@ -311,13 +311,11 @@ pub fn generate(
                     .get("extension_id")
                     .and_then(|e| e.as_str())
                     .unwrap_or("");
-                let tool_name = tool.get("tool_name").and_then(|n| n.as_str()).unwrap_or("");
                 let Some(reqs) = tool_reqs_by_ext.get(ext_id) else {
                     continue;
                 };
                 for req in reqs {
                     // The resolver already filtered to used tools; key-dedupe here.
-                    let _ = tool_name;
                     if seen_keys.insert(req.key.clone()) {
                         pending.push(tool_question(req));
                     }
