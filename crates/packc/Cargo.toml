@@ -67,7 +67,7 @@ semver = { workspace = true }
 schemars = { workspace = true }
 zip = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["multipart"] }
 hyper = { workspace = true }
 tempfile = { workspace = true }
 wit-component = { workspace = true }
