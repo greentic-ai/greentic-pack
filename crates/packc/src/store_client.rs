@@ -28,8 +28,9 @@ pub fn publish_metadata(
 }
 
 /// POST the pack to `{store}/api/v1/agentic-workers` (multipart
-/// metadata+artifact, Bearer token). `409` is surfaced as a non-fatal
-/// "already published" message by the caller.
+/// metadata+artifact, Bearer token). `409 Conflict` (already published) is
+/// returned as a distinct `already published (409): <body>` error; non-2xx
+/// otherwise carries the status code and body.
 pub async fn publish_agentic_worker(
     store_url: &str,
     token: &str,
