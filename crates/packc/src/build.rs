@@ -336,12 +336,19 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
                         source: p,
                     });
                 }
-                let rp = opts.pack_dir.join(".packc/secret-requirements.json");
-                write_bytes(&rp, generated.secret_requirements_json.as_bytes())?;
-                build.assets.push(AssetFile {
-                    logical_path: "secret-requirements.json".to_string(),
-                    source: rp,
-                });
+                // Override: a hand-authored assets/secret-requirements.json in the pack source wins.
+                let hand_req = opts
+                    .pack_dir
+                    .join("assets/secret-requirements.json")
+                    .exists();
+                if !hand_req {
+                    let rp = opts.pack_dir.join(".packc/secret-requirements.json");
+                    write_bytes(&rp, generated.secret_requirements_json.as_bytes())?;
+                    build.assets.push(AssetFile {
+                        logical_path: "secret-requirements.json".to_string(),
+                        source: rp,
+                    });
+                }
             }
         } else if opts.dev && !secret_requirements.is_empty() {
             // No agents: preserve the existing dev-only component requirements file.

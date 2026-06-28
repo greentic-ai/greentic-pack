@@ -109,8 +109,8 @@ agents:
 
     let setup = read_zip_entry(&gtpack_out, "assets/setup.yaml")
         .expect("assets/setup.yaml must be present in the produced .gtpack");
-    let spec: serde_json::Value = serde_yaml_bw::from_str(&setup)
-        .expect("assets/setup.yaml must be valid YAML");
+    let spec: serde_json::Value =
+        serde_yaml_bw::from_str(&setup).expect("assets/setup.yaml must be valid YAML");
     let question_names: Vec<&str> = spec["questions"]
         .as_array()
         .expect("setup.yaml must have a questions array")
@@ -126,9 +126,8 @@ agents:
         "tool api_key question must be present (got: {question_names:?})"
     );
 
-    let requirements_json =
-        read_zip_entry(&gtpack_out, "assets/secret-requirements.json")
-            .expect("assets/secret-requirements.json must be present in the produced .gtpack");
+    let requirements_json = read_zip_entry(&gtpack_out, "assets/secret-requirements.json")
+        .expect("assets/secret-requirements.json must be present in the produced .gtpack");
     assert!(
         requirements_json.contains("llm/deepseek"),
         "LLM secret key must appear in secret-requirements.json"
@@ -136,5 +135,95 @@ agents:
     assert!(
         requirements_json.contains("tavily/api_key"),
         "tool secret key must appear in secret-requirements.json"
+    );
+}
+
+/// When the pack source ships a hand-authored `assets/secret-requirements.json`,
+/// the generator must NOT overwrite it — the hand-authored file wins.
+#[test]
+fn hand_authored_secret_requirements_wins_over_generated() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pack = tmp.path().join("pack");
+    let gtx = make_tavily_gtxpack(tmp.path());
+
+    write_file(
+        &pack.join("pack.yaml"),
+        r#"pack_id: demo
+version: 0.1.0
+kind: application
+publisher: Test
+components: []
+dependencies: []
+flows: []
+agents:
+  a:
+    agent_id: a
+    llm:
+      provider: deepseek
+      model: deepseek-chat
+      credential_ref: deepseek
+    tools:
+      - extension_id: greentic.tavily
+        tool_name: tavily_search
+"#,
+    );
+
+    // Build a valid pack.extensions.json.
+    let ext_file_ref = format!("file://{}", gtx.display());
+    let extensions_json = serde_json::json!({
+        "version": 1,
+        "extensions": [{
+            "id": "greentic.tavily",
+            "role": "tool",
+            "source": {
+                "kind": "file",
+                "ref": ext_file_ref
+            }
+        }]
+    });
+    write_file(
+        &pack.join("pack.extensions.json"),
+        &extensions_json.to_string(),
+    );
+
+    // Hand-authored secret-requirements.json with a distinctive marker.
+    let hand_authored_content = r#"[{"key":"manual/override_marker","required":true,"description":"Hand-authored override"}]"#;
+    write_file(
+        &pack.join("assets/secret-requirements.json"),
+        hand_authored_content,
+    );
+
+    let gtpack_out = tmp.path().join("demo.gtpack");
+
+    let output = std::process::Command::new(assert_cmd::cargo::cargo_bin!("greentic-pack"))
+        .current_dir(&pack)
+        .args([
+            "build",
+            "--in",
+            pack.to_str().unwrap(),
+            "--no-update",
+            "--gtpack-out",
+            gtpack_out.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run packc build");
+
+    assert!(
+        output.status.success(),
+        "packc build failed:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let requirements_json = read_zip_entry(&gtpack_out, "assets/secret-requirements.json")
+        .expect("assets/secret-requirements.json must be present in the produced .gtpack");
+
+    assert!(
+        requirements_json.contains("manual/override_marker"),
+        "hand-authored marker must survive in the .gtpack (got: {requirements_json})"
+    );
+    assert!(
+        !requirements_json.contains("llm/"),
+        "generated llm/ key must NOT appear when hand-authored file wins (got: {requirements_json})"
     );
 }
