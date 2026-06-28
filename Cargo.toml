@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.95"
-version = "1.2.0-research.4"
+version = "1.2.0"
 license = "MIT"
 
 [workspace.dependencies]
