@@ -459,6 +459,107 @@ pub fn extract_and_verify_bytes(extension_id: &str, zip_bytes: &[u8]) -> Result<
     Ok((wasm_bytes, actual_digest))
 }
 
+/// Read the `describe.json` sidecar from a `.gtxpack` ZIP.
+///
+/// Returns the raw `describe.json` bytes so callers can parse only the fields
+/// they need (e.g. via [`crate::setup_gen::extract_tool_secret_requirements`]).
+pub fn read_describe_from_gtxpack(extension_id: &str, zip_bytes: &[u8]) -> Result<Vec<u8>> {
+    let cursor = Cursor::new(zip_bytes);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .with_context(|| format!("open extension .gtxpack ZIP for '{extension_id}'"))?;
+    let mut file = archive
+        .by_name("describe.json")
+        .with_context(|| format!("extension '{extension_id}' .gtxpack has no describe.json"))?;
+    let mut body = Vec::new();
+    file.read_to_end(&mut body)
+        .with_context(|| format!("read describe.json from '{extension_id}' .gtxpack"))?;
+    Ok(body)
+}
+
+/// For each tool extension used by the agents, acquire its `.gtxpack`, read
+/// `describe.json`, and extract the secret requirements of the used tools.
+///
+/// Returns a map keyed by extension id. Errors (and propagates via `?`) when a
+/// declared tool extension is not found in `pack.extensions.json` or cannot be
+/// acquired — no silent skips.
+///
+/// `pack_dir` must contain `pack.extensions.json`. `cache_dir` and `offline`
+/// are threaded through to [`acquire_extension_bytes`] for `store://` sources.
+pub fn resolve_agent_tool_requirements(
+    pack_dir: &Path,
+    agents: &std::collections::BTreeMap<String, serde_json::Value>,
+    cache_dir: &Path,
+    offline: bool,
+) -> Result<std::collections::BTreeMap<String, Vec<crate::setup_gen::ToolSecretReq>>> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    // Collect extension_id -> set(tool_name) actually used across all agents.
+    let mut used: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (agent_name, agent) in agents {
+        let Some(tools) = agent.get("tools").and_then(|t| t.as_array()) else {
+            continue;
+        };
+        for tool in tools {
+            let (Some(ext_id), Some(tool_name)) = (
+                tool.get("extension_id").and_then(|e| e.as_str()),
+                tool.get("tool_name").and_then(|n| n.as_str()),
+            ) else {
+                tracing::warn!(
+                    agent = %agent_name,
+                    "skipping malformed agent tool entry: missing extension_id or tool_name"
+                );
+                continue;
+            };
+            used.entry(ext_id.to_string())
+                .or_default()
+                .insert(tool_name.to_string());
+        }
+    }
+
+    let mut out = BTreeMap::new();
+    for (ext_id, tool_names) in &used {
+        // Reuse lookup_ext_dependency — it requires the #component fragment for
+        // the parse_ext_ref validator even though we only need describe.json.
+        let raw_ref = format!("ext://{ext_id}#component");
+        let (_ext_ref, dep) = lookup_ext_dependency(pack_dir, &raw_ref).with_context(|| {
+            format!("resolve tool extension '{ext_id}' for credential form generation")
+        })?;
+        let zip_bytes = acquire_extension_bytes(&dep.source, cache_dir, offline, None)
+            .with_context(|| format!("acquire .gtxpack for tool extension '{ext_id}'"))?;
+        let describe_bytes = read_describe_from_gtxpack(ext_id, &zip_bytes)?;
+        let names: Vec<String> = tool_names.iter().cloned().collect();
+        let secret_requirements =
+            crate::setup_gen::extract_tool_secret_requirements(&describe_bytes, &names)?;
+        out.insert(ext_id.clone(), secret_requirements);
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod describe_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn gtxpack_with_describe(describe: &str) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file("describe.json", zip::write::FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(describe.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn reads_describe_json_entry_from_gtxpack() {
+        let bytes = gtxpack_with_describe(r#"{"contributions":{"tools":[]}}"#);
+        let body = read_describe_from_gtxpack("greentic.tavily", &bytes).unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("contributions"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
