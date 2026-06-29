@@ -242,15 +242,14 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         opts.dev,
         opts.allow_pack_schema,
     )?;
-    build.lock_components =
-        collect_lock_component_artifacts(
-            &pack_lock,
-            &opts.pack_dir,
-            &opts.runtime,
-            opts.bundle,
-            opts.dry_run,
-        )
-        .await?;
+    build.lock_components = collect_lock_component_artifacts(
+        &pack_lock,
+        &opts.pack_dir,
+        &opts.runtime,
+        opts.bundle,
+        opts.dry_run,
+    )
+    .await?;
 
     let mut bundled_paths = BTreeMap::new();
     let mut bundled_hashes = BTreeMap::new();
@@ -2411,7 +2410,8 @@ mod tests {
         fs::write(&wasm_path, bytes).unwrap();
 
         let reference = format!("file://{}", wasm_path.to_string_lossy());
-        let bin = local_component_artifact(&reference, "greentic.demo-component", dir.path()).unwrap();
+        let bin =
+            local_component_artifact(&reference, "greentic.demo-component", dir.path()).unwrap();
 
         assert_eq!(bin.component_id, "greentic.demo-component");
         assert_eq!(bin.logical_path, "components/greentic.demo-component.wasm");
