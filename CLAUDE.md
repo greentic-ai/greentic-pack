@@ -52,7 +52,8 @@ ci/local_check.sh
 ## Architecture
 
 - **Pack format**: `.gtpack` is a ZIP archive containing `manifest.cbor`, `sbom.cbor`, flows (`.ygtc`), component Wasm binaries, assets, and optional signatures.
-- **Build pipeline**: `pack.yaml` → resolve components into `pack.lock.cbor` → compile flows → generate Wasm component from template → produce canonical `.gtpack`.
+- **Build pipeline**: `pack.yaml` → resolve components into `pack.lock.cbor` → compile flows → **i18n materialisation** (see below) → generate Wasm component from template → produce canonical `.gtpack`.
+- **i18n materialisation step**: if the `wizard apply` answers include a `langs` field (a JSON string array, e.g. `["id","ja"]`), the build extracts translatable strings from `assets/cards/*.json` into `assets/i18n/en.json`, then invokes the `greentic-i18n-translator` binary once per requested language to produce `assets/i18n/<lang>.json`, and finally writes `assets/i18n/_manifest.json` (a sorted JSON array of all locale codes, always including `en`). Existing locale files (hand-authored or from a previous build) are kept as-is (carry-over). The translator binary is located via `GREENTIC_I18N_TRANSLATOR_BIN` / `GREENTIC_I18N_TRANSLATOR_DEV_BIN`, then `PATH`. The step is **non-fatal**: if the binary is absent or a language fails, the build succeeds and the skipped languages are reported on stderr.
 - **Pack kinds**: application, infrastructure, provider, distribution-bundle.
 - **Component model**: Uses WebAssembly Component Model (wasmtime 45, wit-bindgen 0.54, wit-component 0.247). Components expose the `greentic:pack-export` interface.
 - **Signing**: Ed25519 via `ed25519-dalek` for manifest signing/verification.

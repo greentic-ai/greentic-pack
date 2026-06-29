@@ -5,6 +5,7 @@ use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
+use crate::cli::ext_resolver::resolve_ext_component_with_dist;
 use crate::config::load_pack_config;
 use crate::flow_resolve::{
     ensure_sidecar_exists, read_flow_resolve_summary_for_flow, strip_file_uri_prefix,
@@ -61,7 +62,7 @@ pub async fn handle(args: ResolveArgs, runtime: &RuntimeContext, emit_path: bool
 
     let mut id_remap: BTreeMap<String, String> = BTreeMap::new();
     if !entries.is_empty() {
-        let resolver = PackResolver::new(runtime)?;
+        let resolver = PackResolver::new(runtime, pack_dir.clone())?;
         let engine = Engine::default();
         let mut rekeyed = BTreeMap::new();
         for (key, mut component) in entries {
@@ -150,6 +151,10 @@ fn collect_from_summary(
             | FlowResolveSummarySourceRefV1::Repo { .. }
             | FlowResolveSummarySourceRefV1::Store { .. } => {
                 (format_reference(source_ref), resolve.digest.clone())
+            }
+            FlowResolveSummarySourceRefV1::Ext { r#ref } => {
+                // ext:// refs carry the raw ref string; digest is deferred to PackResolver.
+                (r#ref.clone(), resolve.digest.clone())
             }
         };
         let component_id = resolve.component_id.clone();
@@ -295,20 +300,21 @@ async fn populate_component_contract(
     Ok(())
 }
 
+/// Delegates to the single source of truth in `build` so resolve and build
+/// agree on which flow nodes are runner builtins (incl. `dw.agent` and the
+/// other dispatch kinds), rather than maintaining a second list that can drift.
 fn is_builtin_component(component_id: &str) -> bool {
-    matches!(
-        component_id,
-        "session.wait" | "flow.call" | "provider.invoke"
-    ) || component_id.starts_with("emit.")
+    crate::build::is_builtin_component_id(component_id)
 }
 
 struct PackResolver {
     runtime: RuntimeContext,
     dist: DistClient,
+    pack_dir: PathBuf,
 }
 
 impl PackResolver {
-    fn new(runtime: &RuntimeContext) -> Result<Self> {
+    fn new(runtime: &RuntimeContext, pack_dir: PathBuf) -> Result<Self> {
         let dist = DistClient::new(DistOptions {
             cache_dir: runtime.cache_dir(),
             allow_tags: true,
@@ -319,6 +325,7 @@ impl PackResolver {
         Ok(Self {
             runtime: runtime.clone(),
             dist,
+            pack_dir,
         })
     }
 }
@@ -336,6 +343,28 @@ impl ComponentResolver for PackResolver {
                 world: req.world,
                 component_version: req.component_version,
                 source_path: Some(PathBuf::from(path)),
+            });
+        }
+
+        if req.reference.starts_with("ext://") {
+            let offline = self.runtime.network_policy() == crate::runtime::NetworkPolicy::Offline;
+            let handle = Handle::try_current().ok();
+            let (bytes, verified_digest) = resolve_ext_component_with_dist(
+                &self.pack_dir,
+                &req.reference,
+                &self.runtime.cache_dir(),
+                offline,
+                handle.as_ref(),
+            )
+            .with_context(|| format!("resolve ext:// component ref '{}'", req.reference))?;
+            return Ok(ResolvedComponent {
+                bytes,
+                resolved_digest: verified_digest,
+                component_id: req.component_id,
+                abi_version: req.abi_version,
+                world: req.world,
+                component_version: req.component_version,
+                source_path: None,
             });
         }
 
@@ -509,6 +538,7 @@ fn format_reference(source: &FlowResolveSummarySourceRefV1) -> String {
                 format!("store://{}", r#ref)
             }
         }
+        FlowResolveSummarySourceRefV1::Ext { r#ref } => r#ref.clone(),
     }
 }
 

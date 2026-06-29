@@ -29,6 +29,10 @@ use crate::cli::wizard_catalog::{
 };
 use crate::cli::wizard_i18n::{WizardI18n, detect_requested_locale};
 use crate::cli::wizard_ui;
+use crate::extension_refs::{
+    ExtensionDependency, PackExtensionsFile, default_extensions_file_path, read_extensions_file,
+    write_extensions_file,
+};
 use crate::extensions::{CAPABILITIES_EXTENSION_KEY, DEPLOYER_EXTENSION_KEY};
 use crate::runtime::RuntimeContext;
 
@@ -204,6 +208,8 @@ struct WizardExecutionPlan {
     sign_key_path: Option<String>,
     extension_operation: Option<ExtensionOperationRecord>,
     asset_staging: Vec<ResolvedAssetStagingEntry>,
+    i18n_langs: Vec<String>,
+    extension_dependencies: Vec<ExtensionDependency>,
 }
 
 struct FlowSchemaContext {
@@ -911,6 +917,11 @@ fn pack_wizard_answers_schema() -> Value {
                     { "$ref": "#/$defs/greentic_component_wizard_qa_envelope" }
                 ]
             },
+            "langs": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Target locale codes to translate the pack's Adaptive Card strings into during build (e.g. [\"id\",\"ja\"]). Requires greentic-i18n-translator on PATH; missing/failed languages are skipped with a warning."
+            },
             "asset_staging": {
                 "type": "array",
                 "description": "External files or directories to copy into the generated pack root before delegate/build steps run. Relative sources resolve from the AnswerDocument location; destinations must stay inside pack_dir.",
@@ -1251,6 +1262,7 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
     if let Some(extension) = plan.extension_operation.as_ref() {
         apply_extension_operation(&plan.pack_dir, extension)?;
     }
+    upsert_extension_dependencies(&plan.pack_dir, &plan.extension_dependencies)?;
     if !plan.asset_staging.is_empty() {
         stage_assets_into_pack(&plan.pack_root, &plan.asset_staging)?;
     }
@@ -1271,6 +1283,10 @@ fn apply_answer_document(doc: &WizardAnswerDocument) -> Result<()> {
                     plan.pack_dir.display()
                 )
             })?;
+    }
+    if !plan.i18n_langs.is_empty() {
+        // Non-fatal: writes pack_root/assets/i18n/*, reports skips to stderr.
+        crate::i18n_build::materialize_i18n(&plan.pack_root, &plan.i18n_langs);
     }
     if plan.run_doctor || plan.run_build {
         let update_ok = run_process(
@@ -1379,6 +1395,16 @@ fn execution_plan_from_answers(
     let extension_operation = parse_extension_operation_record(answers)?;
     let asset_staging = parse_asset_staging_entries(answers, answers_base_dir, &pack_root)?;
     validate_scaffold_asset_staging_conflicts(create_pack_scaffold, &pack_root, &asset_staging)?;
+    let i18n_langs: Vec<String> = answers
+        .get("langs")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let extension_dependencies = parse_extension_dependencies(answers)?;
     Ok(WizardExecutionPlan {
         pack_dir,
         pack_root,
@@ -1393,7 +1419,79 @@ fn execution_plan_from_answers(
         sign_key_path,
         extension_operation,
         asset_staging,
+        i18n_langs,
+        extension_dependencies,
     })
+}
+
+/// Parse the `extension_dependencies` answer (an array of packc `ExtensionDependency`
+/// serde shapes) supplied by the designer→packc pipeline. Absent or empty yields an
+/// empty vector, which the apply step treats as a no-op.
+fn parse_extension_dependencies(
+    answers: &BTreeMap<String, Value>,
+) -> Result<Vec<ExtensionDependency>> {
+    let Some(value) = answers.get("extension_dependencies") else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_array()
+        .ok_or_else(|| anyhow!("answers.extension_dependencies must be an array"))?;
+    let mut dependencies = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let dependency: ExtensionDependency =
+            serde_json::from_value(item.clone()).with_context(|| {
+                format!(
+                    "answers.extension_dependencies[{index}] is not a valid extension dependency"
+                )
+            })?;
+        dependencies.push(dependency);
+    }
+    Ok(dependencies)
+}
+
+/// Upsert the supplied extension dependencies into `<pack_dir>/pack.extensions.json`.
+///
+/// Merge rule (dedupe by `id`, supplied wins):
+/// - Existing entries whose `id` is not supplied are preserved as-is.
+/// - For a supplied `id`, the supplied entry replaces any existing entry with the same
+///   `id`; when their `source` differs, the conflict is logged to stderr.
+/// - An empty `dependencies` slice is a no-op and never creates or clobbers a file.
+fn upsert_extension_dependencies(
+    pack_dir: &Path,
+    dependencies: &[ExtensionDependency],
+) -> Result<()> {
+    if dependencies.is_empty() {
+        return Ok(());
+    }
+
+    let path = default_extensions_file_path(pack_dir);
+    let mut merged: Vec<ExtensionDependency> = if path.exists() {
+        read_extensions_file(&path)
+            .with_context(|| format!("read existing {}", path.display()))?
+            .extensions
+    } else {
+        Vec::new()
+    };
+
+    for supplied in dependencies {
+        if let Some(existing) = merged.iter_mut().find(|item| item.id == supplied.id) {
+            if existing.source.kind != supplied.source.kind
+                || existing.source.reference != supplied.source.reference
+            {
+                eprintln!(
+                    "pack.extensions.json: replacing extension `{}` source `{}` with supplied `{}`",
+                    supplied.id, existing.source.reference, supplied.source.reference
+                );
+            }
+            *existing = supplied.clone();
+        } else {
+            merged.push(supplied.clone());
+        }
+    }
+
+    let file = PackExtensionsFile::new(merged);
+    write_extensions_file(&path, &file).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }
 
 fn answer_bool(answers: &BTreeMap<String, Value>, key: &str, default: bool) -> Result<bool> {
@@ -3622,9 +3720,9 @@ fn ask_enum<R: BufRead, W: Write>(
         spec_json: serde_json::to_string(&spec).context("serialize enum QA spec")?,
         initial_answers_json: None,
         frontend: WizardFrontend::Text,
+        env_id: "default".to_string(),
         i18n: i18n.qa_i18n_config(),
         verbose: false,
-        env_id: "local".into(),
     };
 
     let mut driver = WizardDriver::new(config).context("initialize QA enum driver")?;
@@ -3721,9 +3819,9 @@ fn ask_enum_custom_labels_owned<R: BufRead, W: Write>(
         spec_json: serde_json::to_string(&spec).context("serialize custom enum QA spec")?,
         initial_answers_json: None,
         frontend: WizardFrontend::Text,
+        env_id: "default".to_string(),
         i18n: i18n.qa_i18n_config(),
         verbose: false,
-        env_id: "local".into(),
     };
 
     let mut driver = WizardDriver::new(config).context("initialize QA custom enum driver")?;
@@ -3821,9 +3919,9 @@ fn ask_text<R: BufRead, W: Write>(
         spec_json: serde_json::to_string(&spec).context("serialize text QA spec")?,
         initial_answers_json: None,
         frontend: WizardFrontend::Text,
+        env_id: "default".to_string(),
         i18n: i18n.qa_i18n_config(),
         verbose: false,
-        env_id: "local".into(),
     };
 
     let mut driver = WizardDriver::new(config).context("initialize QA text driver")?;
