@@ -555,11 +555,17 @@ fn resolve_component_wasm(
     if let Some(reference) = locked.r#ref.as_ref()
         && reference.starts_with("file://")
     {
-        let path = strip_file_uri_prefix(reference);
-        let bytes = fs::read(path).with_context(|| format!("read {}", path))?;
+        let rel = strip_file_uri_prefix(reference);
+        // Root the (possibly relative) ref at the pack dir so portable locks
+        // resolve; absolute legacy refs are left untouched by join().
+        let path = input
+            .pack_dir
+            .map(|dir| dir.join(rel))
+            .unwrap_or_else(|| PathBuf::from(rel));
+        let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
         return Ok(WasmSource {
             bytes,
-            source_path: Some(PathBuf::from(path)),
+            source_path: Some(path),
             describe_bytes: None,
         });
     }
