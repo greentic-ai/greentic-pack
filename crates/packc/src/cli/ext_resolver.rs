@@ -298,6 +298,46 @@ fn acquire_store_extension_bytes(
     })
 }
 
+/// Build the store artifact endpoint URL for an extension `(name, version)`.
+///
+/// Shape: `{base}/api/v1/extensions/{name}/{version}/artifact` (public, no auth).
+///
+/// Deprecated forwarding shim: the canonical implementation now lives in
+/// [`greentic_distributor_client::store_ext::store_artifact_url`], so packs and
+/// store extensions share a single transport path.
+#[deprecated(
+    since = "1.1.1",
+    note = "moved to greentic_distributor_client::store_ext; this shim forwards and will be removed in a future release"
+)]
+pub fn store_artifact_url(store_base: &str, name: &str, version: &str) -> String {
+    greentic_distributor_client::store_ext::store_artifact_url(store_base, name, version)
+}
+
+/// Download (and cache) the extension `.gtxpack` from the store artifact endpoint,
+/// verifying the advertised whole-archive digest.
+///
+/// Deprecated forwarding shim: the canonical implementation now lives in
+/// [`greentic_distributor_client::store_ext::fetch_store_extension`]. This shim
+/// forwards in online mode (`offline = false`) to preserve the original
+/// behaviour and public API.
+#[deprecated(
+    since = "1.1.1",
+    note = "moved to greentic_distributor_client::store_ext; this shim forwards and will be removed in a future release"
+)]
+pub fn download_store_artifact(
+    store_base: &str,
+    store_ref: &StoreRef,
+    cache_dir: &Path,
+) -> Result<Vec<u8>> {
+    greentic_distributor_client::store_ext::fetch_store_extension(
+        store_base,
+        &store_ref.name,
+        &store_ref.version,
+        cache_dir,
+        false,
+    )
+}
+
 /// Read the `component.json` sidecar + the component wasm asset from `.gtxpack`
 /// ZIP `zip_bytes`, verify the digest, and return (wasm_bytes, verified_digest).
 pub fn extract_and_verify_bytes(extension_id: &str, zip_bytes: &[u8]) -> Result<(Vec<u8>, String)> {
