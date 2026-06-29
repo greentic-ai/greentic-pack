@@ -1640,9 +1640,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-distributor-client"
-version = "1.1.0-dev.27832309681"
+version = "1.1.0-dev.28343406202"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea23aae7a04e3adcf1bbf74adbf98f5fda29d3ba1c267216d2340b9ad85842b"
+checksum = "73cef7484de9ddd93732ff1a91a7beb2acfaa8f028a20ff3b9adaf8438cc9017"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1794,7 +1794,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-pack"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-pack-lib"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3197,7 +3197,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "pack_component"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "greentic-interfaces-host",
  "serde",
@@ -3207,7 +3207,7 @@ dependencies = [
 
 [[package]]
 name = "pack_component_template"
-version = "1.1.0"
+version = "1.1.1"
 
 [[package]]
 name = "page_size"
@@ -3498,7 +3498,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn",

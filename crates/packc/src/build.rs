@@ -322,7 +322,13 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
                 })
                 .collect();
 
-            let cache_dir = opts.pack_dir.join(".packc");
+            // Cache fetched store extensions in the SAME shared artifact cache
+            // the OCI dist client uses (`runtime.cache_dir()` → ~/.greentic/cache),
+            // not a pack-local `.packc`, so packs and store extensions share one
+            // cache root (reusable across packs and offline runs). The generated
+            // `.packc/setup.yaml` / `.packc/secret-requirements.json` assets below
+            // are build staging, not a download cache, and stay in the pack dir.
+            let cache_dir = opts.runtime.cache_dir();
             let offline = opts.runtime.network_policy() == NetworkPolicy::Offline;
             let tool_reqs = crate::cli::ext_resolver::resolve_agent_tool_requirements(
                 &opts.pack_dir,
