@@ -96,7 +96,7 @@ fn write_weather_lock(pack_dir: &Path) {
         "qa.process".to_string(),
         LockedComponent {
             component_id: "qa.process".to_string(),
-            r#ref: Some("file://../components/qa.process/component.wasm".to_string()),
+            r#ref: Some("file://components/qa.process/component.wasm".to_string()),
             abi_version: "0.6.0".to_string(),
             resolved_digest: format!("sha256:{}", "a".repeat(64)),
             describe_hash: "b".repeat(64),
@@ -110,7 +110,7 @@ fn write_weather_lock(pack_dir: &Path) {
         "mcp.exec".to_string(),
         LockedComponent {
             component_id: "mcp.exec".to_string(),
-            r#ref: Some("file://../components/mcp.exec/component.wasm".to_string()),
+            r#ref: Some("file://components/mcp.exec/component.wasm".to_string()),
             abi_version: "0.6.0".to_string(),
             resolved_digest: format!("sha256:{}", "c".repeat(64)),
             describe_hash: "d".repeat(64),
@@ -124,7 +124,7 @@ fn write_weather_lock(pack_dir: &Path) {
         "templating.handlebars".to_string(),
         LockedComponent {
             component_id: "templating.handlebars".to_string(),
-            r#ref: Some("file://../components/templating.handlebars/component.wasm".to_string()),
+            r#ref: Some("file://components/templating.handlebars/component.wasm".to_string()),
             abi_version: "0.6.0".to_string(),
             resolved_digest: format!("sha256:{}", "e".repeat(64)),
             describe_hash: "f".repeat(64),
