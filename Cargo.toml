@@ -46,9 +46,9 @@ regex = "1"
 hyper = "1"
 wit-component = "0.247"
 schemars = "1"
-wasmtime = "45"
-wasmtime-wasi = "45"
-wasmtime-wasi-http = { version = "45", default-features = false, features = ["p2"] }
+wasmtime = "43"
+wasmtime-wasi = "43"
+wasmtime-wasi-http = { version = "43", default-features = false, features = ["p2"] }
 assert_cmd = "2"
 indoc = "2"
 predicates = "3"
@@ -117,7 +117,7 @@ features = [
 ]
 
 [workspace.dependencies.greentic-types]
-version = ">=1.1.0-dev.26561934923, <1.2.0-0"
+version = ">=1.1.0-dev, <1.2.0-0"
 
 [workspace.dependencies.greentic-flow]
 version = ">=1.1.0-dev, <1.2.0-0"
@@ -182,3 +182,6 @@ features = [
     "macros",
     "realloc",
 ]
+
+# NOTE: This patch stays in the commit so packc can resolve ext:// with the
+# local greentic-flow that declares the Ext arm in resolve_summary. The

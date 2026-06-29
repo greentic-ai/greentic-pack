@@ -41,6 +41,7 @@
 
 use std::io::{Cursor, Read as _};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
@@ -136,6 +137,14 @@ pub fn parse_store_ref(raw: &str) -> Result<StoreRef> {
         name: name.to_string(),
         version: version.to_string(),
     })
+}
+
+/// Build the store artifact endpoint URL for an extension `(name, version)`.
+///
+/// Shape: `{base}/api/v1/extensions/{name}/{version}/artifact` (public, no auth).
+pub fn store_artifact_url(store_base: &str, name: &str, version: &str) -> String {
+    let base = store_base.trim_end_matches('/');
+    format!("{base}/api/v1/extensions/{name}/{version}/artifact")
 }
 
 /// Resolve an `ext://<id>#component` reference by extracting the wasm from the extension's
@@ -258,84 +267,138 @@ fn acquire_extension_bytes(
 }
 
 /// Acquire (and cache) the extension `.gtxpack` from the store artifact endpoint.
-///
-/// Reference resolution (the `store://<name>@<version>` parse and the
-/// `GREENTIC_STORE_URL` base lookup) stays here; the HTTP transport, digest
-/// verification, and on-disk caching are delegated to
-/// [`greentic_distributor_client::store_ext::fetch_store_extension`] so that
-/// packs and store extensions share a single fetch path.
 fn acquire_store_extension_bytes(
     store_ref: &StoreRef,
     cache_dir: &Path,
     offline: bool,
 ) -> Result<Vec<u8>> {
-    // Offline never hits the network, so the store base URL is not needed (and
-    // we must not require the env var). Online, resolve it from the environment.
-    let store_base = if offline {
-        String::new()
-    } else {
-        std::env::var(STORE_URL_ENV).map_err(|_| {
+    if offline {
+        // Offline: we cannot resolve the artifact sha without a download, so we
+        // can only serve a previously cached artifact for this exact ref.
+        return read_cached_store_artifact(cache_dir, store_ref).ok_or_else(|| {
             anyhow!(
-                "{STORE_URL_ENV} is not set; it must name the store base URL to acquire store:// extension '{}@{}'",
+                "offline: no cached artifact for store extension '{}@{}' under the cache dir; run online once to populate the cache",
                 store_ref.name,
                 store_ref.version
             )
-        })?
-    };
+        });
+    }
 
-    greentic_distributor_client::store_ext::fetch_store_extension(
-        &store_base,
-        &store_ref.name,
-        &store_ref.version,
-        cache_dir,
-        offline,
-    )
-    .with_context(|| {
-        format!(
-            "acquire store extension '{}@{}'",
-            store_ref.name, store_ref.version
+    let store_base = std::env::var(STORE_URL_ENV).map_err(|_| {
+        anyhow!(
+            "{STORE_URL_ENV} is not set; it must name the store base URL to acquire store:// extension '{}@{}'",
+            store_ref.name,
+            store_ref.version
         )
-    })
+    })?;
+    download_store_artifact(&store_base, store_ref, cache_dir)
 }
 
-/// Build the store artifact endpoint URL for an extension `(name, version)`.
+/// Download the extension `.gtxpack` from `store_base` for `store_ref`, verify
+/// the whole-archive `x-artifact-sha256` (when advertised), cache it under
+/// `cache_dir`, and return the bytes.
 ///
-/// Shape: `{base}/api/v1/extensions/{name}/{version}/artifact` (public, no auth).
-///
-/// Deprecated forwarding shim: the canonical implementation now lives in
-/// [`greentic_distributor_client::store_ext::store_artifact_url`], so packs and
-/// store extensions share a single transport path.
-#[deprecated(
-    since = "1.1.1",
-    note = "moved to greentic_distributor_client::store_ext; this shim forwards and will be removed in a future release"
-)]
-pub fn store_artifact_url(store_base: &str, name: &str, version: &str) -> String {
-    greentic_distributor_client::store_ext::store_artifact_url(store_base, name, version)
-}
-
-/// Download (and cache) the extension `.gtxpack` from the store artifact endpoint,
-/// verifying the advertised whole-archive digest.
-///
-/// Deprecated forwarding shim: the canonical implementation now lives in
-/// [`greentic_distributor_client::store_ext::fetch_store_extension`]. This shim
-/// forwards in online mode (`offline = false`) to preserve the original
-/// behaviour and public API.
-#[deprecated(
-    since = "1.1.1",
-    note = "moved to greentic_distributor_client::store_ext; this shim forwards and will be removed in a future release"
-)]
+/// Separated from env resolution so it is directly testable against a local
+/// HTTP server without mutating the process environment.
 pub fn download_store_artifact(
     store_base: &str,
     store_ref: &StoreRef,
     cache_dir: &Path,
 ) -> Result<Vec<u8>> {
-    greentic_distributor_client::store_ext::fetch_store_extension(
-        store_base,
-        &store_ref.name,
-        &store_ref.version,
-        cache_dir,
-        false,
-    )
+    let url = store_artifact_url(store_base, &store_ref.name, &store_ref.version);
+
+    let (bytes, advertised_sha) = http_get_artifact(&url)?;
+    let actual_sha = hex::encode(Sha256::digest(&bytes));
+    if let Some(advertised) = advertised_sha.as_deref()
+        && !advertised.eq_ignore_ascii_case(&actual_sha)
+    {
+        bail!(
+            "store artifact integrity check failed for '{}@{}': x-artifact-sha256 advertises '{}' but body hashes to '{}'",
+            store_ref.name,
+            store_ref.version,
+            advertised,
+            actual_sha
+        );
+    }
+
+    // Cache keyed by archive sha256 (+ ref-keyed copy for offline reuse).
+    cache_store_artifact(cache_dir, store_ref, &actual_sha, &bytes)?;
+    Ok(bytes)
+}
+
+/// Directory under the runtime cache where store extension artifacts are kept.
+fn store_artifact_cache_dir(cache_dir: &Path) -> PathBuf {
+    cache_dir.join("ext-store")
+}
+
+/// Filesystem-safe key for a store ref (`name@version` with `/` and `@` escaped).
+fn store_ref_cache_key(store_ref: &StoreRef) -> String {
+    let sanitized =
+        format!("{}@{}", store_ref.name, store_ref.version).replace(['/', '\\', ':', '@'], "_");
+    format!("{sanitized}.gtxpack")
+}
+
+/// Write the artifact into the cache under both its archive-sha name and a
+/// ref-keyed name (so offline mode can find it by `name@version`).
+fn cache_store_artifact(
+    cache_dir: &Path,
+    store_ref: &StoreRef,
+    archive_sha: &str,
+    bytes: &[u8],
+) -> Result<()> {
+    let dir = store_artifact_cache_dir(cache_dir);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("create store artifact cache dir {}", dir.display()))?;
+    let sha_path = dir.join(format!("sha256-{archive_sha}.gtxpack"));
+    std::fs::write(&sha_path, bytes)
+        .with_context(|| format!("write store artifact cache {}", sha_path.display()))?;
+    let ref_path = dir.join(store_ref_cache_key(store_ref));
+    std::fs::write(&ref_path, bytes)
+        .with_context(|| format!("write store artifact cache {}", ref_path.display()))?;
+    Ok(())
+}
+
+/// Read a previously cached store artifact by ref key, if present.
+fn read_cached_store_artifact(cache_dir: &Path, store_ref: &StoreRef) -> Option<Vec<u8>> {
+    let path = store_artifact_cache_dir(cache_dir).join(store_ref_cache_key(store_ref));
+    std::fs::read(path).ok()
+}
+
+/// Blocking HTTP GET of the store artifact endpoint, returning the body bytes
+/// and the optional `x-artifact-sha256` header value.
+///
+/// Runs `reqwest::blocking` on a dedicated thread (mirroring `wizard_catalog`)
+/// so it is safe to call from within a Tokio runtime.
+fn http_get_artifact(url: &str) -> Result<(Vec<u8>, Option<String>)> {
+    let url = url.to_string();
+    std::thread::spawn(move || -> Result<(Vec<u8>, Option<String>)> {
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(60))
+            .build()
+            .context("build HTTP client for store extension artifact")?;
+        let response = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("request store extension artifact {url}"))?;
+        if response.status() != reqwest::StatusCode::OK {
+            bail!(
+                "store extension artifact {url} request failed with status {}",
+                response.status()
+            );
+        }
+        let advertised_sha = response
+            .headers()
+            .get("x-artifact-sha256")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.trim().to_string());
+        let bytes = response
+            .bytes()
+            .with_context(|| format!("read store extension artifact response {url}"))?;
+        Ok((bytes.to_vec(), advertised_sha))
+    })
+    .join()
+    .map_err(|_| anyhow!("store artifact download thread panicked"))?
 }
 
 /// Read the `component.json` sidecar + the component wasm asset from `.gtxpack`

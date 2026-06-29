@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -280,7 +280,7 @@ fn downgrade_legacy_manifest(
         signatures: PackSignatures::default(),
         bootstrap: None,
         extensions: None,
-        agents: Default::default(),
+        agents: BTreeMap::new(),
     })
 }
 
@@ -419,7 +419,7 @@ mod tests {
                     })),
                 },
             )])),
-            agents: Default::default(),
+            agents: BTreeMap::new(),
         }
     }
 

@@ -11,10 +11,7 @@ use crate::extensions::{
     validate_capabilities_extension, validate_components_extension, validate_deployer_extension,
     validate_static_routes_extension,
 };
-use crate::flow_resolve::{
-    is_runtime_builtin_component, load_flow_resolve_summary, runtime_builtin_from_component_id,
-    runtime_builtin_from_operation,
-};
+use crate::flow_resolve::load_flow_resolve_summary;
 use crate::runtime::{NetworkPolicy, RuntimeContext};
 use anyhow::{Context, Result, anyhow};
 use greentic_distributor_client::{DistClient, DistOptions};
@@ -322,13 +319,7 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
                 })
                 .collect();
 
-            // Cache fetched store extensions in the SAME shared artifact cache
-            // the OCI dist client uses (`runtime.cache_dir()` → ~/.greentic/cache),
-            // not a pack-local `.packc`, so packs and store extensions share one
-            // cache root (reusable across packs and offline runs). The generated
-            // `.packc/setup.yaml` / `.packc/secret-requirements.json` assets below
-            // are build staging, not a download cache, and stay in the pack dir.
-            let cache_dir = opts.runtime.cache_dir();
+            let cache_dir = opts.pack_dir.join(".packc");
             let offline = opts.runtime.network_policy() == NetworkPolicy::Offline;
             let tool_reqs = crate::cli::ext_resolver::resolve_agent_tool_requirements(
                 &opts.pack_dir,
@@ -507,7 +498,7 @@ fn assemble_manifest(
         signatures: PackSignatures::default(),
         bootstrap,
         extensions,
-        agents: Default::default(),
+        agents: config.agents.clone(),
     };
 
     annotate_manifest_build_mode(&mut manifest, dev_mode);
@@ -937,21 +928,10 @@ fn build_flows(
 
 fn apply_summary_component_ids(flow: &mut Flow, summary: &FlowResolveSummaryV1) -> Result<()> {
     for (node_id, node) in flow.nodes.iter_mut() {
-        if let Some((component_id, operation)) =
-            runtime_builtin_from_component_id(node.component.id.as_str())
-                .or_else(|| {
-                    runtime_builtin_from_operation(
-                        node.component.id.as_str(),
-                        node.component.operation.as_deref(),
-                    )
-                })
-                .map(|(component_id, operation)| (component_id.to_string(), operation.to_string()))
-        {
-            node.component.id = ComponentId::new(&component_id).unwrap();
-            node.component.operation = Some(operation);
-            continue;
-        }
-        if is_runtime_builtin_component(node.component.id.as_str()) {
+        // Builtin/dispatch nodes (dw.agent, emit.*, …) are engine-handled and
+        // carry no resolved pack component, so they have no summary entry and
+        // keep their compiled component id/operation untouched.
+        if node_is_builtin(node) {
             continue;
         }
         let resolved = summary.nodes.get(node_id.as_str()).ok_or_else(|| {
@@ -1719,6 +1699,16 @@ async fn collect_lock_component_artifacts(
             continue;
         };
         if reference.starts_with("file://") {
+            // Local (e.g. store-acquired) component: read the wasm straight from
+            // disk and embed it at components/<id>.wasm. No registry fetch — the
+            // runner resolves it from the pack via the resolve sidecar's `local`
+            // source. (Previously such entries were skipped, so a flow that
+            // referenced a local component produced a pack the runner could not
+            // resolve.)
+            let binary = local_component_artifact(reference, &comp.component_id)?;
+            if seen_paths.insert(binary.logical_path.clone()) {
+                artifacts.push(binary);
+            }
             continue;
         }
         let parsed = ComponentSourceRef::from_str(reference).ok();
@@ -1823,6 +1813,26 @@ async fn collect_lock_component_artifacts(
     }
 
     Ok(artifacts)
+}
+
+/// Build a [`LockComponentBinary`] for a `file://<path>` local component
+/// reference: read the wasm from disk and target `components/<id>.wasm` inside
+/// the pack. Used to embed store-acquired / locally-resolved components instead
+/// of fetching them from a registry.
+fn local_component_artifact(reference: &str, component_id: &str) -> Result<LockComponentBinary> {
+    let local = reference
+        .strip_prefix("file://")
+        .ok_or_else(|| anyhow!("not a file:// reference: {reference}"))?;
+    let cache_path = PathBuf::from(local);
+    let bytes = fs::read(&cache_path)
+        .with_context(|| format!("failed to read local component {}", cache_path.display()))?;
+    let wasm_sha256 = hex::encode(Sha256::digest(&bytes));
+    Ok(LockComponentBinary {
+        component_id: component_id.to_string(),
+        logical_path: format!("components/{component_id}.wasm"),
+        source: cache_path,
+        wasm_sha256,
+    })
 }
 
 struct ResolvedLockItem {
@@ -2021,9 +2031,10 @@ fn collect_flow_component_ids(flows: &[PackFlowEntry]) -> BTreeSet<String> {
     ids
 }
 
-fn is_builtin_component_id(id: &str) -> bool {
-    matches!(id, "session.wait" | "flow.call" | "provider.invoke") || id.starts_with("emit.")
-}
+// Builtin flow-node classification lives in greentic-pack-lib as the single
+// source of truth shared with pack validation; re-exported here so the
+// resolve/build call sites keep using `crate::build::…`.
+pub(crate) use greentic_pack::builtin::{is_builtin_component_id, node_is_builtin};
 
 fn load_component_manifest_for_lock(
     pack_dir: &Path,
@@ -2359,6 +2370,7 @@ fn find_secret_requirements_file(pack_root: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::config::BootstrapConfig;
+
     use crate::runtime::resolve_runtime;
     use greentic_pack::pack_lock::{LockedComponent, PackLockV1};
     use greentic_types::cbor::canonical;
@@ -2376,6 +2388,27 @@ mod tests {
     use std::io::Read;
     use std::path::Path;
     use std::{fs, path::PathBuf};
+
+    #[test]
+    fn local_component_artifact_reads_wasm_and_targets_components_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let wasm_path = dir.path().join("demo.wasm");
+        let bytes = b"\0asm\x01\0\0\0local-component-bytes";
+        fs::write(&wasm_path, bytes).unwrap();
+
+        let reference = format!("file://{}", wasm_path.to_string_lossy());
+        let bin = local_component_artifact(&reference, "greentic.demo-component").unwrap();
+
+        assert_eq!(bin.component_id, "greentic.demo-component");
+        assert_eq!(bin.logical_path, "components/greentic.demo-component.wasm");
+        assert_eq!(bin.source, wasm_path);
+        assert_eq!(bin.wasm_sha256, hex::encode(Sha256::digest(bytes)));
+    }
+
+    #[test]
+    fn local_component_artifact_rejects_non_file_ref() {
+        assert!(local_component_artifact("oci://x/y:1", "c").is_err());
+    }
     use tempfile::tempdir;
     use zip::ZipArchive;
 
@@ -3600,7 +3633,7 @@ flows:
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
-            agents: Default::default(),
+            agents: BTreeMap::new(),
         }
     }
 
@@ -3644,6 +3677,86 @@ flows:
             msg.contains("requires network access"),
             "error message should describe missing network access, got {}",
             msg
+        );
+    }
+
+    /// Verify that agent config blobs supplied in `PackConfig.agents` are passed
+    /// through verbatim into the resulting `greentic_types::PackManifest.agents`.
+    ///
+    /// The designer populates `pack.yaml` (or the wizard-answers → PackConfig
+    /// mapping) with an `agents:` map; packc must forward it without
+    /// interpretation so the runner can deserialise each blob into its own
+    /// `AgentConfig`.
+    #[test]
+    fn assemble_manifest_passes_agent_blobs_through_to_pack_manifest() {
+        use serde_json::json;
+
+        let agent_blob = json!({
+            "agent_id": "greeter",
+            "system_prompt": "You are a helpful greeter.",
+            "tools": [],
+            "llm": { "provider": "openai", "model": "gpt-4o-mini" }
+        });
+
+        let mut agent_map = BTreeMap::new();
+        agent_map.insert("greeter".to_string(), agent_blob.clone());
+
+        let config = PackConfig {
+            pack_id: "demo.agents.test".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "test".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            capabilities: Vec::new(),
+            components: Vec::new(),
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+            agents: agent_map,
+        };
+
+        let build_products =
+            assemble_manifest(&config, std::path::Path::new("."), &[], false, false, false)
+                .expect("assemble manifest");
+
+        assert_eq!(
+            build_products.manifest.agents.get("greeter"),
+            Some(&agent_blob),
+            "PackManifest.agents must contain the agent blob keyed by agent_id"
+        );
+    }
+
+    /// Packs without an `agents` section must produce an empty map so the
+    /// runtime can handle them without special-casing.
+    #[test]
+    fn assemble_manifest_produces_empty_agents_when_none_configured() {
+        let config = PackConfig {
+            pack_id: "demo.no-agents".to_string(),
+            version: "0.1.0".to_string(),
+            kind: "application".to_string(),
+            publisher: "test".to_string(),
+            name: None,
+            display_name: None,
+            bootstrap: None,
+            capabilities: Vec::new(),
+            components: Vec::new(),
+            dependencies: Vec::new(),
+            flows: Vec::new(),
+            assets: Vec::new(),
+            extensions: None,
+            agents: BTreeMap::new(),
+        };
+
+        let build_products =
+            assemble_manifest(&config, std::path::Path::new("."), &[], false, false, false)
+                .expect("assemble manifest");
+
+        assert!(
+            build_products.manifest.agents.is_empty(),
+            "PackManifest.agents must be empty when pack.yaml contains no agents"
         );
     }
 }

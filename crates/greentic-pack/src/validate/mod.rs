@@ -421,10 +421,13 @@ impl PackValidator for ComponentReferencesExistValidator {
                 if node.component.pack_alias.is_some() {
                     continue;
                 }
-                let component_id = &node.component.id;
-                if is_runtime_builtin_component(component_id.as_str()) {
+                // Runner builtins (dw.agent[.x], emit.*, session.wait, …) are
+                // engine-handled and resolve to no pack component, so they carry
+                // no manifest component reference to validate.
+                if crate::builtin::node_is_builtin(node) {
                     continue;
                 }
+                let component_id = &node.component.id;
                 if !known.contains(component_id) && !source_ids.contains(component_id) {
                     diagnostics.push(Diagnostic {
                         severity: Severity::Error,
@@ -655,12 +658,6 @@ fn missing_file_diagnostic(code: &str, message: &str, path: Option<String>) -> D
         hint: None,
         data: Value::Null,
     }
-}
-
-fn is_runtime_builtin_component(component_id: &str) -> bool {
-    matches!(component_id, "dw.agent" | "dw.agent_graph")
-        || component_id.starts_with("dw.agent.")
-        || component_id.starts_with("dw.agent_graph.")
 }
 
 #[cfg(test)]

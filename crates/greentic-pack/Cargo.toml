@@ -9,6 +9,19 @@ repository = "https://github.com/greenticai/greentic-pack"
 documentation = "https://docs.greentic.ai/"
 homepage = "https://github.com/greenticai/greentic-pack"
 
+[features]
+default = ["native"]
+native = [
+    "dep:zip",
+    "dep:getrandom",
+    "dep:ed25519-dalek",
+    "dep:rcgen",
+    "dep:x509-parser",
+    "dep:time",
+    "dep:tempfile",
+    "dep:greentic-flow",
+]
+
 [lib]
 name = "greentic_pack"
 path = "src/lib.rs"
@@ -19,14 +32,14 @@ base64 = { workspace = true }
 blake3 = { workspace = true }
 clap = { workspace = true }
 constant_time_eq = { workspace = true }
-ed25519-dalek = { workspace = true }
-getrandom = { workspace = true }
-greentic-flow = { workspace = true }
+ed25519-dalek = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+greentic-flow = { workspace = true, optional = true }
 greentic-types = { workspace = true }
 hex = { workspace = true }
 indexmap = { workspace = true }
 pkcs8 = { workspace = true }
-rcgen = { workspace = true }
+rcgen = { workspace = true, optional = true }
 rustls-pki-types = { workspace = true }
 schemars = { workspace = true }
 semver = { workspace = true }
@@ -35,16 +48,16 @@ serde_cbor = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_bw = { workspace = true }
 sha2 = { workspace = true }
-tempfile = { workspace = true }
-time = { workspace = true }
-x509-parser = { workspace = true }
-zip = { workspace = true }
+tempfile = { workspace = true, optional = true }
+time = { workspace = true, optional = true }
+x509-parser = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
-criterion = { workspace = true }
-serde_json = { workspace = true }
 zip = { workspace = true }
+serde_json = { workspace = true }
+criterion = { workspace = true }
 
 [[bench]]
 name = "perf"
