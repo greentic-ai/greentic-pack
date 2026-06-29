@@ -243,8 +243,14 @@ pub async fn run(opts: &BuildOptions) -> Result<()> {
         opts.allow_pack_schema,
     )?;
     build.lock_components =
-        collect_lock_component_artifacts(&pack_lock, &opts.runtime, opts.bundle, opts.dry_run)
-            .await?;
+        collect_lock_component_artifacts(
+            &pack_lock,
+            &opts.pack_dir,
+            &opts.runtime,
+            opts.bundle,
+            opts.dry_run,
+        )
+        .await?;
 
     let mut bundled_paths = BTreeMap::new();
     let mut bundled_hashes = BTreeMap::new();
@@ -1680,6 +1686,7 @@ fn package_gtpack(
 
 async fn collect_lock_component_artifacts(
     lock: &greentic_pack::pack_lock::PackLockV1,
+    pack_dir: &Path,
     runtime: &RuntimeContext,
     bundle: BundleMode,
     allow_missing: bool,
@@ -1705,7 +1712,7 @@ async fn collect_lock_component_artifacts(
             // source. (Previously such entries were skipped, so a flow that
             // referenced a local component produced a pack the runner could not
             // resolve.)
-            let binary = local_component_artifact(reference, &comp.component_id)?;
+            let binary = local_component_artifact(reference, &comp.component_id, pack_dir)?;
             if seen_paths.insert(binary.logical_path.clone()) {
                 artifacts.push(binary);
             }
@@ -1819,11 +1826,18 @@ async fn collect_lock_component_artifacts(
 /// reference: read the wasm from disk and target `components/<id>.wasm` inside
 /// the pack. Used to embed store-acquired / locally-resolved components instead
 /// of fetching them from a registry.
-fn local_component_artifact(reference: &str, component_id: &str) -> Result<LockComponentBinary> {
+fn local_component_artifact(
+    reference: &str,
+    component_id: &str,
+    pack_dir: &Path,
+) -> Result<LockComponentBinary> {
     let local = reference
         .strip_prefix("file://")
         .ok_or_else(|| anyhow!("not a file:// reference: {reference}"))?;
-    let cache_path = PathBuf::from(local);
+    // Root the ref at the pack dir: `join` leaves an absolute path (legacy
+    // locks) untouched and resolves a portable relative ref against the pack
+    // root. This keeps the lock portable across machines/CI.
+    let cache_path = pack_dir.join(local);
     let bytes = fs::read(&cache_path)
         .with_context(|| format!("failed to read local component {}", cache_path.display()))?;
     let wasm_sha256 = hex::encode(Sha256::digest(&bytes));
@@ -2397,7 +2411,7 @@ mod tests {
         fs::write(&wasm_path, bytes).unwrap();
 
         let reference = format!("file://{}", wasm_path.to_string_lossy());
-        let bin = local_component_artifact(&reference, "greentic.demo-component").unwrap();
+        let bin = local_component_artifact(&reference, "greentic.demo-component", dir.path()).unwrap();
 
         assert_eq!(bin.component_id, "greentic.demo-component");
         assert_eq!(bin.logical_path, "components/greentic.demo-component.wasm");
@@ -2407,7 +2421,7 @@ mod tests {
 
     #[test]
     fn local_component_artifact_rejects_non_file_ref() {
-        assert!(local_component_artifact("oci://x/y:1", "c").is_err());
+        assert!(local_component_artifact("oci://x/y:1", "c", std::path::Path::new(".")).is_err());
     }
     use tempfile::tempdir;
     use zip::ZipArchive;
@@ -3666,8 +3680,14 @@ flows:
         );
         let lock = PackLockV1::new(components);
 
-        let err = match collect_lock_component_artifacts(&lock, &runtime, BundleMode::Cache, false)
-            .await
+        let err = match collect_lock_component_artifacts(
+            &lock,
+            std::path::Path::new("."),
+            &runtime,
+            BundleMode::Cache,
+            false,
+        )
+        .await
         {
             Ok(_) => panic!("expected offline build to fail without cached component"),
             Err(err) => err,
