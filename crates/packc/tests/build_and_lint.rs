@@ -166,7 +166,6 @@ extensions:
 }
 
 #[test]
-#[ignore = "fixture component ../components/mcp.exec/component.wasm not present in CI checkout; unblocks research release"]
 fn build_weather_demo_dry_run() {
     let (_pack_temp, pack_dir) = copy_weather_demo();
     write_weather_summary(&pack_dir);

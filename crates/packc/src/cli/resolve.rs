@@ -142,8 +142,14 @@ fn collect_from_summary(
         let (reference, digest) = match source_ref {
             FlowResolveSummarySourceRefV1::Local { path } => {
                 let abs = normalize_local(pack_dir, flow, path)?;
+                // Store the path relative to the pack root so the lock is portable
+                // across machines/CI. An absolute file:// path baked here only
+                // resolves on the box that ran `resolve`; the read side
+                // (build.rs::local_component_artifact) roots relative refs at the
+                // pack dir and leaves absolute legacy refs untouched.
+                let rel = abs.strip_prefix(pack_dir).unwrap_or(abs.as_path());
                 (
-                    format!("file://{}", abs.to_string_lossy()),
+                    format!("file://{}", rel.to_string_lossy()),
                     resolve.digest.clone(),
                 )
             }
