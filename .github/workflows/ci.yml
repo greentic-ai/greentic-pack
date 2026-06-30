@@ -192,7 +192,11 @@ jobs:
       - name: Derive release tag and title from workspace version
         run: |
           set -euo pipefail
-          version=$(perl -ne 'print $1 if /^version\s*=\s*"([^"]+)"/' Cargo.toml | head -n 1)
+          # Only the workspace package version (first `^version = "..."`, under
+          # [workspace.package]); stop before [workspace.dependencies] whose
+          # entries also start lines with `version = "..."` and would otherwise
+          # concatenate into a malformed tag.
+          version=$(perl -ne 'if (/^version\s*=\s*"([^"]+)"/) { print "$1\n"; last }' Cargo.toml)
           tag="v${version}"
           echo "RELEASE_TAG=${tag}" >> "$GITHUB_ENV"
           echo "RELEASE_TITLE=${tag}" >> "$GITHUB_ENV"
