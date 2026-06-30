@@ -32,9 +32,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 ci/local_check.sh
 ```
 
-`ci/local_check.sh` runs: format check, interfaces bindings import guard, clippy, build, tests, builder demo determinism, and canonical gtpack generation. It auto-installs `greentic-component` via `cargo binstall` if missing. Control with env vars: `LOCAL_CHECK_ONLINE=1`, `LOCAL_CHECK_STRICT=0`, `LOCAL_CHECK_VERBOSE=0`.
+`ci/local_check.sh` runs: format check, interfaces bindings import guard, clippy, build, tests, builder demo determinism, and canonical gtpack generation. It auto-installs `greentic-component` via `cargo binstall` if missing. Env-var defaults: `LOCAL_CHECK_ONLINE=1` (on), `LOCAL_CHECK_STRICT=0` (off), `LOCAL_CHECK_VERBOSE=0` (off). Override as needed.
 
 `ci/check_no_duplicate_canonical_wit.sh` guards against accidentally defining canonical `greentic:component` WIT in this repo (greentic-pack must not own that package).
+
+`scripts/version-tools.sh` provides version helper functions used during release workflows. `tools/i18n.sh` manages i18n string extraction/updates for pack wizard prompts.
 
 ## Workspace Structure
 
@@ -53,11 +55,13 @@ ci/local_check.sh
 - **Build pipeline**: `pack.yaml` → resolve components into `pack.lock.cbor` → compile flows → **i18n materialisation** (see below) → generate Wasm component from template → produce canonical `.gtpack`.
 - **i18n materialisation step**: if the `wizard apply` answers include a `langs` field (a JSON string array, e.g. `["id","ja"]`), the build extracts translatable strings from `assets/cards/*.json` into `assets/i18n/en.json`, then invokes the `greentic-i18n-translator` binary once per requested language to produce `assets/i18n/<lang>.json`, and finally writes `assets/i18n/_manifest.json` (a sorted JSON array of all locale codes, always including `en`). Existing locale files (hand-authored or from a previous build) are kept as-is (carry-over). The translator binary is located via `GREENTIC_I18N_TRANSLATOR_BIN` / `GREENTIC_I18N_TRANSLATOR_DEV_BIN`, then `PATH`. The step is **non-fatal**: if the binary is absent or a language fails, the build succeeds and the skipped languages are reported on stderr.
 - **Pack kinds**: application, infrastructure, provider, distribution-bundle.
-- **Component model**: Uses WebAssembly Component Model (wasmtime v43, wit-bindgen/wit-component). Components expose the `greentic:pack-export` interface.
+- **Component model**: Uses WebAssembly Component Model (wasmtime 45, wit-bindgen 0.54, wit-component 0.247). Components expose the `greentic:pack-export` interface.
 - **Signing**: Ed25519 via `ed25519-dalek` for manifest signing/verification.
 
 ## Key Conventions
 
+- **Workspace version**: `1.1.0-dev.0` (dev lane). Dual-role binary crate — subject to binary bifurcation on dev publish (`greentic-pack` lib publishes as pre-release, binary publishes as `greentic-pack-dev`).
+- **WASM toolchain variant**: This repo targets `wasm32-wasip2` (see `rust-toolchain.toml`). Run `cargo check --target wasm32-wasip2` to validate WASM compilation alongside host checks.
 - `#![forbid(unsafe_code)]` — no unsafe code allowed.
 - Rust 2024 edition, pinned to rustc 1.95.0 (`rust-toolchain.toml`).
 - Use `greentic_interfaces::canonical` — never import from `greentic_interfaces::bindings::*` (enforced by `ci/check_no_interfaces_bindings_imports.sh`).

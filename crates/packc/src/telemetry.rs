@@ -49,7 +49,7 @@ fn export_config(mode: ExportMode, cfg: &TelemetryConfig) -> ExportConfig {
 
 /// Map the provided tenant context into the task-local telemetry slot.
 pub fn set_current_tenant_ctx(ctx: &TenantCtx) {
-    let mut telemetry = TelemetryCtx::new(ctx.tenant_id.as_ref());
+    let mut telemetry = TelemetryCtx::new(ctx.tenant_id.as_ref()).with_env(ctx.env.as_str());
 
     if let Some(session) = ctx.session_id() {
         telemetry = telemetry.with_session(session);
@@ -62,6 +62,21 @@ pub fn set_current_tenant_ctx(ctx: &TenantCtx) {
     }
     if let Some(provider) = ctx.provider_id() {
         telemetry = telemetry.with_provider(provider);
+    }
+    // B11 rollout identifiers ride the free-form attributes map under the same
+    // canonical keys the greentic-types bridge uses; mirror that projection so
+    // packc telemetry carries env + revision/bundle/customer attribution too.
+    if let Some(v) = ctx.attributes.get("gt.customer_id") {
+        telemetry = telemetry.with_customer_id(v);
+    }
+    if let Some(v) = ctx.attributes.get("gt.deployment_id") {
+        telemetry = telemetry.with_deployment_id(v);
+    }
+    if let Some(v) = ctx.attributes.get("gt.bundle_id") {
+        telemetry = telemetry.with_bundle_id(v);
+    }
+    if let Some(v) = ctx.attributes.get("gt.revision_id") {
+        telemetry = telemetry.with_revision_id(v);
     }
 
     set_current_telemetry_ctx(telemetry);
@@ -102,11 +117,14 @@ mod tests {
     fn set_current_tenant_ctx_accepts_full_context() {
         let tenant = TenantId::from_str("tenant-a").expect("tenant");
         let env = EnvId::from_str("dev").expect("env");
-        let ctx = TenantCtx::new(env, tenant)
+        let mut ctx = TenantCtx::new(env, tenant)
             .with_session("sess-123")
             .with_flow("flow.main")
             .with_node("node-1")
             .with_provider("provider-1");
+        // Exercise the B11 rollout-ID projection branches.
+        ctx.attributes
+            .insert("gt.bundle_id".to_string(), "customer.support".to_string());
 
         set_current_tenant_ctx(&ctx);
     }

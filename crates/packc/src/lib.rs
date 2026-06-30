@@ -15,10 +15,10 @@ pub mod new;
 pub mod pack_lock_doctor;
 pub mod path_safety;
 pub mod runtime;
+pub mod setup_gen;
 pub mod telemetry;
 pub mod validator;
 
-pub mod setup_gen;
 pub mod store_client;
 
 pub use cli::BuildArgs;
