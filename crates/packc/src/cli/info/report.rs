@@ -111,6 +111,7 @@ fn pack_kind_to_string(k: &greentic_pack::PackKind) -> &'static str {
         K::RecommendationProvider => "recommendation-provider",
         K::DistributionBundle => "distribution-bundle",
         K::RolloutStrategy => "rollout-strategy",
+        K::DwApplication => "dw-application",
     }
 }
 

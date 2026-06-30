@@ -2,6 +2,7 @@ pack_id: dev.local.valid-minimal
 version: 0.1.0
 kind: application
 publisher: Test
+capabilities: []
 components:
 - id: dev.local.component
   version: 0.1.0

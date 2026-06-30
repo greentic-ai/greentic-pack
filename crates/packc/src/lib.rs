@@ -10,6 +10,7 @@ pub mod extension_refs;
 pub mod extensions;
 pub mod external_tools;
 pub mod flow_resolve;
+pub mod i18n_build;
 pub mod new;
 pub mod pack_lock_doctor;
 pub mod path_safety;

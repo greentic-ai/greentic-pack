@@ -188,19 +188,16 @@ pub fn enforce_sidecar_mappings(pack_dir: &Path, flow: &FlowConfig, compiled: &F
 }
 
 /// Compute which nodes in a flow lack resolve entries.
+///
+/// Builtin nodes (`emit.*`, `dw.agent[.x]`, `dw.agent_graph[.x]`,
+/// `session.wait`, `flow.call`, `provider.invoke`, `{sorla,operala,agentic}.call`)
+/// are executed by the runner engine and resolve to no pack component, so they
+/// never require a resolve-sidecar mapping and are excluded here.
 pub fn missing_node_mappings(flow: &Flow, doc: &FlowResolveV1) -> Vec<String> {
     flow.nodes
         .iter()
-        .filter_map(|(node, flow_node)| {
-            if is_runtime_builtin_component(flow_node.component.id.as_str())
-                || runtime_builtin_from_operation(
-                    flow_node.component.id.as_str(),
-                    flow_node.component.operation.as_deref(),
-                )
-                .is_some()
-            {
-                return None;
-            }
+        .filter(|(_, def)| !crate::build::node_is_builtin(def))
+        .filter_map(|(node, _)| {
             let id = node.to_string();
             if doc.nodes.contains_key(id.as_str()) {
                 None
@@ -302,18 +299,12 @@ fn enforce_summary_mappings(
 }
 
 fn missing_summary_node_mappings(flow: &Flow, doc: &FlowResolveSummaryV1) -> Vec<String> {
+    // Builtin nodes resolve to no pack component (see `missing_node_mappings`),
+    // so they need no resolve-summary entry either.
     flow.nodes
         .iter()
-        .filter_map(|(node, flow_node)| {
-            if is_runtime_builtin_component(flow_node.component.id.as_str())
-                || runtime_builtin_from_operation(
-                    flow_node.component.id.as_str(),
-                    flow_node.component.operation.as_deref(),
-                )
-                .is_some()
-            {
-                return None;
-            }
+        .filter(|(_, def)| !crate::build::node_is_builtin(def))
+        .filter_map(|(node, _)| {
             let id = node.to_string();
             if doc.nodes.contains_key(id.as_str()) {
                 None
@@ -322,34 +313,6 @@ fn missing_summary_node_mappings(flow: &Flow, doc: &FlowResolveSummaryV1) -> Vec
             }
         })
         .collect()
-}
-
-pub(crate) fn is_runtime_builtin_component(component_id: &str) -> bool {
-    matches!(component_id, "dw.agent" | "dw.agent_graph")
-        || runtime_builtin_from_component_id(component_id).is_some()
-}
-
-pub(crate) fn runtime_builtin_from_component_id(
-    component_id: &str,
-) -> Option<(&'static str, &str)> {
-    if let Some(agent_id) = component_id.strip_prefix("dw.agent.") {
-        return Some(("dw.agent", agent_id));
-    }
-    if let Some(agent_id) = component_id.strip_prefix("dw.agent_graph.") {
-        return Some(("dw.agent_graph", agent_id));
-    }
-    None
-}
-
-pub(crate) fn runtime_builtin_from_operation<'a>(
-    component_id: &str,
-    operation: Option<&'a str>,
-) -> Option<(&'static str, &'a str)> {
-    if component_id != "component.exec" {
-        return None;
-    }
-    let operation = operation?;
-    runtime_builtin_from_component_id(operation)
 }
 
 fn build_flow_resolve_summary_fallback(

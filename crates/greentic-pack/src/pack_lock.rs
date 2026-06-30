@@ -1,10 +1,15 @@
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
+#[cfg(feature = "native")]
 use std::fs;
+#[cfg(feature = "native")]
 use std::path::Path;
 
-use anyhow::{Context, Result};
+#[cfg(feature = "native")]
+use anyhow::Context;
+use anyhow::Result;
+#[cfg(feature = "native")]
 use greentic_types::cbor::canonical;
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +144,7 @@ fn is_hex_64(value: &str) -> bool {
 }
 
 /// Read a pack.lock.cbor file from disk.
+#[cfg(feature = "native")]
 pub fn read_pack_lock(path: &Path) -> Result<PackLockV1> {
     let raw = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     let lock: PackLockV1 = canonical::from_cbor(&raw).context("failed to decode pack.lock.cbor")?;
@@ -147,6 +153,7 @@ pub fn read_pack_lock(path: &Path) -> Result<PackLockV1> {
 }
 
 /// Write a pack.lock.cbor file to disk with deterministic ordering.
+#[cfg(feature = "native")]
 pub fn write_pack_lock(path: &Path, lock: &PackLockV1) -> Result<()> {
     validate_pack_lock(lock)?;
     let mut normalized = lock.clone();
