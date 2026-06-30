@@ -142,8 +142,14 @@ fn collect_from_summary(
         let (reference, digest) = match source_ref {
             FlowResolveSummarySourceRefV1::Local { path } => {
                 let abs = normalize_local(pack_dir, flow, path)?;
+                // Store the path relative to the pack root so the lock is portable
+                // across machines/CI. An absolute file:// path baked here only
+                // resolves on the box that ran `resolve`; the read side
+                // (build.rs::local_component_artifact) roots relative refs at the
+                // pack dir and leaves absolute legacy refs untouched.
+                let rel = abs.strip_prefix(pack_dir).unwrap_or(abs.as_path());
                 (
-                    format!("file://{}", abs.to_string_lossy()),
+                    format!("file://{}", rel.to_string_lossy()),
                     resolve.digest.clone(),
                 )
             }
@@ -333,8 +339,11 @@ impl PackResolver {
 impl ComponentResolver for PackResolver {
     fn resolve(&self, req: ResolveReq) -> Result<ResolvedComponent> {
         if req.reference.starts_with("file://") {
-            let path = strip_file_uri_prefix(&req.reference);
-            let bytes = fs::read(path).with_context(|| format!("read {}", path))?;
+            let rel = strip_file_uri_prefix(&req.reference);
+            // Root the (possibly relative) portable lock ref at the pack dir so
+            // validation resolves it; absolute legacy refs are left untouched by join().
+            let path = self.pack_dir.join(rel);
+            let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
             return Ok(ResolvedComponent {
                 bytes,
                 resolved_digest: req.expected_digest,
@@ -342,7 +351,7 @@ impl ComponentResolver for PackResolver {
                 abi_version: req.abi_version,
                 world: req.world,
                 component_version: req.component_version,
-                source_path: Some(PathBuf::from(path)),
+                source_path: Some(path),
             });
         }
 

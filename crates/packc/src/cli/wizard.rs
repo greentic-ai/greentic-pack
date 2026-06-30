@@ -1478,9 +1478,11 @@ fn upsert_extension_dependencies(
             if existing.source.kind != supplied.source.kind
                 || existing.source.reference != supplied.source.reference
             {
-                eprintln!(
+                tracing::warn!(
                     "pack.extensions.json: replacing extension `{}` source `{}` with supplied `{}`",
-                    supplied.id, existing.source.reference, supplied.source.reference
+                    supplied.id,
+                    existing.source.reference,
+                    supplied.source.reference
                 );
             }
             *existing = supplied.clone();
