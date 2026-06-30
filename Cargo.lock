@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-pack"
-version = "1.1.0-dev.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2169,7 +2169,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-pack-lib"
-version = "1.1.0-dev.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3581,7 +3581,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "pack_component"
-version = "1.1.0-dev.0"
+version = "1.1.0"
 dependencies = [
  "greentic-interfaces-host",
  "serde",
@@ -3591,7 +3591,7 @@ dependencies = [
 
 [[package]]
 name = "pack_component_template"
-version = "1.1.0-dev.0"
+version = "1.1.0"
 
 [[package]]
 name = "page_size"
