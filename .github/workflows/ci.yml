@@ -96,9 +96,17 @@ jobs:
           fi
           major_minor="$(echo "$ws_version" | cut -d. -f1,2)"
           echo "Workspace version: $ws_version (line: $major_minor.x)"
-          line_tags="$(git tag -l "v${major_minor}.*" --sort=-v:refname)"
+          all_tags="$(git tag -l "v${major_minor}.*" --sort=-v:refname)"
+          # Filter to stable tags only: dev-lane tags use GitHub run IDs as
+          # patch numbers (10+ digits, e.g. v1.1.28349987150) which sort
+          # above real stable releases (v1.1.1, v1.1.2). Comparing against
+          # a dev tag uses the wrong API surface and produces false positives.
+          line_tags="$(echo "$all_tags" | while IFS= read -r t; do
+            patch="${t##*.}"
+            if [ "$patch" -le 999 ] 2>/dev/null; then echo "$t"; fi
+          done)"
           if [ -z "$line_tags" ]; then
-            echo "No v${major_minor}.* tag found; semver-checks needs a same-line baseline" >&2
+            echo "No stable v${major_minor}.* tag found (filtered out $(echo "$all_tags" | wc -l) dev tags); semver-checks needs a same-line baseline" >&2
             exit 1
           fi
           newest_tag="$(echo "$line_tags" | sed -n '1p')"
