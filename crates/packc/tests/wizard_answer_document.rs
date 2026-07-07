@@ -3,12 +3,27 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use serde_json::{Value, json};
 use tempfile::TempDir;
 use walkdir::WalkDir;
+
+/// Assert a `greentic-pack` subprocess succeeded, surfacing its exit code,
+/// stdout, and stderr on failure. The bare `assert!(output.status.success(),
+/// "…")` form reports nothing when the subprocess fails, which makes the
+/// occasional environmental CI flake in these binary-driven tests impossible
+/// to diagnose after the fact.
+fn assert_cli_success(output: &Output, context: &str) {
+    assert!(
+        output.status.success(),
+        "{context} (exit {:?})\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
 
 #[test]
 fn wizard_run_emit_answers_writes_envelope() {
@@ -192,7 +207,7 @@ fn wizard_apply_answers_runs_pipeline() {
     unsafe {
         std::env::remove_var("GREENTIC_PACK_WIZARD_SELF_EXE");
     }
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("doctor --in ."));
@@ -246,7 +261,7 @@ fn wizard_apply_answers_with_sign_runs_sign_step() {
     unsafe {
         std::env::remove_var("GREENTIC_PACK_WIZARD_SELF_EXE");
     }
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("doctor --in ."));
@@ -305,7 +320,7 @@ fn wizard_apply_answers_stage_asset_file_into_pack() {
         .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run wizard apply");
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
     assert_eq!(
         fs::read_to_string(pack_dir.join("assets/docs/readme-snippet.md"))
             .expect("read staged file"),
@@ -406,7 +421,7 @@ fn wizard_apply_answers_stage_asset_directory_recursively() {
         .arg(&answers_path)
         .output()
         .expect("run wizard apply");
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
     assert_eq!(
         fs::read_to_string(pack_dir.join("assets/cards/hello.json")).expect("read root copy"),
         "{\"hello\":true}\n"
@@ -686,7 +701,7 @@ fn wizard_asset_staging_resolves_relative_sources_from_answers_file_directory() 
         .env_remove("GREENTIC_COMPONENT_BIN")
         .output()
         .expect("run wizard apply");
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
     assert_eq!(
         fs::read_to_string(pack_dir.join("assets/from-answers-dir.txt")).expect("read staged"),
         "relative source base\n"
@@ -715,7 +730,7 @@ fn wizard_asset_staging_supports_absolute_source_paths() {
     );
 
     let output = run_wizard_answers("apply", &answers_path);
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
     assert_eq!(
         fs::read_to_string(pack_dir.join("assets/absolute.txt")).expect("read staged"),
         "absolute path\n"
@@ -1651,7 +1666,7 @@ fn wizard_apply_replays_recorded_delegate_and_pipeline_actions() {
         std::env::remove_var("GREENTIC_FLOW_BIN");
         std::env::remove_var("GREENTIC_COMPONENT_BIN");
     }
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
     assert!(calls.contains("flow:wizard ."));
@@ -1762,7 +1777,7 @@ exit 0\n",
         std::env::remove_var("GREENTIC_FLOW_BIN");
         std::env::remove_var("GREENTIC_COMPONENT_BIN");
     }
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
     assert!(pack_dir.is_dir(), "apply should scaffold pack directory");
 
     let calls = fs::read_to_string(&log_path).expect("read call log");
@@ -2825,7 +2840,7 @@ exit 0
         .env("GREENTIC_COMPONENT_BIN", &component_exe)
         .output()
         .expect("run wizard apply");
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let replayed_flow: Value = serde_json::from_slice(
         &fs::read(pack_dir.join("flow.replayed.json")).expect("read replayed flow answers"),
@@ -2968,7 +2983,7 @@ exit 0
         .env("GREENTIC_COMPONENT_BIN", &component_exe)
         .output()
         .expect("run wizard apply");
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let replayed_component: Value = serde_json::from_slice(
         &fs::read(pack_dir.join("component.replayed.json"))
@@ -3357,7 +3372,7 @@ fn wizard_apply_writes_extension_dependencies_file_from_answers() {
     write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
 
     let output = run_wizard_answers("apply", &answers_path);
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let doc = read_extensions_json(&pack_dir);
     assert_eq!(doc.get("version").and_then(Value::as_u64), Some(1));
@@ -3441,7 +3456,7 @@ fn wizard_apply_extension_dependencies_preserves_existing_manual_entries() {
     write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
 
     let output = run_wizard_answers("apply", &answers_path);
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let extensions = read_extensions_json(&pack_dir)
         .get("extensions")
@@ -3491,7 +3506,7 @@ fn wizard_apply_empty_extension_dependencies_leaves_existing_file_untouched() {
     write_extension_dependency_answers(&answers_path, &pack_dir, json!([]));
 
     let output = run_wizard_answers("apply", &answers_path);
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let after = fs::read(pack_dir.join("pack.extensions.json")).expect("read after");
     assert_eq!(
@@ -3528,7 +3543,7 @@ fn wizard_apply_absent_extension_dependencies_creates_no_file() {
     .expect("write answers");
 
     let output = run_wizard_answers("apply", &answers_path);
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
     assert!(
         !pack_dir.join("pack.extensions.json").exists(),
         "absent extension_dependencies must not create a file"
@@ -3566,7 +3581,7 @@ fn wizard_apply_extension_dependencies_supplied_entry_wins_on_conflict() {
     write_extension_dependency_answers(&answers_path, &pack_dir, json!([http_store_dependency()]));
 
     let output = run_wizard_answers("apply", &answers_path);
-    assert!(output.status.success(), "wizard apply should succeed");
+    assert_cli_success(&output, "wizard apply should succeed");
 
     let extensions = read_extensions_json(&pack_dir)
         .get("extensions")
