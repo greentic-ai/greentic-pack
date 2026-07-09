@@ -18,6 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_DIR: target/coverage-ci
+      # Coverage is read from each binary's __llvm_covmap section, not DWARF, so
+      # debug info is dead weight. Leaving it on builds 37 GB of instrumented
+      # artifacts across 65 test binaries that each statically link wasmtime,
+      # which makes linking by far the heaviest phase of this job.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
 
@@ -56,8 +62,12 @@ jobs:
         with:
           shared-key: nightly-coverage-rust-1.95-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
+      # Tee the run so a failure stays diagnosable even when GitHub drops the
+      # job log blob, as it did for the exit-4 run on 2026-07-09.
       - name: Validate repo coverage policy
-        run: greentic-dev coverage
+        run: |
+          set -o pipefail
+          greentic-dev coverage 2>&1 | tee coverage-run.log
 
       - name: Upload coverage artifacts
         if: always()
@@ -66,6 +76,6 @@ jobs:
           name: nightly-coverage-artifacts
           path: |
             coverage-policy.json
+            coverage-run.log
             target/coverage/**
-            target/llvm-cov-target/**
           if-no-files-found: ignore
