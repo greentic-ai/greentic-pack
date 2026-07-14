@@ -60,7 +60,7 @@ ci/local_check.sh
 
 ## Key Conventions
 
-- **Workspace version**: `1.1.0-dev.0` (dev lane). Dual-role binary crate — subject to binary bifurcation on dev publish (`greentic-pack` lib publishes as pre-release, binary publishes as `greentic-pack-dev`).
+- **Workspace version**: `1.2.0-dev.0` (dev lane). Dual-role binary crate — subject to binary bifurcation on dev publish (`greentic-pack` lib publishes as pre-release, binary publishes as `greentic-pack-dev`).
 - **WASM toolchain variant**: This repo targets `wasm32-wasip2` (see `rust-toolchain.toml`). Run `cargo check --target wasm32-wasip2` to validate WASM compilation alongside host checks.
 - `#![forbid(unsafe_code)]` — no unsafe code allowed.
 - Rust 2024 edition, pinned to rustc 1.95.0 (`rust-toolchain.toml`).
