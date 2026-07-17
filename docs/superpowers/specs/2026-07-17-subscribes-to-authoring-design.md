@@ -55,8 +55,9 @@ require threading through `greentic-flow` (a third repo, trunk `develop`) for no
 ```
 pack.yaml  flows[].subscribes_to: ["orders.*"]
    → FlowConfig.subscribes_to (cfg)                      [greentic-pack config.rs]
-   → PackFlowEntry.subscribes_to  (top-level)            [greentic-types + greentic-pack build.rs:909]
-   → manifest.cbor  (serde default, snake_case key)      [encode_pack_manifest]
+   → PackFlowEntry.subscribes_to                         [greentic-types type + greentic-pack build.rs:909]
+   → EncodedFlowEntry.subscribes_to (canonical codec)    [greentic-types src/cbor/mod.rs encode+decode]
+   → manifest.cbor  (string key "subscribes_to")         [encode_pack_manifest]
    → parse_flow_entry reads top-level "subscribes_to"    [greentic-start messaging_app.rs:633 — EXISTS]
    → select_target_flows                                 [greentic-start event_router.rs — EXISTS, verified]
 ```
@@ -66,20 +67,45 @@ two left-most write-side links.
 
 ### Slice 1 — `greentic-types` (must publish before Slice 2 can adopt)
 
-Add to `PackFlowEntry` (`src/pack_manifest.rs:132-149`), alongside `tags`/`entrypoints`:
+**Correction found while planning:** `manifest.cbor` is NOT produced by serde-deriving `PackManifest`.
+It is written by greentic-types' own **canonical CBOR codec** (`greentic_types::encode_pack_manifest`,
+`src/cbor/mod.rs`), which serializes a compact intermediate `EncodedFlowEntry` (`cbor/mod.rs:186-193`)
+with plain string field names (`id`/`kind`/`flow`/`tags`/`entrypoints`). That is the string-keyed map
+the runtime reads (`extract_string_array_from_map(map,"subscribes_to")` matched the string key when I
+hand-injected it in the live B2 test). So the field must be threaded through the CANONICAL CODEC, not
+just added to the public type. Slice 1 is therefore four edits, not one:
 
-```rust
-#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
-pub subscribes_to: Vec<String>,
-```
+1. **`PackFlowEntry`** (`src/pack_manifest.rs:136-149`), alongside `tags`/`entrypoints`:
+   ```rust
+   #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+   pub subscribes_to: Vec<String>,
+   ```
+2. **`EncodedFlowEntry`** (`src/cbor/mod.rs:186-193`) — the compact codec struct that actually hits
+   `manifest.cbor`. `#[derive(Serialize,Deserialize)]`, plain names, so:
+   ```rust
+   #[serde(default, skip_serializing_if = "Vec::is_empty")]
+   subscribes_to: Vec<String>,
+   ```
+   The plain field name serializes as the CBOR string key `subscribes_to`, matching the runtime read.
+3. **Encode thread** (`cbor/mod.rs:304-309`, building `EncodedFlowEntry` from `PackFlowEntry`):
+   `subscribes_to: flow_entry.subscribes_to.clone(),`
+4. **Decode thread** (`cbor/mod.rs:576-582`, building `PackFlowEntry` from `EncodedFlowEntry`):
+   `subscribes_to: flow_entry.subscribes_to,`
 
-- Wire-compatible: old `manifest.cbor` decodes with an empty vec (serde `default`); old readers
-  ignore the new key; `skip_serializing_if` keeps existing golden manifests byte-identical when the
-  field is empty. No `deny_unknown_fields` exists in the crate. This is the exact shape of the
-  in-crate `agents` field precedent (`pack_manifest.rs:121-129`).
-- `PackFlowEntry` is **not** `#[non_exhaustive]`, so every struct-literal construction site must add
-  `subscribes_to`. The compiler enumerates them; expect at least `greentic-pack build.rs:909` and any
-  test fixtures. Fix each (empty `Vec::new()` where not authored).
+- Wire-compatible: `#[serde(default)]` lets old `manifest.cbor` (no key) decode to an empty vec;
+  `skip_serializing_if` keeps existing golden manifests byte-identical when empty. No
+  `deny_unknown_fields` anywhere in the crate. `PackFlowEntry.subscribes_to` follows the in-crate
+  `agents` precedent (`pack_manifest.rs:121-129`).
+- `PackFlowEntry` is **not** `#[non_exhaustive]`, so every struct-literal site must add the field. In
+  greentic-types those are: the decode at `cbor/mod.rs:576`, and test fixtures
+  `tests/pack_manifest_roundtrip.rs:147`, `tests/pack_validation_components.rs:20` and `:53`. The
+  compiler enumerates them; greentic-pack `build.rs:909` is fixed in Slice 2.
+- **Discriminating test (catches the exact codec trap):** a round-trip through the CANONICAL codec —
+  build a `PackManifest` whose flow carries `subscribes_to: ["orders.*"]`, `encode_pack_manifest` →
+  decode → assert the field survives. If the field is added to `PackFlowEntry` but NOT threaded
+  through `EncodedFlowEntry`, this test FAILS (the canonical encode silently drops it). Extend the
+  existing `tests/pack_manifest_roundtrip.rs`. Plus a backward-compat test: an old-shape encoded
+  manifest without the key decodes to an empty vec.
 - **Branch/version:** the local `research` checkout is STALE (at `1.2.0-research.1`; behind published).
   The real publish lane is `origin/research` @ `1.3.0-research.1` (tag `v1.3.0-research.1`, commit
   `68e37f1`). Base the change on `origin/research`, bump `1.3.0-research.1` → `1.3.0-research.2`.
