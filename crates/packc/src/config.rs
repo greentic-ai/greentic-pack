@@ -123,6 +123,8 @@ pub struct FlowConfig {
     pub tags: Vec<String>,
     #[serde(default)]
     pub entrypoints: Vec<String>,
+    #[serde(default)]
+    pub subscribes_to: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -484,6 +486,24 @@ mod tests {
             },
         );
         validate_extensions(Some(&extensions), false).expect("unknown extensions should pass");
+    }
+
+    #[test]
+    fn flow_config_parses_subscribes_to() {
+        let cfg: PackConfig = serde_yaml_bw::from_str(
+            r#"pack_id: dev.local.subs
+version: 0.1.0
+kind: application
+publisher: Test
+flows:
+  - id: main
+    file: flows/main.ygtc
+    subscribes_to: ["orders.*"]
+"#,
+        )
+        .expect("deserialize pack config");
+        assert_eq!(cfg.flows.len(), 1);
+        assert_eq!(cfg.flows[0].subscribes_to, vec!["orders.*".to_string()]);
     }
 
     #[test]

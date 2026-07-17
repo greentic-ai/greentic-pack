@@ -572,6 +572,7 @@ mod tests {
             file: PathBuf::from("flows/main.ygtc"),
             tags: Vec::new(),
             entrypoints: Vec::new(),
+            subscribes_to: Vec::new(),
         }
     }
 

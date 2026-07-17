@@ -505,6 +505,35 @@ fn build_materializes_component_manifest_when_available() {
 }
 
 #[test]
+fn build_writes_subscribes_to_into_manifest() {
+    let temp = TempDir::new().expect("temp dir");
+    let pack_dir = write_pack_fixture(&temp, true);
+    let cache_dir = temp.path().join("cache");
+    let digest = read_lock_digest(&pack_dir);
+    cache_component(&cache_dir, &digest, false);
+
+    let output = build_pack(&pack_dir, &cache_dir, true);
+    assert!(
+        output.status.success(),
+        "build failed:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let manifest_bytes = fs::read(pack_dir.join("dist/manifest.cbor")).expect("manifest");
+    let manifest = decode_pack_manifest(&manifest_bytes).expect("decode manifest");
+    let flow = manifest
+        .flows
+        .iter()
+        .find(|entry| entry.id.to_string() == "main")
+        .expect("main flow entry in manifest");
+    // The fixture flow declares `subscribes_to: ["orders.*"]`. This asserts the pack
+    // compiler threads it FlowConfig -> build.rs PackFlowEntry -> canonical manifest.cbor.
+    // Mutating build.rs to drop `cfg.subscribes_to.clone()` (empty vec) fails this.
+    assert_eq!(flow.subscribes_to, vec!["orders.*".to_string()]);
+}
+
+#[test]
 fn build_rejects_component_manifest_id_mismatch() {
     let temp = TempDir::new().expect("temp dir");
     let pack_dir = write_pack_with_manifest_mismatch(&temp);

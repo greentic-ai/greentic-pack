@@ -912,6 +912,7 @@ fn build_flows(
             flow,
             tags: cfg.tags.clone(),
             entrypoints,
+            subscribes_to: cfg.subscribes_to.clone(),
         };
 
         let flow_id = flow_entry.id.to_string();
@@ -3594,6 +3595,7 @@ flows:
             flow,
             tags: Vec::new(),
             entrypoints: Vec::new(),
+            subscribes_to: Vec::new(),
         }
     }
 
@@ -3640,6 +3642,7 @@ flows:
                 flow,
                 tags: Vec::new(),
                 entrypoints: Vec::new(),
+                subscribes_to: Vec::new(),
             }],
             dependencies: Vec::new(),
             capabilities: Vec::new(),

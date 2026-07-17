@@ -8,3 +8,4 @@ flows:
     file: flows/main.ygtc
     tags: [default]
     entrypoints: [default]
+    subscribes_to: ["orders.*"]

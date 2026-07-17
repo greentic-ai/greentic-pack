@@ -248,6 +248,7 @@ fn default_flow(id: String, file: PathBuf, entrypoints: Vec<String>) -> FlowConf
         } else {
             entrypoints
         },
+        subscribes_to: Vec::new(),
     }
 }
 

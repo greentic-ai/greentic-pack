@@ -14,6 +14,7 @@ fn flow_config(name: &str) -> FlowConfig {
         file: PathBuf::from(format!("flows/{name}.ygtc")),
         tags: Vec::new(),
         entrypoints: Vec::new(),
+        subscribes_to: Vec::new(),
     }
 }
 

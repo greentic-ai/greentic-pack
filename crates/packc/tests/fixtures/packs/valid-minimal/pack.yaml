@@ -31,4 +31,5 @@ flows:
   - default
   entrypoints:
   - main
+  subscribes_to: []
 assets: []
