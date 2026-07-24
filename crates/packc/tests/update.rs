@@ -76,6 +76,7 @@ nodes:
         file: PathBuf::from("flows/old.ygtc"),
         tags: vec!["legacy".to_string()],
         entrypoints: vec!["legacy".to_string()],
+        subscribes_to: Vec::new(),
     });
     fs::write(&pack_yaml, serde_yaml_bw::to_string(&cfg).unwrap()).unwrap();
 
