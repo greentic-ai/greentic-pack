@@ -123,6 +123,10 @@ pub struct FlowConfig {
     pub tags: Vec<String>,
     #[serde(default)]
     pub entrypoints: Vec<String>,
+    /// Inbound business-event topics this flow subscribes to. Materialized into
+    /// `PackFlowEntry.tags` via `crate::event_topics::event_topic_tag`.
+    #[serde(default)]
+    pub subscribes_to: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
