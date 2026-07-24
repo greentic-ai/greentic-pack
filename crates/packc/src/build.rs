@@ -869,6 +869,19 @@ fn build_bootstrap(
     Ok(Some(spec))
 }
 
+/// Merge a flow's author tags with its `subscribes_to` topics, encoding each
+/// non-blank topic as an `event-topic:` tag. Author tags come first, order preserved.
+pub(crate) fn merge_flow_tags(author_tags: &[String], subscribes_to: &[String]) -> Vec<String> {
+    let mut tags = author_tags.to_vec();
+    for topic in subscribes_to {
+        if topic.trim().is_empty() {
+            continue;
+        }
+        tags.push(crate::event_topics::event_topic_tag(topic));
+    }
+    tags
+}
+
 fn build_flows(
     configs: &[FlowConfig],
     pack_root: &Path,
@@ -910,7 +923,7 @@ fn build_flows(
             id: flow.id.clone(),
             kind: flow.kind,
             flow,
-            tags: cfg.tags.clone(),
+            tags: merge_flow_tags(&cfg.tags, &cfg.subscribes_to),
             entrypoints,
         };
 
@@ -3777,6 +3790,24 @@ flows:
         assert!(
             build_products.manifest.agents.is_empty(),
             "PackManifest.agents must be empty when pack.yaml contains no agents"
+        );
+    }
+
+    #[test]
+    fn build_flows_appends_event_topic_tags() {
+        use crate::event_topics::EVENT_TOPIC_TAG_PREFIX;
+        let author_tags = vec!["billing".to_string()];
+        let subs = vec!["orders.created".to_string(), "  ".to_string(), "orders.shipped".to_string()];
+
+        let merged = merge_flow_tags(&author_tags, &subs);
+
+        assert_eq!(
+            merged,
+            vec![
+                "billing".to_string(),
+                format!("{EVENT_TOPIC_TAG_PREFIX}orders.created"),
+                format!("{EVENT_TOPIC_TAG_PREFIX}orders.shipped"),
+            ]
         );
     }
 }
