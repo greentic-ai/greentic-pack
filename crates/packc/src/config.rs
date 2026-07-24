@@ -123,7 +123,7 @@ pub struct FlowConfig {
     pub tags: Vec<String>,
     #[serde(default)]
     pub entrypoints: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscribes_to: Vec<String>,
 }
 
@@ -504,6 +504,30 @@ flows:
         .expect("deserialize pack config");
         assert_eq!(cfg.flows.len(), 1);
         assert_eq!(cfg.flows[0].subscribes_to, vec!["orders.*".to_string()]);
+    }
+
+    #[test]
+    fn empty_subscribes_to_is_not_serialized() {
+        // A flow with no `subscribes_to` must NOT re-emit `subscribes_to: []` when
+        // serialized back to pack.yaml. `gtc update` (cli/update.rs) rewrites the
+        // manifest via serde_yaml_bw::to_string; without skip_serializing_if this
+        // injects `subscribes_to: []` into existing packs and drifts checked-in fixtures.
+        let cfg: PackConfig = serde_yaml_bw::from_str(
+            r#"pack_id: dev.local.empty
+version: 0.1.0
+kind: application
+publisher: Test
+flows:
+  - id: main
+    file: flows/main.ygtc
+"#,
+        )
+        .expect("deserialize pack config");
+        let yaml = serde_yaml_bw::to_string(&cfg).expect("serialize pack config");
+        assert!(
+            !yaml.contains("subscribes_to"),
+            "empty subscribes_to leaked into serialized pack.yaml:\n{yaml}"
+        );
     }
 
     #[test]
