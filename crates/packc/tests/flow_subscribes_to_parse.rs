@@ -26,7 +26,11 @@ flows:
     .unwrap();
 
     let cfg = load_pack_config(dir.path()).expect("pack.yaml parses");
-    let flow = cfg.flows.iter().find(|f| f.id == "main").expect("main flow");
+    let flow = cfg
+        .flows
+        .iter()
+        .find(|f| f.id == "main")
+        .expect("main flow");
     assert_eq!(flow.subscribes_to, vec!["orders.created", "orders.shipped"]);
 }
 
@@ -49,6 +53,10 @@ flows:
     .unwrap();
 
     let cfg = load_pack_config(dir.path()).expect("pack.yaml parses");
-    let flow = cfg.flows.iter().find(|f| f.id == "main").expect("main flow");
+    let flow = cfg
+        .flows
+        .iter()
+        .find(|f| f.id == "main")
+        .expect("main flow");
     assert!(flow.subscribes_to.is_empty());
 }

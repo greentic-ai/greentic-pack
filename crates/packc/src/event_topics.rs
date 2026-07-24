@@ -30,13 +30,22 @@ mod tests {
 
     #[test]
     fn encodes_topic_with_prefix() {
-        assert_eq!(event_topic_tag("orders.created"), "event-topic:orders.created");
+        assert_eq!(
+            event_topic_tag("orders.created"),
+            "event-topic:orders.created"
+        );
     }
 
     #[test]
     fn round_trips_encode_then_decode() {
-        let tags = vec![event_topic_tag("orders.created"), event_topic_tag("orders.shipped")];
-        assert_eq!(topics_from_tags(&tags), vec!["orders.created", "orders.shipped"]);
+        let tags = vec![
+            event_topic_tag("orders.created"),
+            event_topic_tag("orders.shipped"),
+        ];
+        assert_eq!(
+            topics_from_tags(&tags),
+            vec!["orders.created", "orders.shipped"]
+        );
     }
 
     #[test]

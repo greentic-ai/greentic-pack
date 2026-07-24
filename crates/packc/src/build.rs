@@ -3797,7 +3797,11 @@ flows:
     fn build_flows_appends_event_topic_tags() {
         use crate::event_topics::EVENT_TOPIC_TAG_PREFIX;
         let author_tags = vec!["billing".to_string()];
-        let subs = vec!["orders.created".to_string(), "  ".to_string(), "orders.shipped".to_string()];
+        let subs = vec![
+            "orders.created".to_string(),
+            "  ".to_string(),
+            "orders.shipped".to_string(),
+        ];
 
         let merged = merge_flow_tags(&author_tags, &subs);
 
