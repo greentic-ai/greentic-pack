@@ -125,7 +125,7 @@ pub struct FlowConfig {
     pub entrypoints: Vec<String>,
     /// Inbound business-event topics this flow subscribes to. Materialized into
     /// `PackFlowEntry.tags` via `crate::event_topics::event_topic_tag`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscribes_to: Vec<String>,
 }
 
