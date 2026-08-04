@@ -149,6 +149,8 @@ capabilities:
 
 At build time, author-declared entries union with the derived entries — author entries land first so their descriptions survive a collision.
 
+At deploy time the runtime's `BundleCapabilityGate` matches the exact `greentic.cap.fast2flow.v1` string and enables the routing pipeline. The pack may also ship a pre-seeded routing index at `assets/intent-index.json`; the runtime materializes it under the indexes path automatically, so no environment configuration is required for a local run. See [fast2flow / Opting In](https://docs.greentic.ai/components/fast2flow/#opting-in-from-a-pack).
+
 ## Verification Semantics
 
 `open_pack(path, policy)` reads the archive, enforces size limits, rejects
