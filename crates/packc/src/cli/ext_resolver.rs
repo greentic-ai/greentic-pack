@@ -476,8 +476,39 @@ pub fn read_describe_from_gtxpack(extension_id: &str, zip_bytes: &[u8]) -> Resul
     Ok(body)
 }
 
+/// Scheme prefixes on an agent tool's `extension_id` that mean "this is NOT an
+/// extension".
+///
+/// An agentic worker's tool list is heterogeneous. Only a BARE id names a
+/// `.gtxpack` extension declared in `pack.extensions.json`; every prefixed form
+/// is resolved at run time by its own catalog and has no extension to acquire:
+///
+/// - `flow:<flow_id>`      — a flow in the same pack (greentic-aw-runtime `FlowToolSource`)
+/// - `sorla:<pack>`        — a deployed SoR's business action
+/// - `component:<ref>`     — an OCI component, resolved from the pack's components
+/// - `mcp:<server_id>`     — a tool on a per-tenant MCP server
+///
+/// Feeding one of these to [`lookup_ext_dependency`] asks for an extension that
+/// cannot exist, which fails the build outright — and for a pack with no
+/// extensions at all it fails on the missing `pack.extensions.json` before it
+/// can even report the real problem. Their secrets are not ours to collect:
+/// they are declared by the flow, the SoR, the component manifest, or the MCP
+/// server registration respectively.
+const NON_EXTENSION_TOOL_PREFIXES: [&str; 4] = ["flow:", "sorla:", "component:", "mcp:"];
+
+/// Whether `ext_id` names a `.gtxpack` extension (as opposed to one of the
+/// run-time-resolved tool kinds in [`NON_EXTENSION_TOOL_PREFIXES`]).
+fn is_extension_tool_ref(ext_id: &str) -> bool {
+    !NON_EXTENSION_TOOL_PREFIXES
+        .iter()
+        .any(|prefix| ext_id.starts_with(prefix))
+}
+
 /// For each tool extension used by the agents, acquire its `.gtxpack`, read
 /// `describe.json`, and extract the secret requirements of the used tools.
+///
+/// Tools whose `extension_id` carries a non-extension scheme prefix are skipped
+/// (see [`NON_EXTENSION_TOOL_PREFIXES`]); everything else must resolve.
 ///
 /// Returns a map keyed by extension id. Errors (and propagates via `?`) when a
 /// declared tool extension is not found in `pack.extensions.json` or cannot be
@@ -510,6 +541,13 @@ pub fn resolve_agent_tool_requirements(
                 );
                 continue;
             };
+            if !is_extension_tool_ref(ext_id) {
+                tracing::debug!(
+                    agent = %agent_name, tool = %ext_id,
+                    "skipping non-extension tool ref for credential form generation"
+                );
+                continue;
+            }
             used.entry(ext_id.to_string())
                 .or_default()
                 .insert(tool_name.to_string());
@@ -592,5 +630,75 @@ mod tests {
     fn parse_ext_ref_empty_id() {
         let err = parse_ext_ref("ext://#component").expect_err("empty id");
         assert!(err.to_string().contains("must not be empty"));
+    }
+}
+
+#[cfg(test)]
+mod non_extension_tool_ref_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn agent_with_tools(
+        tools: serde_json::Value,
+    ) -> std::collections::BTreeMap<String, serde_json::Value> {
+        let mut agents = std::collections::BTreeMap::new();
+        agents.insert("assistant".to_string(), json!({ "tools": tools }));
+        agents
+    }
+
+    #[test]
+    fn bare_ids_are_extension_refs() {
+        assert!(is_extension_tool_ref("greentic.adaptive-cards"));
+        assert!(is_extension_tool_ref("some.vendor.extension"));
+    }
+
+    #[test]
+    fn run_time_resolved_kinds_are_not_extension_refs() {
+        // Each of these is resolved by its own catalog at run time and can never
+        // appear in pack.extensions.json.
+        assert!(!is_extension_tool_ref("flow:get_weather"));
+        assert!(!is_extension_tool_ref("sorla:my-pack"));
+        assert!(!is_extension_tool_ref("component:oci://ghcr.io/x/y"));
+        assert!(!is_extension_tool_ref("mcp:my-server"));
+    }
+
+    /// The regression this guards: a worker carrying only `flow:` tools used to
+    /// abort the build with "resolve tool extension 'flow:...'", because the
+    /// resolver treated the ref as an extension and demanded
+    /// pack.extensions.json — which a pack with no extensions does not have.
+    #[test]
+    fn a_worker_with_only_non_extension_tools_needs_no_extensions_file() {
+        let agents = agent_with_tools(json!([
+            { "extension_id": "flow:get_weather", "tool_name": "get_weather" },
+            { "extension_id": "sorla:billing", "tool_name": "refund" },
+        ]));
+        // An empty dir: no pack.extensions.json anywhere.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = resolve_agent_tool_requirements(dir.path(), &agents, dir.path(), true)
+            .expect("non-extension tool refs must not require an extensions file");
+        assert!(
+            out.is_empty(),
+            "non-extension refs contribute no extension secret requirements"
+        );
+    }
+
+    #[test]
+    fn a_real_extension_ref_is_still_resolved_and_still_errors_when_undeclared() {
+        let agents = agent_with_tools(json!([
+            { "extension_id": "flow:get_weather", "tool_name": "get_weather" },
+            { "extension_id": "greentic.some-extension", "tool_name": "do_thing" },
+        ]));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = resolve_agent_tool_requirements(dir.path(), &agents, dir.path(), true)
+            .expect_err("an undeclared extension must still fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("greentic.some-extension"),
+            "the error must name the real extension, not the skipped flow: ref; got: {msg}"
+        );
+        assert!(
+            !msg.contains("flow:get_weather"),
+            "a skipped non-extension ref must never appear in the error; got: {msg}"
+        );
     }
 }
