@@ -1,7 +1,7 @@
 # `doctor` pack-shape awareness: stop calling a valid DW pack corrupt
 
 Date: 2026-08-20
-Status: design approved, not implemented
+Status: implemented (see the corrections at the end)
 Base lane: `research` (`origin/research` @ `1.3.0-research.9`; `main` is ~10 days stale — do not branch off it)
 Repos: `greentic-pack` (all required work). `greentic-designer` (one optional, non-blocking hardening change).
 
@@ -496,3 +496,46 @@ skip-warning, not by requiring the binary.
 - Making `info`, `verify`, or `sign` succeed on a DW pack. They get better errors, not new capabilities.
 - Any change to `greentic-setup`, which already accepts these packs and is not part of the complaint.
 - Signing or SBOM-ing DW application packs.
+
+---
+
+## Corrections found during implementation
+
+Recorded here rather than edited in place, so the design and what it cost stay
+comparable.
+
+**C1 — the provider readers do not inherit the message "for free".** The
+"Blast radius" section said `verify` / `sign` / `plan` / `providers` pick up the
+better error via the one change at `reader.rs:381`. `verify`, `sign` and `plan`
+do, because they go through `open_pack`. The two provider readers do not:
+`crates/packc/src/cli/providers.rs` and
+`crates/greentic-pack/src/bin/common/providers.rs` walk the zip themselves and
+call `archive.by_name("manifest.cbor")` directly. Both were updated explicitly.
+This is why the message lives in `archive_shape` as a public
+`non_canonical_archive_message(&BTreeSet<String>)` rather than as a private
+helper in `reader`.
+
+**C2 — `cargo check --target wasm32-wasip2` fails on the workspace default
+features, and did so before this work.** `greentic-pack-lib`'s default feature
+is `native`, which pulls in tokio, and tokio refuses to build for wasm with
+those features. The meaningful check for the wasm lane is
+`cargo check --target wasm32-wasip2 -p greentic-pack-lib --no-default-features`,
+which passes with `archive_shape` included. The plan's Task 1 Step 3 command
+should have said so.
+
+**C3 — `Severity::Info` exists**, so the Info-severity rows in the D2-D7 table
+(D4c, D7) map directly onto `greentic_types::validate::Severity` with no
+workaround. The design did not check this; it happened to be true.
+
+**C4 — the knowledge sidecar indexes two paths per file, not one.** The design's
+D5 said "every asset path it indexes". The real annotation shape
+(greentic-designer `orchestrate::kb_attacher::KbAnnotationFile`) is
+`{asset_path, original_name, chars, vectors_asset_path?}` — the optional
+`vectors_asset_path` points at a precomputed vectors asset and is equally
+capable of dangling. Both are checked.
+
+**C5 — the shared flow-doctor spawn became its own module.** The plan said to
+factor it out; it landed as `crates/packc/src/cli/flow_doctor.rs` exposing a
+three-arm `FlowDoctorOutcome`. The canonical path's behaviour is preserved
+exactly, including "report `PACK_FLOW_DOCTOR_UNAVAILABLE` once and stop asking",
+which is a property of the caller loop rather than of the spawn.
