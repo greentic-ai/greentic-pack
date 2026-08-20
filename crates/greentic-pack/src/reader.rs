@@ -22,6 +22,7 @@ use x509_parser::pem::parse_x509_pem;
 use x509_parser::prelude::*;
 use zip::ZipArchive;
 
+use crate::archive_shape::{CANONICAL_MANIFEST_ENTRY, non_canonical_archive_message};
 use crate::builder::{
     ComponentEntry, FlowEntry, ImportRef, PackManifest, PackMeta, SBOM_FORMAT,
     SIGNATURE_CHAIN_PATH, SIGNATURE_PATH, SbomEntry, SignatureEnvelope, hex_hash,
@@ -376,9 +377,13 @@ fn open_pack_inner(path: &Path, policy: SigningPolicy) -> Result<PackLoad> {
     }
 
     let manifest_bytes = files
-        .get("manifest.cbor")
+        .get(CANONICAL_MANIFEST_ENTRY)
         .cloned()
-        .ok_or_else(|| anyhow!("manifest.cbor missing from archive"))?;
+        .ok_or_else(|| {
+            anyhow!(non_canonical_archive_message(
+                &files.keys().cloned().collect()
+            ))
+        })?;
     let decoded_gpack_manifest = decode_pack_manifest(&manifest_bytes).ok();
     match decode_manifest(&manifest_bytes).context("manifest.cbor is invalid")? {
         ManifestModel::Pack(manifest) => {
