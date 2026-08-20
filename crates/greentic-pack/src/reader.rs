@@ -360,7 +360,28 @@ impl PackLoad {
     }
 }
 
-fn open_pack_inner(path: &Path, policy: SigningPolicy) -> Result<PackLoad> {
+/// Every entry of a `.gtpack`, read with the archive's safety checks applied.
+///
+/// Shape-agnostic on purpose: this performs no manifest lookup and no decoding,
+/// so a reader for any pack shape can start from it instead of re-implementing
+/// zip hygiene. [`read_archive_entries`] already rejects non-regular files,
+/// unsafe or traversing paths, duplicate entries and oversized files; the
+/// archive-wide size cap is applied here.
+#[derive(Debug, Clone)]
+pub struct PackArchiveEntries {
+    pub files: HashMap<String, Vec<u8>>,
+    pub total_bytes: u64,
+}
+
+impl PackArchiveEntries {
+    /// The entry names, as [`crate::archive_shape::detect_archive_shape`] wants them.
+    pub fn entry_names(&self) -> std::collections::BTreeSet<String> {
+        self.files.keys().cloned().collect()
+    }
+}
+
+/// Open a `.gtpack` and read every entry, without assuming any pack shape.
+pub fn read_pack_archive(path: &Path) -> Result<PackArchiveEntries> {
     let mut archive = ZipArchive::new(
         File::open(path).with_context(|| format!("failed to open {}", path.display()))?,
     )
@@ -375,6 +396,15 @@ fn open_pack_inner(path: &Path, policy: SigningPolicy) -> Result<PackLoad> {
             fmt_mb(MAX_ARCHIVE_BYTES)
         );
     }
+
+    Ok(PackArchiveEntries {
+        files,
+        total_bytes: total,
+    })
+}
+
+fn open_pack_inner(path: &Path, policy: SigningPolicy) -> Result<PackLoad> {
+    let files = read_pack_archive(path)?.files;
 
     let manifest_bytes = files
         .get(CANONICAL_MANIFEST_ENTRY)

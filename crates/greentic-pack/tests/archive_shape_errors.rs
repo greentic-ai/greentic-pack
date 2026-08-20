@@ -28,10 +28,10 @@ fn write_zip(dir: &Path, name: &str, entries: &[(&str, &[u8])]) -> PathBuf {
 }
 
 fn open_err(path: &Path) -> String {
-    open_pack(path, SigningPolicy::DevOk)
-        .err()
-        .expect("canonical open must fail")
-        .message
+    match open_pack(path, SigningPolicy::DevOk) {
+        Ok(_) => panic!("canonical open must fail for a non-canonical archive"),
+        Err(result) => result.message,
+    }
 }
 
 #[test]
