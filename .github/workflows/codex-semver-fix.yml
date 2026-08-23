@@ -42,7 +42,7 @@ jobs:
         TOML
         rustup target add wasm32-wasip2
         if [ ! -x "$HOME/.cargo/bin/cargo-binstall" ]; then
-          cargo install cargo-binstall --locked
+          ( set -o pipefail; curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash )
         fi
         BINSTALL_DISABLE_STRATEGIES=compile cargo binstall cargo-component -y --force || cargo install cargo-component --locked --force
         BINSTALL_DISABLE_STRATEGIES=compile cargo binstall greentic-component -y --force
