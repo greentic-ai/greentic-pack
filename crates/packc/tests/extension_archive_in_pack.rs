@@ -295,3 +295,49 @@ fn an_unreadable_extension_dependency_fails_the_build() {
         "no .gtpack may be produced when an extension could not be acquired"
     );
 }
+
+/// The duplicate check at the write site is reachable WITHOUT any hash
+/// collision, and this is the case that reaches it.
+///
+/// `is_reserved_extra_file` excludes `.gtpack` but not `.gtxpack`, and
+/// `map_extra_files` passes any `/`-containing logical path through verbatim.
+/// So a file the author happens to leave at `<pack>/extensions/<id>.gtxpack`
+/// is carried into the archive as an extra — and extras are written before the
+/// resolved extension archives, so it claims the entry first.
+///
+/// Silently skipping there would ship a pack whose `extensions/<id>.gtxpack` is
+/// some unrelated file while the setup form still asks for that tool's
+/// credential: the exact defect this feature exists to close, one layer up. The
+/// build must refuse and name both sides.
+#[test]
+fn a_source_file_squatting_the_entry_fails_the_build_loudly() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pack = tmp.path().join("pack");
+    let gtx = make_gtxpack(tmp.path(), "greentic.tavily.gtxpack");
+    write_pack_source(&pack, "greentic.tavily", &gtx);
+
+    // A DIFFERENT file, sitting on the entry the resolved archive will want.
+    write_file(
+        &pack.join("extensions/greentic.tavily.gtxpack"),
+        "not the extension the agent declared",
+    );
+
+    let gtpack_out = tmp.path().join("demo.gtpack");
+    let output = run_build(&pack, &gtpack_out);
+
+    assert!(
+        !output.status.success(),
+        "a squatted extension entry must fail the build:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("greentic.tavily"),
+        "the failure must name the extension; got {stderr}"
+    );
+    assert!(
+        stderr.contains("extensions/greentic.tavily.gtxpack"),
+        "the failure must name the contested entry; got {stderr}"
+    );
+}

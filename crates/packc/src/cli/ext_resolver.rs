@@ -523,11 +523,24 @@ pub const EXTENSION_ARCHIVE_PREFIX: &str = "extensions/";
 /// neither hidden nor a bare `.`/`..` path component.
 ///
 /// Sanitisation is lossy, so whenever it changed anything the name also carries
-/// the first eight hex digits of `sha256(<raw id>)`. Two ids that sanitise to
-/// the same string therefore still get different entry names, and a sanitised
-/// name can never equal an unsanitised one. The build additionally refuses two
-/// archives landing on one entry name, so a truncated-digest collision fails the
-/// build rather than silently dropping an extension.
+/// the first eight hex digits of `sha256(<raw id>)`, joined by [`LOSSY_MARKER`].
+///
+/// **The digest suffix reduces collisions; it does not eliminate them, and it is
+/// not what makes the layout safe.** The duplicate check in
+/// `build::package_gtpack` is load-bearing: it is the only thing that stops one
+/// extension shadowing another, and it must not be removed as redundant.
+///
+/// What the marker DOES guarantee is that the two branches occupy disjoint
+/// namespaces. `~` is outside the verbatim branch's `[A-Za-z0-9._-]`, so it is
+/// unreachable from a name this function emits verbatim, and a lossy name can
+/// therefore never equal a verbatim one. Without it the two branches overlapped
+/// constructibly rather than by digest collision: `sha256("a/b")[..8]` is
+/// `c14cddc0`, so `"a/b"` and the perfectly legal id `"a_b-c14cddc0"` both
+/// produced `extensions/a_b-c14cddc0.gtxpack`.
+///
+/// What remains uncovered, and is the duplicate check's job: two ids that
+/// sanitise alike AND share the first eight digest hex digits. That is a
+/// truncated-SHA-256 collision, and it fails the build loudly.
 pub fn extension_archive_entry_name(extension_id: &str) -> String {
     let sanitized = sanitize_extension_id(extension_id);
     if sanitized == extension_id && !sanitized.is_empty() {
@@ -535,12 +548,20 @@ pub fn extension_archive_entry_name(extension_id: &str) -> String {
     }
     let digest = hex::encode(Sha256::digest(extension_id.as_bytes()));
     let suffix = &digest[..8];
-    if sanitized.is_empty() {
-        format!("{EXTENSION_ARCHIVE_PREFIX}ext-{suffix}.gtxpack")
+    let stem = if sanitized.is_empty() {
+        "ext"
     } else {
-        format!("{EXTENSION_ARCHIVE_PREFIX}{sanitized}-{suffix}.gtxpack")
-    }
+        sanitized.as_str()
+    };
+    format!("{EXTENSION_ARCHIVE_PREFIX}{stem}{LOSSY_MARKER}{suffix}.gtxpack")
 }
+
+/// Joins a lossily-sanitised stem to its digest suffix.
+///
+/// Deliberately a character [`sanitize_extension_id`] maps AWAY (it is not in
+/// `[A-Za-z0-9._-]`), so the verbatim branch can never emit one. That disjointness
+/// is the point — see [`extension_archive_entry_name`].
+const LOSSY_MARKER: char = '~';
 
 fn sanitize_extension_id(extension_id: &str) -> String {
     let mapped: String = extension_id
@@ -558,7 +579,7 @@ fn sanitize_extension_id(extension_id: &str) -> String {
 
 /// One tool extension's `.gtxpack`, acquired during the build so the produced
 /// `.gtpack` can carry it.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ResolvedExtensionArchive {
     /// Extension id exactly as declared in `pack.extensions.json`.
     pub extension_id: String,
@@ -567,6 +588,19 @@ pub struct ResolvedExtensionArchive {
     pub entry_name: String,
     /// The `.gtxpack` bytes, verbatim.
     pub bytes: Vec<u8>,
+}
+
+/// Hand-written so `bytes` prints as a length rather than as its contents.
+/// A derived `Debug` would render a whole ZIP as a byte-array literal, so one
+/// `tracing::debug!(?resolution)` would put megabytes of binary into a log.
+impl std::fmt::Debug for ResolvedExtensionArchive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedExtensionArchive")
+            .field("extension_id", &self.extension_id)
+            .field("entry_name", &self.entry_name)
+            .field("bytes", &format_args!("{} bytes", self.bytes.len()))
+            .finish()
+    }
 }
 
 /// Everything one pass over the agents' tool extensions produces.
@@ -838,11 +872,32 @@ mod extension_archive_entry_name_tests {
         assert_eq!(plain, "extensions/a_b.gtxpack");
     }
 
+    /// The counterexample that made the old `-` separator constructibly
+    /// collidable: `sha256("a/b")[..8]` is `c14cddc0`, and `a_b-c14cddc0` is a
+    /// perfectly legal id that the verbatim branch emits unchanged. With the
+    /// two branches sharing a separator both landed on one entry.
+    #[test]
+    fn a_lossy_name_cannot_be_forged_by_a_verbatim_id() {
+        let lossy = extension_archive_entry_name("a/b");
+        assert_eq!(lossy, "extensions/a_b~c14cddc0.gtxpack");
+        // The id that used to collide with it.
+        let verbatim = extension_archive_entry_name("a_b-c14cddc0");
+        assert_eq!(verbatim, "extensions/a_b-c14cddc0.gtxpack");
+        assert_ne!(lossy, verbatim);
+        // And it is not a one-off: no verbatim name can contain the marker at
+        // all, because sanitisation maps it away.
+        assert!(!verbatim.contains(LOSSY_MARKER));
+        assert!(
+            !extension_archive_entry_name("a_b~c14cddc0").contains("b~c"),
+            "an id literally containing the marker is itself lossy"
+        );
+    }
+
     #[test]
     fn an_id_that_sanitises_to_nothing_still_gets_a_name() {
         let name = extension_archive_entry_name("..");
         assert!(
-            name.starts_with("extensions/ext-") && name.ends_with(".gtxpack"),
+            name.starts_with("extensions/ext~") && name.ends_with(".gtxpack"),
             "got {name}"
         );
     }

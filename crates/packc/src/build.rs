@@ -1675,15 +1675,44 @@ fn package_gtpack(
         write_zip_entry(&mut writer, &logical, &bytes, options)?;
     }
 
-    // Carry each tool extension's `.gtxpack` into the pack under `extensions/`.
-    // The pack is the delivery vehicle: a runtime reads the extension out of it
-    // rather than out of a directory some deploy target was supposed to have
-    // unpacked, so no lane can silently ship a worker whose tools are absent.
+    // ---------------------------------------------------------------------
+    // CONTRACT — the in-pack extension layout, shared with greentic-runner.
+    //
+    // A `.gtpack` in a customer's hands cannot be renamed later, so this layout
+    // is fixed at the first release that emits it and is not ours alone to
+    // change. It is agreed with the consuming runner, and the same paragraph is
+    // recorded in greentic-designer's external-RAG design spec so the runner
+    // side inherits it from a document rather than by reading this code.
+    //
+    //   1. A tool extension's `.gtxpack` travels at `extensions/<name>.gtxpack`,
+    //      one flat level. There is no kind partition — NOT `extensions/design/`.
+    //   2. A consumer enumerates extensions by FILTERING ON THE `.gtxpack`
+    //      SUFFIX. It must not treat `extensions/` as homogeneous.
+    //   3. Rule 2 is load-bearing, not defensive: `extensions/` is ALREADY an
+    //      authoring convention in a pack source tree — the wizard writes
+    //      `extensions/*.json` manifest sidecars there and `collect_extra_files`
+    //      walks them into the archive verbatim. Those `.json` files are not
+    //      extensions and predate this feature.
+    //
+    // Why flat rather than kind-partitioned, even though a runner's own on-disk
+    // model is `<dir>/design/`: placing by kind would make packc read and trust
+    // `describe.json`'s `kind` to decide a path. A design extension is today the
+    // only kind ever declared as an agent-tool dependency, so that read buys a
+    // guess, not a guarantee — and a wrong guess is baked into shipped bytes.
+    // The consumer already opens each archive; it can classify from the inside,
+    // where the answer is authoritative.
+    // ---------------------------------------------------------------------
     let mut extension_archives = build.extension_archives.clone();
     extension_archives.sort_by(|a, b| a.entry_name.cmp(&b.entry_name));
     for archive in extension_archives {
-        // A duplicate here would drop an extension the setup form already asked
-        // for a credential for, so refuse rather than skip.
+        // LOAD-BEARING, not belt-and-braces. `extension_archive_entry_name`
+        // REDUCES collisions (disjoint verbatim/lossy namespaces plus a digest);
+        // it does not eliminate them, and this is the only thing that stops one
+        // extension silently shadowing another. Reachable without any hash
+        // collision at all: a source-tree file at `extensions/<id>.gtxpack` is
+        // carried by `map_extra_files` above and claims the entry first, since
+        // `is_reserved_extra_file` excludes `.gtpack` but not `.gtxpack`.
+        // Refuse, naming both sides — never skip.
         if !written_paths.insert(archive.entry_name.clone()) {
             bail!(
                 "extension '{}' cannot be carried at '{}': that entry is already claimed by another file in the pack",

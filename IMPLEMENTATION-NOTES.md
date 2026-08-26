@@ -39,10 +39,10 @@ they were asked for its API key.
   - Leading dots are stripped, so the entry can be neither a hidden file nor a
     bare `.` / `..` path component.
   - Sanitisation is lossy, so whenever it changed anything the name also carries
-    the first eight hex digits of `sha256(<raw id>)`. Two ids that sanitise to
-    the same string therefore get different entry names, and a sanitised name
-    can never equal an unsanitised one (`a/b` → `a_b-<hex8>.gtxpack`, `a:b` →
-    `a_b-<hex8>.gtxpack` with a different hex, `a_b` → `a_b.gtxpack`).
+    the first eight hex digits of `sha256(<raw id>)`, joined by `~`.
+    **Corrected after review — see "Review fixes" below: the digest suffix
+    REDUCES collisions and does not eliminate them; the duplicate check in
+    `package_gtpack` is the load-bearing guarantee.**
   - `sanitize_extension_id` is the private helper behind it.
 - **`ResolvedExtensionArchive { extension_id, entry_name, bytes }`** — one
   acquired `.gtxpack`.
@@ -290,3 +290,156 @@ crates/packc/tests/extension_archive_in_pack.rs
 (`LOCAL_CHECK_ONLINE=1`) and auto-installs `greentic-component` via
 `cargo binstall`. Its Rust gates — fmt, clippy, build, the workspace test suite
 — were each run directly and are recorded above.
+
+---
+
+# Review fixes (second pass)
+
+Review returned "ready to merge, with fixes". Shipped behaviour was endorsed,
+including the fatal-vs-warning call. Three fixes plus one contract ruling.
+
+## 1. A doc comment that stated a constructibly false invariant
+
+The original comment claimed *"a sanitised name can never equal an unsanitised
+one"*, directly above the check that is the actual guarantee. It was false. The
+verbatim branch accepts `-` and hex digits, so a legal id can carry exactly the
+shape the lossy branch appended. The reviewer's counterexample:
+
+- `sha256("a/b")[..8]` == `c14cddc0`
+- `extension_archive_entry_name("a/b")` → lossy → `extensions/a_b-c14cddc0.gtxpack`
+- `extension_archive_entry_name("a_b-c14cddc0")` → verbatim → **the same name**
+
+The behaviour was already safe — `package_gtpack` bails and names both sides —
+but the comment told the next reader that bail was redundant belt-and-braces
+when it was the *sole* thing stopping one extension shadowing another. That is
+this commit's own defect, one layer up: a comment that would stop someone
+checking.
+
+**Closed structurally as well as textually**, since it cost one character.
+`LOSSY_MARKER` is now `~` instead of `-`. `~` is outside the verbatim branch's
+`[A-Za-z0-9._-]`, so `sanitize_extension_id` maps it away and the verbatim
+branch can never emit one. The two branches now occupy **disjoint namespaces**:
+
+- `a/b` → `extensions/a_b~c14cddc0.gtxpack`
+- `a_b-c14cddc0` → `extensions/a_b-c14cddc0.gtxpack`
+- `a_b` → `extensions/a_b.gtxpack` (the common case is still readable — this is
+  what keeps the contract shape `extensions/<id>.gtxpack` rather than forcing a
+  digest onto every name)
+
+The `ext-<hex>` empty-stem case became `ext~<hex>` for the same reason.
+
+**What is still NOT closed, and is stated as such in both the code and here:**
+two ids that sanitise alike *and* share their first eight digest hex digits. That
+is a truncated-SHA-256 collision, and it fails the build loudly rather than
+shadowing. So the duplicate check remains load-bearing, and both the function's
+doc comment and the check's own comment now say so in those words.
+
+New unit test `a_lossy_name_cannot_be_forged_by_a_verbatim_id` pins the
+reviewer's exact counterexample, so a future change back to a shared separator
+fails rather than silently reopening the overlap.
+
+## 2. The duplicate bail had no test, and is reachable without a hash collision
+
+Confirmed the reviewer's reachability analysis by running it:
+`is_reserved_extra_file` excludes `.gtpack` but not `.gtxpack`, and
+`map_extra_files` passes any `/`-containing logical path through verbatim — so a
+file at `<pack>/extensions/<id>.gtxpack` in the source tree is carried as an
+extra, and extras are written **before** the resolved archives. It claims the
+entry first.
+
+New integration test `a_source_file_squatting_the_entry_fails_the_build_loudly`.
+Verified by hand that it reaches the intended branch and not some earlier
+failure — the real binary, real pack, real squatter file:
+
+```
+$ target/debug/greentic-pack build --in $P --no-update --gtpack-out $T/demo.gtpack
+Error: extension 'greentic.tavily' cannot be carried at 'extensions/greentic.tavily.gtxpack': that entry is already claimed by another file in the pack
+```
+
+Red-proofed by replacing the `bail!` with `continue`:
+
+```
+thread 'a_source_file_squatting_the_entry_fails_the_build_loudly' panicked at crates/packc/tests/extension_archive_in_pack.rs:328:5:
+a squatted extension entry must fail the build:
+stdout=
+stderr=wrote /tmp/.tmpLbTXhT/demo.gtpack
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.04s
+```
+
+That is the failure being prevented, exactly: a build that reports success and
+ships a pack whose `extensions/greentic.tavily.gtxpack` is an unrelated file,
+while `assets/setup.yaml` still asks the operator for that tool's credential.
+
+## 3. `Debug` on `ResolvedExtensionArchive`
+
+`#[derive(Debug)]` over `bytes: Vec<u8>` meant one future
+`tracing::debug!(?resolution)` would render a whole ZIP as a byte-array literal.
+Replaced with a hand-written `impl Debug` printing `"<n> bytes"`.
+
+Skipped per instruction: the sort clone, the partial `.gtpack` left on a
+mid-write bail, and the wasm duplicated between `components/` and the archive.
+
+## The cross-repo contract (coordinator's ruling)
+
+Recorded as a doc comment at the write site in `build::package_gtpack`, stated
+as a contract rather than an implementation note, because a `.gtpack` in a
+customer's hands cannot be renamed later — the layout is fixed at the first
+release that emits it.
+
+1. A tool extension's `.gtxpack` travels at `extensions/<name>.gtxpack`, one
+   flat level. **No kind partition** — not `extensions/design/`.
+2. A consumer enumerates extensions by **filtering on the `.gtxpack` suffix**.
+   It must not treat `extensions/` as homogeneous.
+3. Rule 2 is load-bearing, not defensive: `extensions/` is *already* an
+   authoring convention in a pack source tree — the wizard writes
+   `extensions/*.json` manifest sidecars there and `collect_extra_files` walks
+   them into the archive verbatim. Those `.json` files are not extensions and
+   predate this feature.
+
+Why flat, even though a runner's own on-disk model is kind-partitioned
+(`<dir>/design/`): placing by kind would make packc read and trust
+`describe.json`'s `kind` to decide a path. A design extension is today the only
+kind ever declared as an agent-tool dependency, so that read buys a guess, not a
+guarantee — and a wrong guess is baked into shipped bytes. The consumer already
+opens each archive and can classify from the inside, where the answer is
+authoritative.
+
+## Verification (second pass)
+
+```
+$ cargo fmt --all -- --check
+FMT OK
+
+$ cargo clippy --workspace --all-targets --locked -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.57s
+clippy exit=0
+
+$ cargo test -p greentic-pack --locked --lib
+test cli::ext_resolver::extension_archive_entry_name_tests::a_lossy_name_cannot_be_forged_by_a_verbatim_id ... ok
+test cli::ext_resolver::extension_archive_entry_name_tests::an_ordinary_id_is_used_verbatim ... ok
+test cli::ext_resolver::extension_archive_entry_name_tests::an_id_that_sanitises_to_nothing_still_gets_a_name ... ok
+test cli::ext_resolver::extension_archive_entry_name_tests::ids_that_sanitise_alike_still_get_distinct_entries ... ok
+test cli::ext_resolver::extension_archive_entry_name_tests::path_separators_cannot_escape_the_archive ... ok
+test cli::ext_resolver::extension_archive_entry_name_tests::the_name_is_deterministic ... ok
+test result: ok. 214 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+$ cargo test -p greentic-pack --locked --test extension_archive_in_pack
+running 6 tests
+test an_unreadable_extension_dependency_fails_the_build ... ok
+test the_built_gtpack_carries_the_tool_extension_archive ... ok
+test the_credential_form_and_the_carried_archive_ship_together ... ok
+test a_source_file_squatting_the_entry_fails_the_build_loudly ... ok
+test a_pack_with_no_extension_tools_carries_no_archive ... ok
+test a_hostile_extension_id_stays_inside_the_archive ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+$ cargo test --workspace --locked     # aggregated over every `test result` line
+TOTAL passed=539 failed=0
+```
+
+(537 → 539: one new integration test, one new unit test.) The pre-existing
+`ci/check_no_interfaces_bindings_imports.sh` failure on `origin/research` is
+unchanged and still confined to `docs/`; this pass touches no documentation
+outside these notes.
